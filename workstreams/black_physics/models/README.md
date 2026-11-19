@@ -1,5 +1,19 @@
 # models/
 
+| Folder | Registered IDs |
+| --- | --- |
+| [`gardner/`](gardner/README.md) | `black_gardner`, `black_gardner_fixed` |
+| [`castagna_mudrock/`](castagna_mudrock/README.md) | `black_castagna_dts` |
+| [`greenberg_castagna/`](greenberg_castagna/README.md) | `black_gc_brine_gr` |
+| [`wyllie/`](wyllie/README.md) | `black_wyllie_nphi` |
+| [`volumetric_density/`](volumetric_density/README.md) | `black_density_nphi` |
+| [`vpvs_ratio/`](vpvs_ratio/README.md) | `black_vpvs_ratio` |
+| `_shared/` | helpers only: slowness conversion, curve access, calibration, the thin wrapper base class |
+
+Each folder has `equation.py`, `wrapper.py`, a model card (`README.md`), `LICENSE.md` and one
+`<id>.model.yaml` per registered ID.
+Registration is in [`../contender.py`](../contender.py).
+
 Optional layout for this team's models. You do not have to move anything
 now. The existing `../contender.py` and its `CONTENDERS` list still work,
 and that is what the runner uses today.

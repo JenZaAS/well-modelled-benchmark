@@ -31,7 +31,7 @@ Each workstream folder has a `LICENSE.md`. Contender classes also set
 | Item | Team / folder | Licence | Restrictions (one line) |
 |---|---|---|---|
 | `template_linear` (baseline) | `_template_model` | MIT | none (original repo code) |
-| Gardner / Castagna implementations | `black_physics` | MIT | none for this folder's code; methods are published papers |
+| `black_gardner`, `black_gardner_fixed`, `black_castagna_dts`, `black_gc_brine_gr`, `black_wyllie_nphi`, `black_density_nphi`, `black_vpvs_ratio` (physics baselines) | `black_physics` | MIT | none for this folder's code; equations are published methods credited in each `models/<family>/README.md` |
 | `blue_gbt` folder code | `blue_boosted_trees` | MIT | none for this folder's code |
 | XGBoost (optional dependency) | blue | Apache-2.0 | see [XGBoost LICENSE](https://github.com/dmlc/xgboost/blob/master/LICENSE) |
 | LightGBM (optional dependency) | blue | MIT | see [LightGBM LICENSE](https://github.com/microsoft/LightGBM/blob/master/LICENSE) |

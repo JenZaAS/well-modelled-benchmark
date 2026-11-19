@@ -1,0 +1,7 @@
+# Inputs per target in canonical curve names; DEPTH is always present. See docs/models.md and README.md here.
+name: black_density_nphi
+licence: MIT
+targets:
+  RHOB:
+    required: [NPHI]
+    optional: []
