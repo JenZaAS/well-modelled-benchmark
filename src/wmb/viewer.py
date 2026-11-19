@@ -1,0 +1,574 @@
+"""Local well-map viewer: data-free HTML + a tiny HTTP server.
+
+    python -m wmb.viewer --launch
+
+Reads data_paths.local.yaml, serves viewer/wellmap.html, and exposes a
+read-only API for whichever datasets are present. Missing datasets are
+listed as not available; they do not crash the viewer.
+
+The baked/offline builder (viewer/build_wellmap.py) is unchanged and still
+embeds curve data in a gitignored HTML file for sharing without a server.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import socket
+import sys
+import threading
+import webbrowser
+from functools import partial
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+from urllib.parse import parse_qs, unquote, urlparse
+
+# Repo root: src/wmb/viewer.py -> parents[2]
+REPO = Path(__file__).resolve().parents[2]
+VIEWER_DIR = REPO / "viewer"
+VENDOR_DIR = VIEWER_DIR / "vendor"
+HTML_PATH = VIEWER_DIR / "wellmap.html"
+
+DATASET_LABELS = {
+    "force2020": "FORCE 2020",
+    "sodir_factpages": "Sodir FactPages",
+    "nlog_dts": "NLOG (DTS wells)",
+    "kansas_kgs_dts": "Kansas KGS (DTS wells)",
+    "volve": "Volve",
+}
+
+# Datasets that are supporting tables, not log wells on the map.
+SUPPORT_KEYS = {"sodir_factpages"}
+
+
+def _ensure_src_on_path() -> None:
+    src = str(REPO / "src")
+    if src not in sys.path:
+        sys.path.insert(0, src)
+    env = os.environ.get("PYTHONPATH", "")
+    if src not in env.split(os.pathsep):
+        os.environ["PYTHONPATH"] = src + (os.pathsep + env if env else "")
+
+
+def _bootstrap_yaml() -> None:
+    try:
+        import yaml  # noqa: F401
+        return
+    except ImportError:
+        pass
+    print("PyYAML is missing. One-line fix:  pip install pyyaml")
+    ans = input("Create a .venv in this repo and install PyYAML there now? [y/N] ").strip().lower()
+    if ans not in {"y", "yes"}:
+        raise SystemExit(1)
+    venv_dir = REPO / ".venv"
+    import subprocess
+    import venv
+
+    print(f"Creating {venv_dir} …")
+    venv.EnvBuilder(with_pip=True).create(venv_dir)
+    py = venv_dir / ("Scripts" if os.name == "nt" else "bin") / ("python.exe" if os.name == "nt" else "python")
+    subprocess.check_call([str(py), "-m", "pip", "install", "pyyaml"])
+    _ensure_src_on_path()
+    os.execv(str(py), [str(py), "-m", "wmb.viewer", *sys.argv[1:]])
+
+
+def _prompt_data_root() -> Path:
+    print("data_paths.local.yaml is missing. Please choose the shared team data folder")
+    print("(it should contain subfolders such as FORCE2020, Volve, NLOG-DTS, …).")
+    picked = ""
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            root.wm_attributes("-topmost", 1)
+        except Exception:
+            pass
+        picked = filedialog.askdirectory(title="Select the shared team data folder") or ""
+        root.destroy()
+    except Exception:
+        picked = ""
+    if not picked:
+        picked = input("Path to the shared team data folder: ").strip().strip('"').strip("'")
+    path = Path(picked).expanduser()
+    if not picked or not path.is_dir():
+        raise SystemExit(f"That folder was not found: {path}")
+    return path
+
+
+def ensure_config(interactive: bool) -> None:
+    _bootstrap_yaml()
+    from wmb.paths import DataPathsError, config_path, load_config, write_local_paths
+
+    try:
+        load_config()
+        return
+    except DataPathsError:
+        if not interactive:
+            raise
+    root = _prompt_data_root()
+    dest = config_path()
+    write_local_paths(root, dest=dest)
+    print(f"Wrote {dest}")
+
+
+def discover_for_viewer() -> list[dict[str, Any]]:
+    """Describe each known dataset for the API and the UI (no crash if missing)."""
+    from wmb.paths import dataset_status
+
+    rows = []
+    for st in dataset_status():
+        item: dict[str, Any] = {
+            "key": st.key,
+            "name": DATASET_LABELS.get(st.key, st.key),
+            "path": str(st.path) if st.exists else None,
+            "status": "available" if st.found else "not_available",
+            "n_las": st.n_las,
+            "n_csv": st.n_csv,
+            "has_manifest": st.has_manifest,
+            "role": "support" if st.key in SUPPORT_KEYS else "wells",
+            "note": "",
+        }
+        if not st.exists:
+            item["note"] = "not available"
+        elif not st.found:
+            item["note"] = "folder is present but no LAS or CSV files were found"
+        elif st.key in SUPPORT_KEYS:
+            item["note"] = "wellhead coordinates and tops (not plotted as a log dataset)"
+        elif not st.has_manifest:
+            item["note"] = "no wells.json yet; a temporary manifest will be used if possible"
+        rows.append(item)
+    return rows
+
+
+def _scan_las_manifest(root: Path, key: str, label: str) -> dict[str, Any] | None:
+    files = sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() == ".las")
+    if not files:
+        return None
+    groups: dict[str, list[Path]] = {}
+    root_res = root.resolve()
+    for f in files:
+        parent = f.parent.resolve()
+        name = parent.name if parent != root_res else f.stem
+        groups.setdefault(name, []).append(f)
+    wells = []
+    for name, flist in groups.items():
+        wells.append(
+            {
+                "name": name,
+                "files": [{"path": f.relative_to(root).as_posix(), "format": "las"} for f in flist],
+            }
+        )
+    return {
+        "manifest_version": 1,
+        "dataset": {
+            "id": key,
+            "name": label,
+            "licence": "",
+            "source_url": "",
+            "credit": "",
+            "depth_units": "m",
+            "curve_map": {},
+        },
+        "wells": wells,
+        "_data_root": str(root),
+        "_generated": True,
+    }
+
+
+def _load_json_manifest(root: Path) -> dict[str, Any] | None:
+    for name in ("wells.json", "wells.manifest.json"):
+        path = root / name
+        if path.is_file():
+            data = json.loads(path.read_text(encoding="utf-8"))
+            data["_data_root"] = str(root)
+            data["_manifest_path"] = str(path)
+            data["_generated"] = False
+            return data
+    return None
+
+
+def load_dataset_manifest(key: str, path: Path, label: str) -> dict[str, Any] | None:
+    found = _load_json_manifest(path)
+    if found is not None:
+        return found
+    return _scan_las_manifest(path, key, label)
+
+
+def _maybe_place(well: dict) -> None:
+    if well.get("lat") is not None and well.get("lon") is not None:
+        return
+    try:
+        sys.path.insert(0, str(VIEWER_DIR))
+        from build_wellmap import maybe_place_from_xy
+
+        maybe_place_from_xy(well)
+    except Exception:
+        return
+
+
+def wells_from_manifest(manifest: dict[str, Any], key: str) -> tuple[list[dict], list[dict]]:
+    dataset = manifest.get("dataset") or {}
+    ds_id = dataset.get("id") or key
+    wells_out: list[dict] = []
+    unplaced: list[dict] = []
+    for well in manifest.get("wells") or []:
+        _maybe_place(well)
+        comp = well.get("completeness") or {}
+        curves = comp.get("curves") or {}
+        if not curves and isinstance(comp, dict):
+            curves = {k: v for k, v in comp.items() if k not in {"overall", "curves"}}
+        overall = comp.get("overall")
+        if overall is not None:
+            try:
+                overall = round(float(overall) * (100 if float(overall) <= 1 else 1), 1)
+            except (TypeError, ValueError):
+                overall = None
+        has_dts = False
+        try:
+            has_dts = float((curves or {}).get("DTS") or 0) > 0
+        except (TypeError, ValueError):
+            has_dts = False
+        packed = {
+            "id": f"{ds_id}::{well.get('name')}",
+            "name": well.get("name"),
+            "dataset": ds_id,
+            "dataset_key": key,
+            "split": well.get("split") or "",
+            "lat": well.get("lat"),
+            "lon": well.get("lon"),
+            "coord_source": well.get("coord_source"),
+            "depth_units": well.get("depth_units") or dataset.get("depth_units") or "m",
+            "licence": well.get("licence") or dataset.get("licence") or "",
+            "credit": well.get("credit") or dataset.get("credit") or "",
+            "lithology_scheme": dataset.get("lithology_scheme") or "force2020",
+            "overall": overall,
+            "curves": curves,
+            "has_dts": has_dts,
+            "d": [],
+            "c": {},
+            "lith": None,
+            "logs_pending": True,
+        }
+        wells_out.append(packed)
+        if well.get("lat") is None or well.get("lon") is None:
+            unplaced.append(
+                {
+                    "name": well.get("name"),
+                    "dataset": ds_id,
+                    "reason": well.get("coord_note") or "no lat/lon or convertible x/y",
+                }
+            )
+    return wells_out, unplaced
+
+
+def public_manifest(manifest: dict[str, Any]) -> dict[str, Any]:
+    """Drop absolute paths before sending a manifest to the browser."""
+    out = {
+        "manifest_version": manifest.get("manifest_version", 1),
+        "dataset": dict(manifest.get("dataset") or {}),
+        "wells": [],
+        "generated": bool(manifest.get("_generated")),
+    }
+    for well in manifest.get("wells") or []:
+        item = {k: v for k, v in well.items() if k not in {"abs_path"}}
+        files = []
+        for f in item.get("files") or []:
+            files.append({k: v for k, v in f.items() if k not in {"abs_path"}})
+        item["files"] = files
+        out["wells"].append(item)
+    return out
+
+
+def safe_under(root: Path, rel: str) -> Path | None:
+    """Resolve rel under root; None if missing or a path-traversal attempt."""
+    if not rel or rel.startswith("/") or rel.startswith("\\"):
+        return None
+    root = root.resolve()
+    candidate = (root / rel).resolve()
+    try:
+        candidate.relative_to(root)
+    except ValueError:
+        return None
+    return candidate if candidate.is_file() else None
+
+
+class ViewerState:
+    def __init__(self) -> None:
+        self.availability = discover_for_viewer()
+        self._manifests: dict[str, dict[str, Any] | None] = {}
+        self._csv_frames: dict[str, Any] = {}
+        self._lock = threading.Lock()
+
+    def manifest_for(self, key: str) -> dict[str, Any] | None:
+        with self._lock:
+            if key in self._manifests:
+                return self._manifests[key]
+        row = next((r for r in self.availability if r["key"] == key), None)
+        if not row or row["status"] != "available" or row["role"] != "wells" or not row["path"]:
+            with self._lock:
+                self._manifests[key] = None
+            return None
+        manifest = load_dataset_manifest(key, Path(row["path"]), row["name"])
+        with self._lock:
+            self._manifests[key] = manifest
+        return manifest
+
+    def map_payload(self) -> dict[str, Any]:
+        datasets = []
+        wells: list[dict] = []
+        unplaced: list[dict] = []
+        lithology: dict[str, Any] = {}
+        for row in self.availability:
+            info = {
+                "id": row["key"],
+                "key": row["key"],
+                "name": row["name"],
+                "status": row["status"],
+                "role": row["role"],
+                "note": row["note"],
+                "has_manifest": row["has_manifest"],
+                "n_las": row["n_las"],
+                "n_csv": row["n_csv"],
+            }
+            if row["status"] == "available" and row["role"] == "wells":
+                manifest = self.manifest_for(row["key"])
+                if manifest is None:
+                    info["note"] = row["note"] or "no wells.json, and no LAS files to scan"
+                    info["status"] = "available_no_wells"
+                else:
+                    ds = manifest.get("dataset") or {}
+                    info["id"] = ds.get("id") or row["key"]
+                    info["licence"] = ds.get("licence") or ""
+                    info["credit"] = ds.get("credit") or ""
+                    info["generated_manifest"] = bool(manifest.get("_generated"))
+                    w, u = wells_from_manifest(manifest, row["key"])
+                    wells.extend(w)
+                    unplaced.extend(u)
+                    scheme = ds.get("lithology_scheme") or "force2020"
+                    try:
+                        sys.path.insert(0, str(VIEWER_DIR))
+                        from wellmaplib.lithology import scheme_payload
+
+                        lithology[scheme] = scheme_payload(scheme)
+                    except Exception:
+                        pass
+            datasets.append(info)
+        coast = {"type": "FeatureCollection", "features": []}
+        coast_path = VENDOR_DIR / "ncs_coast.geojson"
+        if coast_path.is_file():
+            coast = json.loads(coast_path.read_text(encoding="utf-8"))
+        return {
+            "generated": "live",
+            "datasets": datasets,
+            "wells": wells,
+            "unplaced": unplaced,
+            "lithology": lithology,
+            "coast": coast,
+            "live": True,
+        }
+
+    def pack_logs(self, key: str, well_name: str, max_points: int = 2000) -> dict[str, Any]:
+        manifest = self.manifest_for(key)
+        if manifest is None:
+            raise FileNotFoundError(f"No manifest for dataset {key}")
+        well = next((w for w in manifest["wells"] if w.get("name") == well_name), None)
+        if well is None:
+            raise FileNotFoundError(f"Well {well_name!r} not in {key}")
+        sys.path.insert(0, str(VIEWER_DIR))
+        from build_wellmap import load_csv_groups, load_well_frame, pack_well
+
+        dataset = manifest["dataset"]
+        data_root = Path(manifest["_data_root"])
+        cache_key = key
+        with self._lock:
+            frames = self._csv_frames.get(cache_key)
+        if frames is None:
+            frames = load_csv_groups(manifest)
+            with self._lock:
+                self._csv_frames[cache_key] = frames
+        frame = load_well_frame(well, dataset, data_root, frames)
+        packed = pack_well(well, dataset, frame, max_points)
+        return {"d": packed.get("d") or [], "c": packed.get("c") or {}, "lith": packed.get("lith"),
+                "overall": packed.get("overall"), "curves": packed.get("curves") or {},
+                "has_dts": packed.get("has_dts", False)}
+
+
+def _send(handler: BaseHTTPRequestHandler, code: int, body: bytes, content_type: str) -> None:
+    handler.send_response(code)
+    handler.send_header("Content-Type", content_type)
+    handler.send_header("Content-Length", str(len(body)))
+    handler.send_header("Cache-Control", "no-store")
+    handler.send_header("Access-Control-Allow-Origin", "*")
+    handler.end_headers()
+    handler.wfile.write(body)
+
+
+def _send_json(handler: BaseHTTPRequestHandler, code: int, payload: Any) -> None:
+    body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+    _send(handler, code, body, "application/json; charset=utf-8")
+
+
+def _guess_type(path: Path) -> str:
+    suffix = path.suffix.lower()
+    return {
+        ".html": "text/html; charset=utf-8",
+        ".js": "application/javascript; charset=utf-8",
+        ".css": "text/css; charset=utf-8",
+        ".json": "application/json; charset=utf-8",
+        ".geojson": "application/geo+json; charset=utf-8",
+        ".png": "image/png",
+        ".svg": "image/svg+xml",
+        ".ico": "image/x-icon",
+    }.get(suffix, "application/octet-stream")
+
+
+class ViewerHandler(BaseHTTPRequestHandler):
+    server_version = "wmb-viewer/0.1"
+    state: ViewerState
+
+    def log_message(self, fmt: str, *args: Any) -> None:
+        sys.stderr.write("%s - %s\n" % (self.address_string(), fmt % args))
+
+    def do_GET(self) -> None:  # noqa: N802
+        parsed = urlparse(self.path)
+        path = unquote(parsed.path)
+        try:
+            self._route(path, parse_qs(parsed.query))
+        except FileNotFoundError as exc:
+            _send_json(self, 404, {"error": str(exc)})
+        except ValueError as exc:
+            _send_json(self, 400, {"error": str(exc)})
+        except Exception as exc:
+            _send_json(self, 500, {"error": f"{type(exc).__name__}: {exc}"})
+
+    def _route(self, path: str, query: dict[str, list[str]]) -> None:
+        if path in {"/", "/wellmap.html", "/index.html"}:
+            if not HTML_PATH.is_file():
+                raise FileNotFoundError(f"Missing {HTML_PATH}")
+            _send(self, 200, HTML_PATH.read_bytes(), "text/html; charset=utf-8")
+            return
+        if path.startswith("/vendor/"):
+            rel = path[len("/vendor/") :]
+            found = safe_under(VENDOR_DIR, rel)
+            if found is None:
+                _send_json(self, 404, {"error": "not found"})
+                return
+            _send(self, 200, found.read_bytes(), _guess_type(found))
+            return
+        if path == "/api/datasets":
+            datasets = []
+            for row in self.state.availability:
+                item = dict(row)
+                if row["status"] == "available" and row["role"] == "wells":
+                    manifest = self.state.manifest_for(row["key"])
+                    if manifest is not None:
+                        item["manifest"] = public_manifest(manifest)
+                        item["n_wells"] = len(manifest.get("wells") or [])
+                datasets.append(item)
+            from wmb.paths import data_root
+
+            _send_json(self, 200, {"data_root": str(data_root()), "datasets": datasets})
+            return
+        if path == "/api/map":
+            _send_json(self, 200, self.state.map_payload())
+            return
+        if path == "/api/well":
+            key = (query.get("dataset") or [""])[0]
+            name = (query.get("well") or [""])[0]
+            if not key or not name:
+                raise ValueError("dataset and well query parameters are required")
+            # Accept either canonical key or dataset id from the manifest
+            resolved = key
+            if key not in {r["key"] for r in self.state.availability}:
+                for r in self.state.availability:
+                    manifest = self.state.manifest_for(r["key"])
+                    if manifest and (manifest.get("dataset") or {}).get("id") == key:
+                        resolved = r["key"]
+                        break
+            _send_json(self, 200, self.state.pack_logs(resolved, name))
+            return
+        if path.startswith("/api/file/"):
+            rest = path[len("/api/file/") :]
+            parts = rest.split("/", 1)
+            if len(parts) != 2:
+                raise ValueError("path must be /api/file/<dataset>/<relative-file>")
+            key, rel = parts[0], unquote(parts[1])
+            row = next((r for r in self.state.availability if r["key"] == key), None)
+            if not row or not row.get("path"):
+                raise FileNotFoundError(f"Unknown or unavailable dataset: {key}")
+            found = safe_under(Path(row["path"]), rel)
+            if found is None:
+                raise FileNotFoundError("file not found (or outside the dataset folder)")
+            _send(self, 200, found.read_bytes(), _guess_type(found))
+            return
+        _send_json(self, 404, {"error": "not found"})
+
+
+def pick_port(preferred: int = 8765) -> int:
+    for port in [preferred, *range(preferred + 1, preferred + 30)]:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            try:
+                sock.bind(("127.0.0.1", port))
+                return port
+            except OSError:
+                continue
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def serve(host: str, port: int, open_browser: bool) -> int:
+    state = ViewerState()
+    handler = partial(ViewerHandler)
+    ViewerHandler.state = state
+    httpd = ThreadingHTTPServer((host, port), handler)
+    url = f"http://{host}:{port}/"
+    print(f"Well map viewer  {url}", flush=True)
+    print("Close this window to stop the server.", flush=True)
+    print(flush=True)
+    available = [r for r in state.availability if r["status"] == "available"]
+    missing = [r for r in state.availability if r["status"] != "available"]
+    for r in available:
+        print(f"  available     {r['name']}: {r['path']}")
+    for r in missing:
+        print(f"  not available {r['name']}")
+    print(flush=True)
+    if open_browser:
+        threading.Timer(0.4, lambda: webbrowser.open(url)).start()
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nStopping.")
+    finally:
+        httpd.server_close()
+    return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+    _ensure_src_on_path()
+    ap = argparse.ArgumentParser(
+        prog="python -m wmb.viewer",
+        description="Serve the data-free well map using folders from data_paths.local.yaml.",
+    )
+    ap.add_argument("--launch", action="store_true", help="open the default browser and print a stop message")
+    ap.add_argument("--port", type=int, default=0, help="port (default: first free port from 8765)")
+    ap.add_argument("--host", default="127.0.0.1", help="bind address (default 127.0.0.1)")
+    ap.add_argument("--no-browser", action="store_true", help="do not open a browser")
+    args = ap.parse_args(argv)
+    interactive = sys.stdin.isatty() or args.launch
+    try:
+        ensure_config(interactive=interactive)
+    except Exception as exc:
+        print(exc, file=sys.stderr)
+        return 1
+    port = args.port or pick_port()
+    open_browser = (not args.no_browser) and (args.launch or sys.stdin.isatty())
+    return serve(args.host, port, open_browser=open_browser)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

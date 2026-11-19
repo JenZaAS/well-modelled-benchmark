@@ -11,7 +11,7 @@ Example::
 
     python build_wellmap.py \\
         --root $FH2026_DATA/force2020 \\
-        --output wellmap.html
+        --output wellmap-offline.html
 """
 
 from __future__ import annotations
@@ -349,7 +349,7 @@ def main() -> None:
         default=[],
         help="Explicit wells.json path (repeatable).",
     )
-    p.add_argument("--output", type=Path, default=HERE / "wellmap.html")
+    p.add_argument("--output", type=Path, default=HERE / "wellmap-offline.html")
     p.add_argument("--max-points", type=int, default=2000, help="Max downsampled points per well (default 2000).")
     p.add_argument("--title", default="Well completeness map")
     args = p.parse_args()

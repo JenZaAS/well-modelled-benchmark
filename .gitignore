@@ -55,8 +55,10 @@ results/summary/*
 !results/summary/*.json
 results/raw/
 **/scratch/
-# Generated viewer pages embed curve data
-viewer/wellmap.html
+# Generated offline viewer pages embed curve data — never commit those.
+# viewer/wellmap.html is the data-free page and may be committed.
+viewer/wellmap-offline.html
+viewer/wellmap-baked.html
 viewer/*.build-report.json
 viewer/screens/
 # Secrets

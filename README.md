@@ -1,5 +1,7 @@
 # well-modelled-benchmark
 
+**To open the well map:** double-click `Launch viewer.bat` (Windows), `launch_viewer.command` (macOS) or `launch_viewer.sh` (Linux). It starts a local viewer that reads `data_paths.local.yaml` and does not embed well data in the repo.
+
 Open benchmark for predicting missing well logs (physics, gradient boosted trees, time-series foundation models), scored on accuracy and honest uncertainty. FORCE Hackathon 2026.
 
 **The idea in one line:** hide one log, predict it from the others, say how sure we are, and score every

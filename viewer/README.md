@@ -139,4 +139,30 @@ competition with well logs and seismic 2020.” Citation: Bormann P.,
 Aursand P., Dilib F., Dischington P., Manral S. (2020). Source:
 https://zenodo.org/records/4351156. Sodir FactPages are NLOD 2.0.
 
-Do not commit `wellmap.html` (it embeds curve data) or the data roots.
+Do not commit `wellmap-offline.html` (it embeds curve data) or the data roots.
+The committed `wellmap.html` is data-free.
+
+
+## Live viewer (no data in git)
+
+The committed `wellmap.html` has **no well data** in it. Double-click
+`Launch viewer.bat` (Windows), `launch_viewer.command` (macOS) or
+`launch_viewer.sh` (Linux) at the repo root — or run `python -m wmb.viewer --launch`.
+
+The launcher starts a local server on `127.0.0.1`, opens your browser, and
+reads `data_paths.local.yaml`. Datasets you do not have show as
+"not available" and do not crash the page. Curve data is fetched on demand
+and is never written into the HTML. Close the console window to stop the server.
+
+`build_wellmap.py` still builds a self-contained offline page with the logs
+embedded. Its default output is `wellmap-offline.html` (gitignored), for
+sharing a snapshot without a server. Do not commit that file.
+
+If a dataset has no `wells.json` yet, the live viewer will scan LAS files
+and build a temporary manifest (wells may be unplaced until coordinates are
+filled in). For FORCE 2020 CSVs, write a manifest first:
+
+```
+python generate_force_manifest.py --force-dir /path/to/FORCE2020 \
+    --sodir-dir /path/to/Sodir-FactPages --output /path/to/FORCE2020/wells.json
+```
