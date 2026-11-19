@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Any, Iterable
 
-from .logs import STANDARD_CURVES  # re-exported
+from .logs import DISPLAY_CURVES, FORMATION_COLUMNS, STANDARD_CURVES  # re-exported
 
 MANIFEST_FILENAMES = ("wells.json", "wells.manifest.json")
 SCHEMA_RELATIVE = Path(__file__).resolve().parent.parent / "manifest.schema.json"
@@ -94,8 +94,8 @@ def resolve_curve_map(dataset: dict, well: dict) -> dict[str, str]:
         for k, v in src.items():
             if v:
                 merged[str(k)] = str(v)
-    # identity defaults for any missing standard keys
-    for k in STANDARD_CURVES:
+    # identity defaults for standard, display-only, and formation columns
+    for k in (*STANDARD_CURVES, *DISPLAY_CURVES, *FORMATION_COLUMNS):
         merged.setdefault(k, k)
     return merged
 

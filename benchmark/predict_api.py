@@ -19,6 +19,7 @@ import pandas as pd
 from benchmark.registry import discover_detailed
 from wmb.contract import SCENARIO_MISSING, TARGET_CURVES, Task, task_input_columns, validate_prediction
 from wmb.curves import CORE
+from wmb.deps import friendly_module_error, missing_reason
 from wmb.model_spec import eligible, inputs_used, load_model_spec
 from wmb.viewer import benchmark_run_time
 
@@ -125,14 +126,20 @@ def list_models(dataset: str | None, well_name: str | None, target: str) -> dict
         try:
             model, spec = _inspect_model(lambda: _build_model_spec(factory))
         except (Exception, SystemExit) as exc:
-            out.append({**entry, "eligible": False, "reason": f"could not be built: {type(exc).__name__}: {exc}", "error": True})
+            out.append({**entry, "eligible": False,
+                        "reason": friendly_module_error(exc) or f"could not be built: {type(exc).__name__}: {exc}",
+                        "error": True})
             continue
         entry.update(workstream=getattr(model, "workstream", ""), licence=spec.licence or getattr(model, "licence_name", None),
                      spec_source=spec.source)
         t = spec.for_target(target)
         entry["inputs"] = {"required": t.required, "optional": t.optional} if t else {"required": [], "optional": []}
+        miss = missing_reason(factory)
         if not spec.supports(target):
             ok, reason = False, f"does not support target {target}"
+        elif miss:
+            ok, reason = False, miss
+            entry["error"] = True
         elif curves is None:
             ok, reason = False, "select a well"
         else:
@@ -260,6 +267,9 @@ def _run_one(dataset, name, factory, well, train, in_train, target, curves, time
         with _lock:
             fitted = _fits.pop(key, None)
         model = fitted if fitted is not None else factory()
+        miss = missing_reason(factory)
+        if miss:
+            return {"error": miss}, fitted
         spec = load_model_spec(model)
         ok, reason = eligible(spec, target, curves)
         if not ok:
@@ -282,7 +292,7 @@ def _run_one(dataset, name, factory, well, train, in_train, target, curves, time
                     _fits.pop(next(iter(_fits)))
                 _fits[key] = fitted
     except (Exception, SystemExit) as exc:
-        res["error"] = f"{type(exc).__name__}: {exc}"
+        res["error"] = friendly_module_error(exc) or f"{type(exc).__name__}: {exc}"
     res["runtime_s"] = round(time.perf_counter() - t0, 3)
     return res
 

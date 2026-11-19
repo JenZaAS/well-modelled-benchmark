@@ -5,16 +5,28 @@
 })(typeof self !== "undefined" ? self : this, function () {
   "use strict";
 
-  const TARGETS = ["RHOB", "DTC", "DTS"];
+  function plotStyleApi() {
+    if (typeof WmbPlotStyle !== "undefined") return WmbPlotStyle;
+    if (typeof require === "function") {
+      try { return require("./plot_style.js"); } catch (e) { return null; }
+    }
+    return null;
+  }
+  const PS = plotStyleApi();
+  const TARGETS = (PS && PS.TARGETS) ? PS.TARGETS.slice() : ["RHOB", "DTC", "DTS"];
   const DEFAULT_DISPLAY = ["GR", "CALI", "RDEP", "RMED", "RHOB", "NPHI", "DTC", "DTS", "PEF"];
-  const SHARED_TRACKS = [["RDEP", "RMED"]];   // drawn on one (log) track
-  const LOG_CURVES = ["RDEP", "RMED"];
-  const STD_SCALE = {
-    GR: [0, 150], CALI: [6, 16], RDEP: [0.2, 200], RMED: [0.2, 200], RHOB: [1.65, 2.85], NPHI: [0.45, -0.15],
-    DTC: [140, 40], DTS: [240, 80], PEF: [0, 15],
-  };
-  const COLORS = { GR: "#1b7a3a", CALI: "#7a4a12", RDEP: "#111", RMED: "#c0392b", RHOB: "#c0392b", NPHI: "#1d4ed8",
-    DTC: "#111", DTS: "#7c3aed", PEF: "#d97706" };
+  const SHARED_TRACKS = [["RDEP", "RMED", "RSHA"], ["GR", "CALI", "BS"], ["RHOB", "NPHI"], ["DTC", "DTS"], ["PHIT", "PHIE"], ["VSH", "SW"]];
+  const LOG_CURVES = ["RDEP", "RMED", "RSHA"];
+  const STD_SCALE = PS
+    ? Object.fromEntries(Object.keys(PS.CURVES).map((k) => [k, [PS.CURVES[k].xmin, PS.CURVES[k].xmax]]))
+    : {
+      GR: [0, 150], CALI: [6, 16], RDEP: [0.2, 2000], RMED: [0.2, 2000], RHOB: [1.95, 2.95], NPHI: [0.45, -0.15],
+      DTC: [140, 40], DTS: [240, 40], PEF: [0, 10],
+    };
+  const COLORS = PS
+    ? Object.fromEntries(Object.keys(PS.CURVES).map((k) => [k, PS.CURVES[k].color]))
+    : { GR: "#1b7a3a", CALI: "#111", RDEP: "#c0392b", RMED: "#1d4ed8", RHOB: "#c0392b", NPHI: "#1d4ed8",
+      DTC: "#111", DTS: "#7c3aed", PEF: "#d97706" };
   const MODEL_COLORS = ["#d62728", "#1f77b4", "#2ca02c", "#9467bd", "#ff7f0e", "#17becf", "#8c564b", "#e377c2"];
   const RANK_METRICS = [
     { key: "MAE", label: "MAE (lower is better)", dir: "low" },
@@ -31,24 +43,33 @@
 
   // The default display curves that exist in the well, in default order.
   function defaultDisplayCurves(available) {
+    if (PS) return PS.defaultDisplayNames(available);
     const have = new Set(available || []);
     return DEFAULT_DISPLAY.filter((c) => have.has(c));
   }
 
   // Available curves that are not part of the default set: the "More logs" choices (display only).
   function moreLogs(available) {
+    if (PS) return PS.moreLogNames(available);
     return Array.from(new Set(available || [])).filter((c) => c !== "DEPTH" && !DEFAULT_DISPLAY.includes(c)).sort();
   }
 
   // Defaults plus the user's extra curves that exist in the well.
   function displayCurves(available, extra) {
+    const defaults = defaultDisplayCurves(available);
+    const already = new Set(defaults);
     const have = new Set(available || []);
-    const more = (extra || []).filter((c) => have.has(c) && !DEFAULT_DISPLAY.includes(c));
-    return defaultDisplayCurves(available).concat(Array.from(new Set(more)));
+    const more = (extra || []).filter((c) => have.has(c) && !already.has(c));
+    return defaults.concat(Array.from(new Set(more)));
   }
 
   // Curve names -> track descriptors [{id, curves, log}] (RDEP/RMED share a log track).
   function displayTracks(curves) {
+    if (PS) {
+      return PS.tracksFromNames(curves).map((t) => ({
+        id: t.id, title: t.title, curves: t.curves.map((c) => c.k), log: !!t.log, style: t, noData: !!t.noData,
+      }));
+    }
     const left = new Set(curves);
     const tracks = [];
     for (const c of curves) {
@@ -71,6 +92,7 @@
     if (m.error) status = "error";
     else if (/does not support/.test(reason)) status = "unsupported";
     else if (/missing required/.test(reason)) status = "missing";
+    else if (/^needs /.test(reason)) status = "error";
     else if (/select a well/.test(reason)) status = "pending";
     return { enabled: false, status, text: reason };
   }
@@ -168,6 +190,70 @@
     return m.mae == null && m.r2 == null ? "" : `MAE ${f(m.mae, 3)} · R2 ${f(m.r2, 2)}`;
   }
 
+
+  const DEFAULT_AUTO = (PS && PS.AUTO_DEFAULT) ? PS.AUTO_DEFAULT : new Set(["CALI", "PEF"]);
+
+  function filtersApi() {
+    if (typeof WmbWellFilters !== "undefined") return WmbWellFilters;
+    if (typeof require === "function") {
+      try { return require("./well_filters.js"); } catch (e) { return null; }
+    }
+    return null;
+  }
+  const WF = filtersApi();
+
+  function wellHasCurve(w, curve) { return WF ? WF.wellHasCurve(w, curve) : true; }
+  function filterWells(wells, f) { return WF ? WF.filterWells(wells, f) : (wells || []); }
+
+  // Same x-scale rule as the Viewer: mixed default (Auto for CALI/PEF), else all Auto or all Standard.
+  function useAutoScale(curve, xMode) {
+    if (PS) return PS.useAutoScale(curve, xMode);
+    return xMode === "auto" || (xMode == null && DEFAULT_AUTO.has(curve));
+  }
+
+  const HEADER_LINE = 14;
+  // One row per curve so twin-track scales (GR/CALI, RHOB/NPHI) do not overlap.
+  function trackHeaderRows(names, firstY) {
+    const y0 = firstY == null ? 12 : firstY;
+    return (names || []).map((k, i) => ({
+      k: k,
+      title: k,
+      y: y0 + i * HEADER_LINE,
+      color: (PS && PS.colorOf(k)) || COLORS[k] || "#222",
+    }));
+  }
+  function trackHeaderHeight(tracks) {
+    const n = Math.max(1, Math.max.apply(null, [1].concat((tracks || []).map((t) => {
+      if (Array.isArray(t)) return t.length;
+      if (t && Array.isArray(t.curves)) return Math.max(1, t.curves.length);
+      return 1;
+    }))));
+    return 8 + HEADER_LINE * n;
+  }
+
+  function targetScale(curve, series, xMode, PU) {
+    const std = (PS && PS.standardScale(curve)) || STD_SCALE[curve] || [0, 1];
+    const log = PS ? PS.isLogCurve(curve) : LOG_CURVES.indexOf(curve) >= 0;
+    if (useAutoScale(curve, xMode)) return PU.autoValueRange(series, { std, log });
+    return { xmin: std[0], xmax: std[1] };
+  }
+  // Prefer /api/predict "true"; fall back to the well's display logs so the black line can appear even with no result.
+  function truthForPlot(result, logs, target) {
+    if (result && Array.isArray(result.true) && Array.isArray(result.depth)) {
+      return { depth: result.depth, values: result.true, source: "result" };
+    }
+    const vals = logs && logs.c && logs.c[target];
+    if (logs && Array.isArray(logs.d) && Array.isArray(vals) && vals.some((v) => num(v) != null)) {
+      return { depth: logs.d, values: vals, source: "logs" };
+    }
+    return null;
+  }
+  function modelListState(m, result) {
+    const failed = result && (result.models || []).find((x) => x.name === m.name && x.ok === false && x.error);
+    if (failed) return { enabled: false, status: "error", text: failed.error };
+    return eligibilityState(m);
+  }
+
   // ---------- browser UI ----------
 
   function esc(s) {
@@ -195,12 +281,23 @@
     const wells = DATA.wells || [];
     const st = { well: null, target: "RHOB", models: [], manual: new Set(), useBest: false, metric: "MAE", scenario: "missing_curve",
       rows: [], extra: new Set(), logs: null, result: null, curves: [], notes: [], token: 0, wellToken: 0, busy: false,
-      modelsReady: false, modelsLoading: true, modelError: "", logError: "", rowsError: "", dropped: [] };
+      modelsReady: false, modelsLoading: true, modelError: "", logError: "", rowsError: "", dropped: [],
+      xMode: null, datasets: new Set(), splits: new Set(), hasTargetOn: true, hasLog: "" };
+    const dsChoices = WF ? WF.datasetChoices(wells) : [];
+    const splitOpts = WF ? WF.splitChoices(wells) : [];
     pane.innerHTML = `<div class="pd">
       <div class="pd-side">
         <div class="pd-mini"><div id="pd-map"></div><div id="pd-well" class="pd-label">No well selected</div></div>
-        <label>Well <select id="pd-well-select"><option value="">Select a well</option>${wells.map((w, i) =>
-          `<option value="${i}">${esc(w.name)} · ${esc(w.dataset)}</option>`).join("")}</select></label>
+        <div class="pd-filters" id="pd-filters">
+          <label>Dataset <select id="pd-dataset"><option value="">All</option>${dsChoices.map((d) =>
+            `<option value="${esc(d.id)}">${esc(d.label)}</option>`).join("")}</select></label>
+          <div class="pd-splits">${splitOpts.map((s) =>
+            `<label title="${esc(WF ? WF.splitTip(s) : s)}"><input type="checkbox" data-split="${esc(s)}" checked> ${esc(s)}</label>`).join(" ")}</div>
+          <label><input type="checkbox" id="pd-has-target" checked> has <span id="pd-has-target-lab">RHOB</span></label>
+          <label>has log <select id="pd-has-log"><option value="">(any)</option>${(WF ? WF.CORE_LOGS : []).map((c) =>
+            `<option>${esc(c)}</option>`).join("")}</select></label>
+        </div>
+        <label>Well <select id="pd-well-select"></select></label>
         <label>Target <select id="pd-target">${TARGETS.map((t) => `<option>${t}</option>`).join("")}</select></label>
         <h3>Models</h3>
         <div id="pd-models" class="pd-models"></div>
@@ -215,7 +312,13 @@
         <div id="pd-more" class="pd-more"></div>
       </div>
       <div class="pd-main">
-        <div id="pd-note" class="pd-note"></div>
+        <div class="pd-head">
+          <div id="pd-note" class="pd-note"></div>
+          <div class="range" id="pd-xscale" title="Until you choose a mode for all tracks, CALI and PEF use Auto and the other tracks use Standard. The prediction track shares the target display track's scale.">
+            <button type="button" id="pd-xscale-auto" aria-pressed="false">Auto</button>
+            <button type="button" id="pd-xscale-std" aria-pressed="false">Standard</button>
+          </div>
+        </div>
         <div id="pd-legend" class="pd-legend"></div>
         <div id="pd-wrap"><canvas id="pd-canvas"></canvas></div>
       </div>
@@ -270,11 +373,44 @@
       } catch (e) { /* tab may not have been laid out yet, or Leaflet may fail in tests */ }
     }
     function styleMarkers() {
+      const vis = new Set(visibleWells());
       for (const { w, m } of markers) {
-        const on = w === st.well;
-        m.setStyle({ radius: on ? 7 : 4, fillColor: on ? "#c0392b" : "#2b6ca3" });
-        if (on) m.bringToFront();
+        const show = vis.has(w);
+        const el = m.getElement && m.getElement();
+        if (el) el.style.display = show ? "" : "none";
+        if (typeof m.setStyle === "function") {
+          const on = w === st.well;
+          m.setStyle({ radius: on ? 7 : 4, fillColor: on ? "#c0392b" : "#2b6ca3", opacity: show ? 1 : 0, fillOpacity: show ? 0.8 : 0 });
+          if (on && show) m.bringToFront();
+        }
       }
+    }
+
+    function filterOpts() {
+      return { datasets: st.datasets, splits: st.splits, hasTarget: st.target, hasTargetOn: st.hasTargetOn, hasLog: st.hasLog };
+    }
+    function visibleWells() { return filterWells(wells, filterOpts()); }
+
+    function renderWellSelect() {
+      const vis = visibleWells();
+      const sel = $("pd-well-select");
+      if (!sel) return;
+      const keep = st.well && vis.includes(st.well);
+      sel.innerHTML = `<option value="">Select a well</option>` + vis.map((w) =>
+        `<option value="${wells.indexOf(w)}">${esc(w.name)} · ${esc(w.dataset)}</option>`).join("");
+      sel.value = keep ? String(wells.indexOf(st.well)) : "";
+      if (st.well && !keep) selectWell(null);
+    }
+
+    function syncHasTargetLabel() {
+      const lab = $("pd-has-target-lab");
+      if (lab) lab.textContent = st.target;
+    }
+
+    function applyFilters() {
+      syncHasTargetLabel();
+      renderWellSelect();
+      try { styleMarkers(); } catch (e) { /* map may not have a size yet */ }
     }
 
     // ----- state changes -----
@@ -295,13 +431,14 @@
         let logs = w.c && !w.logs_pending ? { d: w.d, c: w.c } : null;
         if (!logs) logs = await getJson(`/api/well?dataset=${encodeURIComponent(datasetOf(w))}&well=${encodeURIComponent(w.name)}`);
         if (token !== st.wellToken) return;
-        st.logs = { d: logs.d || [], c: logs.c || {} };
+        st.logs = { d: logs.d || [], c: logs.c || {}, formation: logs.formation || logs.FORMATION, group: logs.group || logs.GROUP };
         renderMore();
       } catch (e) {
         if (token !== st.wellToken) return;
         st.logError = "Could not load logs for display: " + e.message;
       }
       renderNote();
+      renderLegend();
       draw();
     }
 
@@ -344,8 +481,8 @@
     // ----- panels -----
     function renderModels() {
       $("pd-models").innerHTML = st.models.length ? st.models.map((m) => {
-        const s = eligibilityState(m);
-        const used = m.eligible ? usedInputsText(m.inputs_used || m.inputs) : "";
+        const s = modelListState(m, st.result);
+        const used = s.enabled ? usedInputsText(m.inputs_used || m.inputs) : "";
         const note = s.enabled ? `<span class="na">${esc(used)}</span>` : `<span class="why ${s.status}">${esc(s.text)}</span>`;
         return `<label class="pd-model${s.enabled ? "" : " off"}"><input type="checkbox" data-model="${esc(m.name)}"${s.enabled ? "" : " disabled"}${st.manual.has(m.name) ? " checked" : ""}> ${esc(m.name)}<br>${note}</label>`;
       }).join("") : `<span class="na">${st.modelsLoading ? "Checking models…" : st.modelError ? "Model list unavailable." : "No models registered."}</span>`;
@@ -398,8 +535,11 @@
 
     function renderLegend() {
       const r = st.result;
-      if (!r) { $("pd-legend").innerHTML = ""; return; }
-      const items = [`<span><i style="background:#1f1f1f"></i>true${r.true ? "" : " (not in this well)"}</span>`];
+      const truth = truthForPlot(r, st.logs, st.target);
+      const items = truth
+        ? [`<span><i style="background:#111"></i>true</span>`]
+        : (st.well ? [`<span><i style="background:#111"></i>true (not in this well)</span>`] : []);
+      if (!r) { $("pd-legend").innerHTML = items.join(""); return; }
       r.models.forEach((m, i) => {
         if (m.ok) {
           items.push(`<span title="shaded: 90% band"><i style="background:${modelColor(i)}"></i><b>${esc(m.name)}</b> ${esc(scoreText(m))}<br>` +
@@ -414,8 +554,30 @@
     // ----- events -----
     $("pd-well-select").addEventListener("change", (e) => selectWell(e.target.value === "" ? null : wells[e.target.value]));
     $("pd-target").addEventListener("change", (e) => {
-      st.target = e.target.value; changeContext();
+      st.target = e.target.value; applyFilters(); changeContext();
     });
+    $("pd-dataset").addEventListener("change", (e) => {
+      st.datasets = e.target.value ? new Set([e.target.value]) : new Set();
+      applyFilters();
+    });
+    for (const inp of pane.querySelectorAll("input[data-split]")) {
+      inp.addEventListener("change", () => {
+        const checked = [...pane.querySelectorAll("input[data-split]:checked")].map((i) => i.dataset.split);
+        st.splits = (checked.length === splitOpts.length) ? new Set() : new Set(checked);
+        applyFilters();
+      });
+    }
+    $("pd-has-target").addEventListener("change", (e) => { st.hasTargetOn = e.target.checked; applyFilters(); });
+    $("pd-has-log").addEventListener("change", (e) => { st.hasLog = e.target.value; applyFilters(); });
+    function syncXButtons() {
+      const auto = $("pd-xscale-auto"), std = $("pd-xscale-std");
+      if (auto && auto.setAttribute) auto.setAttribute("aria-pressed", String(st.xMode === "auto"));
+      if (std && std.setAttribute) std.setAttribute("aria-pressed", String(st.xMode === "standard"));
+    }
+    $("pd-xscale-auto").addEventListener("click", () => { st.xMode = "auto"; syncXButtons(); draw(); });
+    $("pd-xscale-std").addEventListener("click", () => { st.xMode = "standard"; syncXButtons(); draw(); });
+    syncXButtons();
+    applyFilters();
     $("pd-best").addEventListener("change", (e) => { st.useBest = e.target.checked; });
     $("pd-metric").addEventListener("change", (e) => { st.metric = e.target.value; renderBest(); });
     $("pd-scenario").addEventListener("change", (e) => { st.scenario = e.target.value; renderBest(); });
@@ -439,7 +601,7 @@
       } finally {
         st.busy = false; renderBest();
       }
-      renderMore(); renderNote(); renderLegend(); draw();
+      renderModels(); renderMore(); renderNote(); renderLegend(); draw();
     }
 
     let rowsToken = 0;
@@ -467,8 +629,10 @@
       const box = wrap.getBoundingClientRect();
       const r = st.result;
       const disp = st.logs ? displayTracks(displayCurves(availableCurves(), Array.from(st.extra))) : [];
-      const TW = 92, PW = 260, L0 = 58, T = 44, B = 8;
-      const width = Math.max(box.width, L0 + disp.length * TW + (r || st.well ? PW : 0) + 16);
+      const tops = (PS && st.logs) ? PS.formationIntervals(st.logs.d, st.logs.formation, st.logs.group) : [];
+      const TW = 100, PW = 260, L0 = 58, B = 8, STRIP = tops.length ? 18 : 0;
+      const T = Math.max(36, trackHeaderHeight(disp));
+      const width = Math.max(box.width, L0 + STRIP + disp.length * TW + (r || st.well ? PW : 0) + 16);
       const dpr = window.devicePixelRatio || 1;
       cv.style.width = width + "px"; cv.style.height = box.height + "px";
       cv.width = Math.max(1, Math.floor(width * dpr)); cv.height = Math.max(1, Math.floor(box.height * dpr));
@@ -489,13 +653,41 @@
       ctx2.font = "11px sans-serif";
       // depth axis
       ctx2.fillStyle = "#333"; ctx2.textAlign = "right";
-      const step = PU.niceStep(win.max - win.min);
-      for (let d = Math.ceil(win.min / step) * step; d <= win.max; d += step) ctx2.fillText(PU.formatTick(d), L0 - 6, Y(d) + 4);
+      const ticks = PS ? PS.depthTicks(win.min, win.max) : (function () {
+        const step = PU.niceStep(win.max - win.min), out = [];
+        for (let d = Math.ceil(win.min / step) * step; d <= win.max; d += step) out.push(d);
+        return out;
+      }());
+      for (const d of ticks) {
+        ctx2.strokeStyle = "#eee"; ctx2.beginPath(); ctx2.moveTo(L0, Y(d)); ctx2.lineTo(width, Y(d)); ctx2.stroke();
+        ctx2.fillStyle = "#333"; ctx2.fillText(PU.formatTick(d), L0 - 6, Y(d) + 4);
+      }
 
       const frame = (x, w, title) => {
         ctx2.strokeStyle = "#999"; ctx2.lineWidth = 1; ctx2.strokeRect(x, T, w, ph);
-        ctx2.fillStyle = "#222"; ctx2.textAlign = "center"; ctx2.fillText(title, x + w / 2, 14);
+        if (title) {
+          ctx2.fillStyle = "#222"; ctx2.textAlign = "center"; ctx2.fillText(title, x + w / 2, 12);
+        }
       };
+      function drawScaleHeader(x, w, names, labelFor) {
+        const rows = trackHeaderRows(names);
+        rows.forEach((row) => {
+          const key = row.k;
+          const sc = key ? scaleOf(key) : null;
+          const label = labelFor ? labelFor(key, row) : row.title;
+          ctx2.font = "10px sans-serif";
+          ctx2.fillStyle = row.color;
+          if (sc) {
+            ctx2.textAlign = "left";
+            ctx2.fillText(PU.formatTick(sc.xmin), x + 2, row.y);
+            ctx2.textAlign = "right";
+            ctx2.fillText(PU.formatTick(sc.xmax), x + w - 2, row.y);
+          }
+          ctx2.textAlign = "center";
+          ctx2.fillText(label, x + w / 2, row.y);
+        });
+        ctx2.font = "11px sans-serif";
+      }
       const line = (depth, arr, X, color, lw, log) => {
         ctx2.strokeStyle = color; ctx2.lineWidth = lw;
         for (const seg of PU.buildSegments(depth, arr, { log })) {
@@ -504,27 +696,110 @@
           ctx2.stroke();
         }
       };
+      function scaleOf(k) { return targetScale(k, [c[k] || []], st.xMode, PU); }
+      function Xof(k, x0) {
+        const sc = scaleOf(k);
+        const log = tlog(k);
+        return (v) => (log ? PU.xScaleLog(v, sc.xmin, sc.xmax, x0, TW) : PU.xScale(v, sc.xmin, sc.xmax, x0, TW));
+      }
+      function tlog(k) { return PS ? PS.isLogCurve(k) : LOG_CURVES.indexOf(k) >= 0; }
       let x = L0;
-      for (const t of disp) {
-        frame(x, TW, t.id);
-        const series = t.curves.map((k) => c[k] || []);
-        const first = stdScale(t.curves[0]);
-        const sc = first ? { xmin: first[0], xmax: first[1] } : PU.autoValueRange(series, { std: [0, 1] });
-        const X = (v) => (t.log ? PU.xScaleLog(v, sc.xmin, sc.xmax, x, TW) : PU.xScale(v, sc.xmin, sc.xmax, x, TW));
-        ctx2.save(); ctx2.beginPath(); ctx2.rect(x, T, TW, ph); ctx2.clip();
-        t.curves.forEach((k) => line(st.logs.d, c[k] || [], X, COLORS[k] || "#444", 1, t.log));
+      if (STRIP) {
+        ctx2.fillStyle = "#222"; ctx2.textAlign = "center"; ctx2.fillText("TOPS", x + STRIP / 2, 14);
+        ctx2.strokeStyle = "#999"; ctx2.strokeRect(x, T, STRIP, ph);
+        ctx2.save(); ctx2.beginPath(); ctx2.rect(x, T, STRIP, ph); ctx2.clip();
+        for (const iv of tops) {
+          const y1 = Y(iv.top), y2 = Y(iv.base);
+          ctx2.fillStyle = iv.color;
+          ctx2.fillRect(x + 1, Math.min(y1, y2), STRIP - 2, Math.max(1, Math.abs(y2 - y1)));
+        }
         ctx2.restore();
-        ctx2.fillStyle = "#555"; ctx2.textAlign = "left"; ctx2.fillText(PU.formatTick(sc.xmin), x + 2, 28);
-        ctx2.textAlign = "right"; ctx2.fillText(PU.formatTick(sc.xmax), x + TW - 2, 28);
+        x += STRIP + 4;
+      }
+      const tracksLeft = x;
+      for (const t of disp) {
+        frame(x, TW, t.curves.length ? "" : (t.title || t.id));
+        if (!t.curves.length) {
+          ctx2.fillStyle = "#777"; ctx2.textAlign = "center";
+          ctx2.fillText("no data", x + TW / 2, T + ph / 2);
+          x += TW; continue;
+        }
+        drawScaleHeader(x, TW, t.curves);
+        ctx2.save(); ctx2.beginPath(); ctx2.rect(x, T, TW, ph); ctx2.clip();
+        if (PS && t.style && t.style.crossFill && t.curves.length >= 2) {
+          const kr = t.curves.find((k) => (PS.canonName(k) || k) === "RHOB");
+          const kn = t.curves.find((k) => (PS.canonName(k) || k) === "NPHI");
+          if (kr && kn) {
+            const Xr = Xof(kr, x), Xn = Xof(kn, x), sr = scaleOf(kr), sn = scaleOf(kn);
+            const depth = st.logs.d, rv = c[kr] || [], nv = c[kn] || [];
+            for (let i = 0; i < depth.length - 1; i++) {
+              const kind = PS.densityNeutronFill(rv[i], nv[i], [sr.xmin, sr.xmax], [sn.xmin, sn.xmax]);
+              if (!kind) continue;
+              const x1r = Xr(rv[i]), x1n = Xn(nv[i]), x2r = Xr(rv[i + 1]), x2n = Xn(nv[i + 1]);
+              const y1 = Y(depth[i]), y2 = Y(depth[i + 1]);
+              if (![x1r, x1n, x2r, x2n, y1, y2].every(Number.isFinite)) continue;
+              ctx2.fillStyle = kind === "yellow" ? PS.CROSS_YELLOW : PS.CROSS_GREY;
+              ctx2.beginPath();
+              ctx2.moveTo(x1r, y1); ctx2.lineTo(x1n, y1); ctx2.lineTo(x2n, y2); ctx2.lineTo(x2r, y2);
+              ctx2.closePath(); ctx2.fill();
+            }
+          }
+        }
+        t.curves.forEach((k) => {
+          const def = PS && PS.curveDef(k);
+          if (def && def.fillFrom != null && def.fillColor) {
+            const X = Xof(k, x), arr = c[k] || [], depth = st.logs.d, x0 = X(def.fillFrom);
+            if (Number.isFinite(x0)) {
+              ctx2.fillStyle = def.fillColor;
+              for (let i = 0; i < depth.length - 1; i++) {
+                const x1 = X(arr[i]), x2 = X(arr[i + 1]), y1 = Y(depth[i]), y2 = Y(depth[i + 1]);
+                if (![x1, x2, y1, y2].every(Number.isFinite)) continue;
+                ctx2.beginPath();
+                ctx2.moveTo(x0, y1); ctx2.lineTo(x1, y1); ctx2.lineTo(x2, y2); ctx2.lineTo(x0, y2);
+                ctx2.closePath(); ctx2.fill();
+              }
+            }
+          }
+        });
+        t.curves.forEach((k) => {
+          const def = PS && PS.curveDef(k);
+          ctx2.setLineDash((def && def.dash) || []);
+          line(st.logs.d, c[k] || [], Xof(k, x), (PS && PS.colorOf(k)) || COLORS[k] || "#444", 1, tlog(k));
+          ctx2.setLineDash([]);
+        });
+        ctx2.restore();
         x += TW;
       }
-      // prediction track
+      const tracksRight = x;
+      // prediction track — always, when the well has the target; same x-scale as the target display track.
+      // (A previous auto-range on predictions alone produced e.g. DTS 260-120 vs the display track's standard 240-40,
+      // so the black true line did not line up and could look like a lone grey trace.)
       x += 10;
-      frame(x, PW, `${st.target} (prediction)`);
-      if (!r) { ctx2.fillStyle = "#777"; ctx2.textAlign = "center"; ctx2.fillText("Select models and press Predict", x + PW / 2, T + 30); return; }
-      const std = STD_SCALE[st.target] || [0, 1];
-      const sc = PU.autoValueRange(preds, { std });
+      frame(x, PW, "");
+      const truth = truthForPlot(r, st.logs, st.target);
+      const targetSeries = (st.logs && st.logs.c && st.logs.c[st.target]) || (truth && truth.values) || [];
+      const sc = targetScale(st.target, [targetSeries], st.xMode, PU);
+      drawScaleHeader(x, PW, [st.target], () => `${st.target} (prediction)`);
       const X = (v) => PU.xScale(v, sc.xmin, sc.xmax, x, PW);
+      function drawTopsAcross(right) {
+        if (!tops.length || !PS) return;
+        ctx2.save();
+        ctx2.strokeStyle = PS.TOP_LINE; ctx2.fillStyle = PS.TOP_LINE; ctx2.lineWidth = 1;
+        ctx2.font = "10px sans-serif"; ctx2.textAlign = "left"; ctx2.textBaseline = "bottom";
+        for (const iv of tops) {
+          const y = Y(iv.top);
+          if (y < T || y > T + ph) continue;
+          ctx2.beginPath(); ctx2.moveTo(tracksLeft, y); ctx2.lineTo(right, y); ctx2.stroke();
+          ctx2.fillText(iv.name, tracksLeft + 2, y - 1);
+        }
+        ctx2.restore();
+      }
+      if (!r && !truth) {
+        ctx2.fillStyle = "#777"; ctx2.textAlign = "center";
+        ctx2.fillText("Select models and press Predict", x + PW / 2, T + 30);
+        drawTopsAcross(x + PW);
+        return;
+      }
       ctx2.save(); ctx2.beginPath(); ctx2.rect(x, T, PW, ph); ctx2.clip();
       ctx2.globalAlpha = 0.2;
       for (const { m, i } of okModels) {
@@ -541,11 +816,14 @@
         }
         ctx2.globalAlpha = 1;
       }
-      if (r.true) line(r.depth, r.true, X, "#1f1f1f", 1.2);
+      if (truth) line(truth.depth, truth.values, X, "#111", 1.2);
       for (const { m, i } of okModels) line(r.depth, m.p50, X, modelColor(i), 1.2);
       ctx2.restore();
-      ctx2.fillStyle = "#555"; ctx2.textAlign = "left"; ctx2.fillText(PU.formatTick(sc.xmin), x + 2, 28);
-      ctx2.textAlign = "right"; ctx2.fillText(PU.formatTick(sc.xmax), x + PW - 2, 28);
+      if (!r) {
+        ctx2.fillStyle = "#777"; ctx2.textAlign = "center";
+        ctx2.fillText("Select models and press Predict", x + PW / 2, T + 18);
+      }
+      drawTopsAcross(x + PW);
     }
     window.addEventListener("resize", () => { layoutMap(); draw(); });
 
@@ -562,7 +840,8 @@
   }
 
   return {
-    TARGETS, DEFAULT_DISPLAY, RANK_METRICS, RUN_HINT, defaultDisplayCurves, moreLogs, displayCurves, displayTracks,
-    eligibilityState, usedInputsText, datasetIds, sameDataset, rankModels, pickBest, rankScenarios, bestText, mergeSelection, bandOf, scoreText, modelColor, mount,
+    TARGETS, DEFAULT_DISPLAY, RANK_METRICS, RUN_HINT, DEFAULT_AUTO, defaultDisplayCurves, moreLogs, displayCurves, displayTracks,
+    eligibilityState, usedInputsText, datasetIds, sameDataset, rankModels, pickBest, rankScenarios, bestText, mergeSelection, bandOf, scoreText, modelColor,
+    wellHasCurve, filterWells, useAutoScale, targetScale, trackHeaderRows, trackHeaderHeight, truthForPlot, modelListState, mount,
   };
 });

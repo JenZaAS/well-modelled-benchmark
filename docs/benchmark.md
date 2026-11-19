@@ -127,7 +127,10 @@ All accuracy numbers are in the target's canonical unit.
 
 Point-only models (no `p05`/`p95` and no `std`) still get accuracy and
 speed. Uncertainty and sharpness are left blank and the scoreboard
-marks them as point-only (`has_uncertainty: false`).
+marks them as point-only (`has_uncertainty: false`). The viewer's Benchmark tab
+turns these into good / ok / poor with the rules in
+[benchmark_quality.md](benchmark_quality.md). Each row also records the git commit
+(`git_commit`, `git_commit_full`) when git is available.
 
 Older names `cover_1sigma` and `cover_2sigma` (mean ±1σ / ±2σ, ideals
 0.683 and 0.954) are still computed when `std` is present, so earlier

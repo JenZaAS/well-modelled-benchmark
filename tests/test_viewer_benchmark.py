@@ -53,6 +53,15 @@ def _get(url):
         return e.code, json.loads(e.read())
 
 
+def test_serves_shared_viewer_scripts(base_url):
+    html = urllib.request.urlopen(base_url + "/wellmap.html").read().decode()
+    for name in ("plot_utils.js", "plot_style.js", "benchmark_quality.js", "benchmark.js", "well_filters.js", "prediction.js"):
+        assert f'src="{name}"' in html
+        with urllib.request.urlopen(base_url + "/" + name) as r:
+            body = r.read()
+        assert r.status == 200 and (b"function" in body or name.endswith(".js"))
+
+
 def test_empty_results_list_is_200_and_empty(base_url):
     assert _get(base_url + "/api/benchmark/runs") == (200, {"rows": []})
 
@@ -133,6 +142,52 @@ def test_run_writes_predictions_and_removes_them_on_failed_rerun(tmp_path, monke
     assert ("error" in row) == (failure == "predict")
     assert (out / "scores.json").exists() == (failure == "export")
     assert not pred.exists()
+
+
+def test_hardware_and_git_commit_returned_when_present_and_absent_otherwise(results, base_url):
+    _write(results, "m1", "ds", "RHOB", "missing_curve")
+    out = results / "m2" / "ds" / "RHOB" / "missing_curve"
+    out.mkdir(parents=True)
+    (out / "scores.json").write_text(json.dumps({
+        "contender": "m2", "dataset": "ds", "target": "RHOB", "scenario": "missing_curve", "MAE": 0.2,
+        "hardware": {"system": "Windows", "cpu_count": 16}, "git_commit": "abc1234", "git_commit_full": "abc1234" + "0" * 33,
+    }))
+    rows = {r["contender"]: r for r in _get(base_url + "/api/benchmark/runs")[1]["rows"]}
+    assert rows["m2"]["hardware"] == {"system": "Windows", "cpu_count": 16}
+    assert rows["m2"]["git_commit"] == "abc1234" and rows["m2"]["git_commit_full"].startswith("abc1234")
+    assert rows["m1"]["hardware"] == {"cpu_count": 1}
+    assert "git_commit" not in rows["m1"]
+
+
+def test_run_scenario_writes_git_commit(tmp_path, monkeypatch):
+    monkeypatch.setattr(run, "git_info", lambda: {"git_commit": "abc1234", "git_commit_full": "abc1234" + "0" * 33})
+
+    class Model:
+        name = "m1"
+
+        def predict_task(self, task):
+            return Prediction(mean=np.array([1.2, 1.3]))
+
+        def predict_batch(self, tasks):
+            return [self.predict_task(task) for task in tasks]
+
+    depth = np.array([0.0, 1.0])
+    task = Task("W", depth, pd.DataFrame(), "RHOB", np.array([True, True]), "gap", 10)
+    truth = {("W", "RHOB"): np.array([1.1, 1.2]), ("W", "DEPTH"): depth}
+    row = run.run_scenario(Model(), [task], truth, {"contender": "m1", "dataset": "synthetic", "target": "RHOB"}, tmp_path, {})
+    assert "error" not in row
+    saved = json.loads((tmp_path / "m1" / "synthetic" / "RHOB" / "gap_10" / "scores.json").read_text())
+    assert saved["git_commit"] == "abc1234" and saved["git_commit_full"].startswith("abc1234")
+
+
+def test_git_info_soft_fails_without_git(monkeypatch):
+    def boom(*args, **kwargs):
+        raise FileNotFoundError("git")
+
+    run.git_info.cache_clear()
+    monkeypatch.setattr(run.subprocess, "run", boom)
+    assert run.git_info() == {}
+    run.git_info.cache_clear()
 
 
 def test_optional_test_field_keeps_separate_rows(results, base_url):

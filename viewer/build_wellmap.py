@@ -32,6 +32,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from wellmaplib.coords import utm_ed50_to_wgs84
 from wellmaplib.lithology import scheme_payload
 from wellmaplib.logs import (
+    DISPLAY_CURVES,
+    FORMATION_COLUMNS,
     LITH_KEY,
     STANDARD_CURVES,
     clean_numeric,
@@ -218,8 +220,14 @@ def pack_well(well: dict, dataset: dict, frame: pd.DataFrame | None, max_points:
             work[k] = clean_numeric(frame[k])
         else:
             work[k] = pd.NA
+    for k in DISPLAY_CURVES:
+        if k in frame.columns:
+            work[k] = clean_numeric(frame[k])
     if LITH_KEY in frame.columns:
         work[LITH_KEY] = clean_numeric(frame[LITH_KEY])
+    for k in FORMATION_COLUMNS:
+        if k in frame.columns:
+            work[k] = frame[k]
 
     work = work[work["DEPTH"].notna()].reset_index(drop=True)
 
@@ -233,7 +241,9 @@ def pack_well(well: dict, dataset: dict, frame: pd.DataFrame | None, max_points:
     slim = work.iloc[idx]
     packed["d"] = series_to_list("DEPTH", slim["DEPTH"])
     curves = {}
-    for k in STANDARD_CURVES:
+    for k in STANDARD_CURVES + DISPLAY_CURVES:
+        if k not in slim.columns:
+            continue
         arr = series_to_list(k, slim[k])
         if any(v is not None for v in arr):
             curves[k] = arr
@@ -242,7 +252,27 @@ def pack_well(well: dict, dataset: dict, frame: pd.DataFrame | None, max_points:
         lith = series_to_list(LITH_KEY, slim[LITH_KEY])
         if any(v is not None for v in lith):
             packed["lith"] = lith
+    for src, dest in (("GROUP", "group"), ("FORMATION", "formation")):
+        if src not in slim.columns:
+            continue
+        vals = [_label_or_none(v) for v in slim[src].tolist()]
+        if any(v is not None for v in vals):
+            packed[dest] = vals
     return packed
+
+
+def _label_or_none(v):
+    if v is None or (isinstance(v, float) and not math.isfinite(v)) or pd.isna(v):
+        return None
+    s = str(v).strip()
+    if not s or s.lower() in {"nan", "none", "null"}:
+        return None
+    try:
+        if abs(float(s) + 999.25) <= 1e-6 or abs(float(s) + 999) <= 1e-6:
+            return None
+    except ValueError:
+        pass
+    return s
 
 
 def collect_payload(manifest_paths: list[Path], max_points: int) -> tuple[dict, dict]:

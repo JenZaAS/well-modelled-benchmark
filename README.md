@@ -107,6 +107,12 @@ Public open data only. **Never commit data, model weights or big outputs** (the 
 file types). Data is shared through the team's shared data folder; Diskos data, if we get access, stays local and only
 scores and aggregates are published. Licences and credit lines: [docs/data-licences.md](docs/data-licences.md).
 
+## Model licences
+
+Each model in this repo, and any pretrained weights it downloads, has its own licence, which may differ from this repo's MIT licence. Some restrict commercial use or use by larger companies. For example, the Timestral-5M weights used by `red_timestral` are under a Modified MIT licence that grants no rights to companies whose global consolidated monthly revenue exceeded USD 20 million; Chronos-2 weights are Apache-2.0.
+
+**If you use a model, it is your responsibility to check its licence, the licence of its weights and the terms of any data it was trained on before you use it, especially for commercial work.** Each model should keep a `LICENSE.md` in its own folder; `python -m benchmark.check_model` warns when one is missing. Inclusion here is not legal advice and not a licence grant.
+
 ## Licence
 
 Repository code is MIT (see `LICENSE`). Third-party models and datasets keep their own

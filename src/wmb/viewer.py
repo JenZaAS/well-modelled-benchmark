@@ -319,8 +319,6 @@ def collect_benchmark_rows(root: Path | None = None) -> list[dict[str, Any]]:
                 rows[key] = r
         except (OSError, ValueError, KeyError, TypeError):
             continue
-    for r in rows.values():
-        r.pop("hardware", None)
     return sorted(rows.values(), key=lambda r: (
         r["dataset"], r.get("test") or "", r["target"], r["scenario"],
         r["MAE"] if isinstance(r.get("MAE"), (int, float)) else float("inf"),
@@ -606,7 +604,7 @@ class ViewerHandler(BaseHTTPRequestHandler):
                 raise FileNotFoundError(f"Missing {helper}")
             _send(self, 200, helper.read_bytes(), "application/javascript; charset=utf-8")
             return
-        if path == "/benchmark.js" or path == "/prediction.js":
+        if path in ("/benchmark.js", "/benchmark_quality.js", "/prediction.js", "/well_filters.js", "/plot_style.js"):
             helper = VIEWER_DIR / path.lstrip("/")
             if not helper.is_file():
                 raise FileNotFoundError(f"Missing {helper}")

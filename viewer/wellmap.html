@@ -95,20 +95,17 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
 #tabs button { font: inherit; font-weight: 600; padding: 5px 16px; border: 1px solid var(--line); border-bottom: 0;
   background: #eef0ee; color: var(--muted); cursor: pointer; }
 #tabs button[aria-selected="true"] { background: var(--panel); color: var(--ink); }
+#tabs button[aria-disabled="true"] { color: #777A75; cursor: not-allowed; }
 .tab-pane { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
 .tab-pane[hidden] { display: none !important; }
-#tab-benchmark { overflow: auto; background: var(--panel); }
-#tab-benchmark .bm { padding: 10px 14px; }
-#tab-benchmark .bm h2 { font-size: 13px; margin: 14px 0 6px; }
+#tab-benchmark {
+  --g: #157A54; --gbg: #D4EFDF; --o: #A56B0C; --obg: #F8E6C0; --p: #C03A32; --pbg: #F8D4D0;
+  --card: #FFFCF7; --line: #DDD7CC; --ink: #1A1E23; --muted: #5C6570; --accent: #2C4A6E;
+  overflow: auto; background: #F3F0EA; color: var(--ink);
+}
+#tab-benchmark .bm { padding: 8px clamp(14px, 2.2vw, 28px) 24px; }
 #tab-benchmark .bm-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 8px; }
 #tab-benchmark .bm-bar select { font: inherit; padding: 1px 4px; max-width: 220px; }
-#tab-benchmark table { width: auto; }
-#tab-benchmark th { cursor: help; }
-#tab-benchmark th.m-head { vertical-align: bottom; }
-#tab-benchmark .m-name { display: block; }
-#tab-benchmark .m-dir { display: block; font-weight: 400; font-size: 10px; color: var(--muted); }
-#tab-benchmark td.m { min-width: 96px; }
-#tab-benchmark .bar { display: block; height: 4px; background: #2b6ca3; margin-top: 2px; }
 #tab-benchmark .na { color: var(--muted); }
 #tab-benchmark pre { background: #f4f4f2; padding: 8px 10px; border: 1px solid var(--line); }
 #bm-plot-wrap { position: relative; height: 520px; border: 1px solid var(--line); background: #fff; }
@@ -116,13 +113,113 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
 #bm-plot-wrap canvas.dragging { cursor: grabbing; }
 #tab-benchmark .bm-bar button { font: inherit; padding: 1px 8px; cursor: pointer; }
 #bm-note { color: var(--muted); margin: 4px 0; }
+#tab-benchmark .bm-top { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; min-height: 84px; padding-bottom: 12px; }
+#tab-benchmark .bm-title, #tab-benchmark .bm-meta, #tab-benchmark .bm-hw, #tab-benchmark .bm-picker, #tab-benchmark .bm-ctl {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
+}
+#tab-benchmark .bm-title h2 { margin: 0; font-size: 22px; line-height: 1.2; letter-spacing: -.025em; }
+#tab-benchmark .bm-sep { color: #8B929A; }
+#tab-benchmark .bm-meta { color: var(--muted); font-size: 12px; margin-top: 3px; }
+#tab-benchmark .bm-meta strong, #tab-benchmark .bm-meta code { font: inherit; font-weight: 700; color: var(--ink); }
+#tab-benchmark .bm-hw { font-size: 11px; color: var(--muted); margin-top: 2px; }
+#tab-benchmark .bm-hw b { background: #E7EBF0; color: var(--accent); border-radius: 4px; padding: 1px 6px; }
+#tab-benchmark .bm-ctl { align-self: flex-start; gap: 8px 14px; }
+#tab-benchmark .bm-picker-label, #tab-benchmark .bm-card h4 { font-size: 10.5px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+#tab-benchmark [hidden] { display: none !important; }
+#tab-benchmark .bm-seg { display: inline-flex; flex-wrap: wrap; background: #E8E3D9; border-radius: 8px; padding: 2px; }
+#tab-benchmark .bm-seg button { font: inherit; font-weight: 650; padding: 5px 13px; border: 0; border-radius: 6px; background: none; color: var(--muted); cursor: pointer; }
+#tab-benchmark .bm-seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 2px #0003; }
+#tab-benchmark .bm-seg button:disabled { opacity: .55; cursor: not-allowed; }
+#tab-benchmark .bm-i { font: inherit; font-weight: 700; border: 0; border-radius: 50%; width: 19px; height: 19px; padding: 0; background: #E7EBF0; color: var(--accent); cursor: pointer; }
+#tab-benchmark .bm-run { display: block; margin: 0 0 10px; font-weight: 650; }
+#tab-benchmark .bm-run select { font: inherit; max-width: min(420px, 90%); padding: 3px 6px; }
+#tab-benchmark .bm-tipbox { background: #1F2933; color: var(--card); border-radius: 8px; padding: 11px 13px; margin: 0 0 10px; max-width: 410px; line-height: 1.5; }
+#tab-benchmark .bm-sec { font-size: 14px; margin: 22px 0 6px; }
+#tab-benchmark .bm-cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 10px; }
+#tab-benchmark .bm-card, #tab-benchmark .bm-grid th, #tab-benchmark .bm-grid td { background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+#tab-benchmark .bm-card { padding: 12px 14px; min-width: 0; }
+#tab-benchmark .bm-cards .bm-card { min-height: 348px; }
+#tab-benchmark .bm-card h3 { margin: 0; font-size: 15px; line-height: 1.22; letter-spacing: -.02em; }
+#tab-benchmark .bm-card-head { min-height: 61px; }
+#tab-benchmark .bm-dir { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; margin-top: 5px; color: var(--muted); font-size: 11.5px; font-weight: 650; }
+#tab-benchmark .bm-dir b { border-radius: 8px; background: #E4EEF7; color: #1F4B73; padding: 1px 6px; font-size: 10.5px; }
+#tab-benchmark .bm-r + .bm-r { margin-top: 7px; }
+#tab-benchmark .bm-r-head, #tab-benchmark .bm-r-track, #tab-benchmark .bm-dl { display: flex; align-items: center; gap: 6px; }
+#tab-benchmark .bm-dl .bm-nm { margin-right: auto; }
+#tab-benchmark .bm-r-head small { margin: 0 0 0 auto; }
+#tab-benchmark .bm-r-track { margin-top: 3px; margin-left: 21px; }
+#tab-benchmark .bm-rk { display: inline-grid; place-items: center; flex: 0 0 15px; width: 15px; height: 15px; border-radius: 50%; background: #ECE7DD; color: var(--muted); font-size: 10px; font-weight: 750; }
+#tab-benchmark .bm-rk.first { color: #fff; background: var(--ink); }
+#tab-benchmark .bm-nm { min-width: 0; overflow-wrap: anywhere; font-weight: 700; }
+#tab-benchmark .bm-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+#tab-benchmark .bm-track { display: block; flex: 1; height: 11px; background: #EFEBE2; border-radius: 6px; overflow: hidden; }
+#tab-benchmark .bm-track b { display: block; height: 100%; border-radius: inherit; background: var(--quality); }
+#tab-benchmark .bm-track .muted { background: repeating-linear-gradient(45deg, #C8C5BD 0 4px, #EFEBE2 4px 6px); }
+#tab-benchmark .bm-r small, #tab-benchmark .bm-ln small, #tab-benchmark .bm-dl small { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#tab-benchmark .bm-chip { display: inline-block; min-width: 42px; padding: 2px 6px; border-radius: 4px; background: var(--quality-bg); color: var(--quality); text-align: center; font-size: 9.5px; font-weight: 750; line-height: 1.15; letter-spacing: .04em; text-transform: uppercase; white-space: nowrap; }
+#tab-benchmark .good { --quality: var(--g); --quality-bg: var(--gbg); }
+#tab-benchmark .ok { --quality: var(--o); --quality-bg: var(--obg); }
+#tab-benchmark .poor { --quality: var(--p); --quality-bg: var(--pbg); }
+#tab-benchmark .muted { --quality: var(--muted); --quality-bg: #E9E6DF; }
+#tab-benchmark .bm-cal { position: relative; display: block; flex: 1; height: 13px; border-radius: 7px;
+  background: linear-gradient(90deg, var(--pbg), var(--obg) 45%, var(--gbg) 67.5% 82.5%, var(--obg) 95%, var(--pbg));
+  box-shadow: inset 0 0 0 1px #E2D8C8; }
+#tab-benchmark .bm-cal i { position: absolute; }
+#tab-benchmark .bm-cal-tick { top: -3px; bottom: -3px; border-left: 1px dashed var(--ink); }
+#tab-benchmark .bm-cal-mk { box-sizing: border-box; width: 12px; height: 12px; top: 50%; border-radius: 50%; transform: translate(-50%, -50%); border: 2px solid #fff; box-shadow: 0 0 0 1px #0004; background: var(--quality); }
+#tab-benchmark .bm-cal-row small { width: 82px; text-align: right; }
+#tab-benchmark .bm-capscale { display: flex; justify-content: space-between; padding-left: 21px; margin-top: 4px; color: var(--muted); font-size: 9.5px; }
+#tab-benchmark .bm-capscale b { color: var(--ink); }
+#tab-benchmark .bm-cap-note { color: var(--muted); font-size: 10px; font-style: italic; margin: 2px 0 0 21px; }
+#tab-benchmark .bm-dial { display: block; width: 100%; max-width: 280px; margin: 0 auto; }
+#tab-benchmark .bm-dial path { stroke: var(--quality); }
+#tab-benchmark .bm-zones { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; margin: 4px 0 6px; }
+#tab-benchmark .bm-zones .bm-chip { font-size: 9px; text-transform: none; letter-spacing: 0; padding: 2px 4px; }
+#tab-benchmark .bm-dials, #tab-benchmark .bm-models, #tab-benchmark .bm-leg { display: grid; gap: 4px; }
+#tab-benchmark .bm-speed-note { color: var(--muted); font-size: 10.5px; text-align: center; margin-top: 5px; }
+#tab-benchmark .bm-tradeoff { display: grid; grid-template-columns: minmax(0, 1fr) minmax(235px, 27%); gap: 12px; }
+#tab-benchmark .bm-scatter { display: block; width: 100%; height: auto; }
+#tab-benchmark .bm-scatter-note { margin: 8px 0 0; font-size: 12px; color: #333; }
+#tab-benchmark .bm-example { display: none; margin: 8px 0 10px; padding: 8px 12px; border: 2px solid #b45309; background: #fff7ed; color: #7c2d12; font-weight: 700; letter-spacing: 0.01em; }
+#tab-benchmark .bm-example[data-show="1"] { display: block; }
+#tab-benchmark .bm-scatter-card h3 { display: inline; margin-right: 10px; }
+#tab-benchmark .bm-card h4 { margin: 0 0 6px; }
+#tab-benchmark .bm-models { margin-bottom: 12px; }
+#tab-benchmark .bm-leg span { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11.5px; }
+#tab-benchmark .bm-leg svg { flex: 0 0 30px; }
+#tab-benchmark .bm-grid-wrap { overflow-x: auto; margin: 0 -5px; }
+#tab-benchmark .bm-grid { width: 100%; table-layout: auto; border-collapse: separate; border-spacing: 5px 8px; }
+#tab-benchmark .bm-grid th, #tab-benchmark .bm-grid td { position: static; text-align: left; vertical-align: middle; white-space: normal; padding: 9px 12px; }
+#tab-benchmark .bm-grid th { cursor: default; }
+#tab-benchmark .bm-grid thead th:first-child { width: 15%; min-width: 118px; background: none; border-color: transparent; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+#tab-benchmark .bm-grid th b, #tab-benchmark .bm-model { font-size: 16px; }
+#tab-benchmark .bm-grid th .na { font-weight: 400; }
+#tab-benchmark .bm-grid .bm-cell { min-width: 278px; height: 136px; }
+#tab-benchmark .bm-ln { display: grid; grid-template-columns: 64px 15px minmax(30px, 1fr) 45px minmax(65px, auto); align-items: center; gap: 6px; min-height: 29px; }
+#tab-benchmark .bm-ln > b { font-size: 11px; color: var(--muted); }
+#tab-benchmark .bm-ln small { text-align: right; }
+#tab-benchmark .bm-ln small i { display: block; font-size: 9.5px; font-style: normal; }
+#tab-benchmark .bm-ln .bm-track { height: 9px; }
+#tab-benchmark .bm-ln-speed { grid-template-columns: 85px auto 1fr; }
+#tab-benchmark .bm-ln-speed small { font-weight: 700; color: var(--ink); }
+@media (max-width: 1120px) {
+  #tab-benchmark .bm-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #tab-benchmark .bm-cards .bm-card { min-height: 0; }
+}
+@media (max-width: 620px) {
+  #tab-benchmark .bm-cards, #tab-benchmark .bm-tradeoff { grid-template-columns: minmax(0, 1fr); }
+}
 #tab-prediction { background: var(--panel); min-height: 0; }
 #tab-prediction .pd { display: flex; flex: 1 1 auto; min-height: 0; height: 100%; }
-#tab-prediction .pd-side { flex: 0 0 280px; overflow: auto; padding: 8px 12px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; }
+#tab-prediction .pd-side { flex: 0 0 280px; overflow: hidden; padding: 8px 12px; border-right: 1px solid var(--line); display: flex; flex-direction: column; gap: 6px; min-height: 0; }
 #tab-prediction .pd-side h3 { font-size: 12px; margin: 8px 0 2px; }
 #tab-prediction .pd-mini #pd-map { height: 170px; border: 1px solid var(--line); background: #cfd8d4; }
 #tab-prediction .pd-label { font-weight: 600; margin-top: 2px; }
-#tab-prediction .pd-models { display: flex; flex-direction: column; gap: 4px; }
+#tab-prediction .pd-models { display: flex; flex-direction: column; gap: 4px; flex: 0 1 auto; max-height: min(40%, 14.5em); overflow-y: auto; min-height: 0; }
+#tab-prediction .pd-best, #tab-prediction #pd-run { flex-shrink: 0; }
+#tab-prediction .pd-filters { flex-shrink: 0; display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+#tab-prediction .pd-filters select { font: inherit; max-width: 170px; }
+#tab-prediction .pd-splits { display: flex; flex-wrap: wrap; gap: 2px 8px; }
 #tab-prediction .pd-model.off { color: var(--muted); }
 #tab-prediction .why { font-size: 11px; }
 #tab-prediction .why.error { color: var(--red); }
@@ -177,7 +274,7 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
       <div class="range" id="xscale-ctl" title="Until you choose a mode for all tracks, CALI and PEF use Auto and the other tracks use Standard. Values outside the scale are clipped at the track edge.">
         <label>X scale</label>
         <button type="button" id="xscale-auto" aria-pressed="false" title="Auto for all tracks: full-well P1-P99 (ignoring at least one sample at each end), plus 5% padding and round limits (decades for resistivity). Uses Standard when there are too few samples.">Auto</button>
-        <button type="button" id="xscale-std" aria-pressed="false" title="Fixed scales for all tracks: GR 0-150, resistivity 0.2-200 log, RHOB 1.65-2.85, NPHI 0.45 to -0.15, DTC 140-40, DTS 240-80, CALI 6-16, PEF 0-15.">Standard</button>
+        <button type="button" id="xscale-std" aria-pressed="false" title="Fixed scales for all tracks: GR 0-150 gAPI, resistivity 0.2-2000 log, RHOB 1.95-2.95, NPHI 0.45 to -0.15, DTC 140-40, DTS 240-40, CALI 6-16, PEF 0-10, porosity 0-0.5, VSH 0-1, SW 0-1.">Standard</button>
       </div>
       <button type="button" id="plot-close" title="Close the log plot">Close</button>
     </div>
@@ -189,7 +286,10 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
 </div>
 <script src="vendor/leaflet.js"></script>
 <script src="plot_utils.js"></script>
+<script src="plot_style.js"></script>
+<script src="benchmark_quality.js"></script>
 <script src="benchmark.js"></script>
+<script src="well_filters.js"></script>
 <script src="prediction.js"></script>
 <script>
 (async function () {
@@ -247,31 +347,25 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
   }
 
   const PU = window.PlotUtils;
-  const TRACKS = [
-    { id: "gr", title: "GR", curves: [{ k: "GR", unit: "gAPI", color: "#1b7a3a", xmin: 0, xmax: 150 }] },
-    { id: "res", title: "RDEP / RMED", log: true, curves: [
-      { k: "RDEP", unit: "ohm.m", color: "#111", xmin: 0.2, xmax: 200 },
-      { k: "RMED", unit: "ohm.m", color: "#c0392b", xmin: 0.2, xmax: 200 }
-    ]},
-    { id: "dn", title: "RHOB / NPHI", curves: [
-      { k: "RHOB", unit: "g/cc", color: "#c0392b", xmin: 1.65, xmax: 2.85 },
-      { k: "NPHI", unit: "v/v", color: "#1d4ed8", xmin: 0.45, xmax: -0.15 }
-    ]},
-    { id: "son", title: "DTC / DTS", curves: [
-      { k: "DTC", unit: "us/ft", color: "#111", xmin: 140, xmax: 40 },
-      { k: "DTS", unit: "us/ft", color: "#7c3aed", xmin: 240, xmax: 80 }
-    ]},
-    { id: "cal", title: "CALI", curves: [{ k: "CALI", unit: "in", color: "#7a4a12", xmin: 6, xmax: 16 }] },
-    { id: "pef", title: "PEF", curves: [{ k: "PEF", unit: "b/e", color: "#d97706", xmin: 0, xmax: 15 }] },
-    { id: "lith", title: "LITH", lith: true }
-  ];
+  const PS = window.WmbPlotStyle;
+  function tracksForWell(w) {
+    const names = Object.keys((w && w.c) || {});
+    const tracks = PS
+      ? PS.tracksFromNames(names, { includeEmptyCore: true })
+      : [];
+    tracks.push({ id: "lith", title: "LITH", lith: true, curves: [] });
+    return tracks;
+  }
 
-  const SPLIT_TIPS = {
+  const SPLIT_TIPS = (typeof WmbWellFilters !== "undefined" && WmbWellFilters.SPLIT_TIPS) ? WmbWellFilters.SPLIT_TIPS : {
     train: "Wells with lithology labels used to train in the FORCE 2020 competition",
     leaderboard: "FORCE 2020 public test wells (scored on the open leaderboard during the competition)",
     hidden: "FORCE 2020 final blind test wells",
   };
-  function splitTip(s) { return SPLIT_TIPS[String(s).toLowerCase()] || ("Wells in split: " + s); }
+  function splitTip(s) {
+    if (typeof WmbWellFilters !== "undefined" && WmbWellFilters.splitTip) return WmbWellFilters.splitTip(s);
+    return SPLIT_TIPS[String(s).toLowerCase()] || ("Wells in split: " + s);
+  }
 
   const state = {
     splits: new Set(),
@@ -331,6 +425,13 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
   }
 
   function filteredWells() {
+    if (typeof WmbWellFilters !== "undefined") {
+      return WmbWellFilters.filterWells(DATA.wells, {
+        datasets: state.datasets,
+        splits: state.splits,
+        hasLog: state.dtsOnly ? "DTS" : "",
+      });
+    }
     return DATA.wells.filter(w => {
       if (state.splits.size && !state.splits.has(w.split || "")) return false;
       if (state.datasets.size && !state.datasets.has(w.dataset)) return false;
@@ -589,9 +690,9 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
     return d._step;
   }
 
-  // X scales: null = mixed default (auto for CALI/PEF), else "auto" / "standard" for all tracks.
+  // X scales: null = mixed default (Auto for CALI/PEF as before), else "auto" / "standard" for all tracks.
   let xMode = null;
-  const DEFAULT_AUTO = new Set(["cal", "pef"]);
+  const DEFAULT_AUTO = (PS && PS.AUTO_DEFAULT) ? PS.AUTO_DEFAULT : new Set(["CALI", "PEF"]);
 
   function syncXScaleButtons() {
     document.getElementById("xscale-auto").setAttribute("aria-pressed", String(xMode === "auto"));
@@ -603,21 +704,22 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
 
   // Ranges and clip counts use the full well, cached by curve payload and scale mode.
   function effectiveTracks(w) {
-    if (!w._xScales || w._xScales.src !== w.c) {
-      Object.defineProperty(w, "_xScales", { value: { src: w.c, modes: new Map() }, configurable: true });
+    const srcKey = (w.c || {}) && (Object.keys(w.c || {}).join(",") + "|" + (w.formation ? "f" : "") + (w.group ? "g" : ""));
+    if (!w._xScales || w._xScales.src !== srcKey) {
+      Object.defineProperty(w, "_xScales", { value: { src: srcKey, modes: new Map() }, configurable: true });
     }
     const { modes } = w._xScales;
     if (modes.has(xMode)) return modes.get(xMode);
-    const tracks = TRACKS.map(t => {
-      if (!t.curves) return t;
-      const useAuto = xMode === "auto" || (xMode === null && DEFAULT_AUTO.has(t.id));
-      const series = t.curves.map(c => (w.c && w.c[c.k]) || []);
-      const first = t.curves[0];
-      const shared = useAuto && t.log ? PU.autoValueRange(series, { std: [first.xmin, first.xmax], log: true }) : null;
-      return Object.assign({}, t, { curves: t.curves.map((c, i) => {
-        const { xmin, xmax } = useAuto ? shared || PU.autoValueRange(series[i], { std: [c.xmin, c.xmax] }) : c;
-        const clipped = PU.countOutside(series[i], xmin, xmax, t.log);
-        return Object.assign({}, c, { xmin, xmax, clipped });
+    const tracks = tracksForWell(w).map(t => {
+      if (t.lith || !t.curves) return t;
+      const log = !!t.log;
+      return Object.assign({}, t, { curves: t.curves.map((c) => {
+        const series = (w.c && w.c[c.k]) || [];
+        const useAuto = PS ? PS.useAutoScale(c.canon || c.k, xMode) : (xMode === "auto" || (xMode === null && DEFAULT_AUTO.has(c.k)));
+        const std = [c.xmin, c.xmax];
+        const range = useAuto ? PU.autoValueRange(series, { std, log: log || !!c.log }) : { xmin: c.xmin, xmax: c.xmax };
+        const clipped = PU.countOutside(series, range.xmin, range.xmax, log || !!c.log);
+        return Object.assign({}, c, { xmin: range.xmin, xmax: range.xmax, clipped });
       })});
     });
     modes.set(xMode, tracks);
@@ -653,7 +755,7 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
     const plotTop = padTop, plotH = H - padTop - padBot;
     if (plotH <= 2) return;
     // always show the standard tracks even if empty, so missing data is visible as blank
-    const shown = effectiveTracks(w).filter(t => t.lith || t.curves.length);
+    const shown = effectiveTracks(w).filter(t => t.lith || t.noData || t.required || (t.curves && t.curves.length));
     const nFlex = shown.filter(t => !t.lith).length;
     const innerW = W - depthW - 8 - (shown.some(t => t.lith) ? lithW + gap : 0) - gap * shown.length;
     const flexW = nFlex ? Math.max(60, innerW / nFlex) : 60;
@@ -671,8 +773,12 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
     ctx.textAlign = "right";
     ctx.textBaseline = "middle";
     ctx.fillText("m", depthW - 6, 12);
-    const step = PU.niceStep(dmax - dmin);
-    for (let d = Math.ceil(dmin / step) * step; d <= dmax; d += step) {
+    const ticks = PS ? PS.depthTicks(dmin, dmax) : (function () {
+      const step = PU.niceStep(dmax - dmin), out = [];
+      for (let d = Math.ceil(dmin / step) * step; d <= dmax; d += step) out.push(d);
+      return out;
+    }());
+    for (const d of ticks) {
       const y = yOf(d);
       ctx.strokeStyle = "#eee";
       ctx.beginPath(); ctx.moveTo(depthW, y); ctx.lineTo(W, y); ctx.stroke();
@@ -680,17 +786,63 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
       ctx.fillText(String(Math.round(d * 100) / 100), depthW - 6, y);
     }
 
+    const tops = PS ? PS.formationIntervals(w.d, w.formation || w.FORMATION, w.group || w.GROUP) : [];
+    const stripW = tops.length ? 18 : 0;
     let x = depthW + gap;
+    if (stripW) {
+      ctx.fillStyle = "#444";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.font = "10px Segoe UI, system-ui, sans-serif";
+      ctx.fillText("TOPS", x + 1, 2);
+      drawTrackBorder(x, plotTop, stripW, plotH);
+      ctx.save();
+      ctx.beginPath(); ctx.rect(x + 1, plotTop + 1, stripW - 2, plotH - 2); ctx.clip();
+      for (const iv of tops) {
+        const y1 = yOf(iv.top), y2 = yOf(iv.base);
+        ctx.fillStyle = iv.color;
+        ctx.fillRect(x + 1, Math.min(y1, y2), stripW - 2, Math.max(1, Math.abs(y2 - y1)));
+      }
+      ctx.restore();
+      x += stripW + gap;
+    }
+    const tracksLeft = x;
     for (const t of shown) {
       const tw = t.lith ? lithW : flexW;
       if (t.lith) {
         drawLith(w, x, tw, yOf, dmin, dmax, plotTop, plotH);
+      } else if (t.noData || !(t.curves && t.curves.length)) {
+        ctx.fillStyle = "#444";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.font = "10px Segoe UI, system-ui, sans-serif";
+        ctx.fillText(t.title || t.id, x + 3, 2);
+        ctx.fillStyle = "#777";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText("no data", x + tw / 2, plotTop + plotH / 2);
       } else {
         drawTrackHeader(t, x, tw, plotTop);
         drawCurves(w, t, x, tw, yOf, dmin, dmax, plotTop, plotH);
       }
       drawTrackBorder(x, plotTop, tw, plotH);
       x += tw + gap;
+    }
+    if (tops.length && PS) {
+      ctx.save();
+      ctx.strokeStyle = PS.TOP_LINE;
+      ctx.fillStyle = PS.TOP_LINE;
+      ctx.lineWidth = 1;
+      ctx.font = "10px Segoe UI, system-ui, sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "bottom";
+      for (const iv of tops) {
+        const y = yOf(iv.top);
+        if (y < plotTop || y > plotTop + plotH) continue;
+        ctx.beginPath(); ctx.moveTo(tracksLeft, y); ctx.lineTo(x - gap, y); ctx.stroke();
+        ctx.fillText(iv.name, tracksLeft + 2, y - 1);
+      }
+      ctx.restore();
     }
   }
 
@@ -842,10 +994,44 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
       const xx = track.log ? PU.xScaleLog(v, c0.xmin, c0.xmax, x, tw) : PU.xScale(v, c0.xmin, c0.xmax, x, tw);
       if (xx != null) { ctx.beginPath(); ctx.moveTo(xx, plotTop); ctx.lineTo(xx, plotTop + plotH); ctx.stroke(); }
     });
+    const Xc = (c, v) => (track.log || c.log) ? PU.xScaleLog(v, c.xmin, c.xmax, x, tw) : PU.xScale(v, c.xmin, c.xmax, x, tw);
+    if (PS && track.crossFill) {
+      const cr = track.curves.find(c => (c.canon || c.k) === "RHOB");
+      const cn = track.curves.find(c => (c.canon || c.k) === "NPHI");
+      if (cr && cn) {
+        const rv = (well.c && well.c[cr.k]) || [], nv = (well.c && well.c[cn.k]) || [];
+        for (let i = i0; i < Math.min(i1, depths.length - 1); i++) {
+          const kind = PS.densityNeutronFill(rv[i], nv[i], [cr.xmin, cr.xmax], [cn.xmin, cn.xmax]);
+          if (!kind) continue;
+          const x1r = Xc(cr, rv[i]), x1n = Xc(cn, nv[i]), x2r = Xc(cr, rv[i + 1]), x2n = Xc(cn, nv[i + 1]);
+          const y1 = yOf(depths[i]), y2 = yOf(depths[i + 1]);
+          if (![x1r, x1n, x2r, x2n, y1, y2].every(Number.isFinite)) continue;
+          ctx.fillStyle = kind === "yellow" ? PS.CROSS_YELLOW : PS.CROSS_GREY;
+          ctx.beginPath();
+          ctx.moveTo(x1r, y1); ctx.lineTo(x1n, y1); ctx.lineTo(x2n, y2); ctx.lineTo(x2r, y2);
+          ctx.closePath(); ctx.fill();
+        }
+      }
+    }
+    for (const c of track.curves) {
+      if (c.fillFrom == null || !c.fillColor) continue;
+      const arr = (well.c && well.c[c.k]) || [];
+      const x0 = Xc(c, c.fillFrom);
+      if (!Number.isFinite(x0)) continue;
+      ctx.fillStyle = c.fillColor;
+      for (let i = i0; i < Math.min(i1, depths.length - 1); i++) {
+        const x1 = Xc(c, arr[i]), x2 = Xc(c, arr[i + 1]), y1 = yOf(depths[i]), y2 = yOf(depths[i + 1]);
+        if (![x1, x2, y1, y2].every(Number.isFinite)) continue;
+        ctx.beginPath();
+        ctx.moveTo(x0, y1); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x0, y2);
+        ctx.closePath(); ctx.fill();
+      }
+    }
     for (const c of track.curves) {
       const arr = (well.c && well.c[c.k]) || [];
       ctx.strokeStyle = c.color;
       ctx.lineWidth = 1;
+      ctx.setLineDash(c.dash || []);
       ctx.beginPath();
       const segs = PU.buildSegments(depths, arr, { log: track.log, maxGap, i0, i1 });
       for (const seg of segs) {
@@ -860,6 +1046,7 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
         }
       }
       ctx.stroke();
+      ctx.setLineDash([]);
     }
     ctx.restore();
   }
@@ -930,6 +1117,7 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
     bar: document.getElementById("tabs"),
     defaultId: "viewer",
     onChange(id) {
+      if (WmbBenchmark.parseTabHash(location.hash, [id], null) === id) return; // keep a Benchmark sub-view in the hash
       const hash = WmbBenchmark.tabHash(id);
       if (location.hash !== hash && history.replaceState) {
         const u = new URL(location.href);
@@ -944,6 +1132,7 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
     show(pane) { WmbBenchmark.mount(pane, PU); } });
   tabs.register({ id: "prediction", title: "Prediction", pane: document.getElementById("tab-prediction"),
     show(pane) { WmbPrediction.mount(pane, { PU, L, DATA }); } });
+  tabs.register({ id: "leaderboard", title: "Leaderboard", disabled: true, tooltip: "Coming later \u2014 ranks across stored runs" });
   openFromUrl();
   tabs.select(WmbBenchmark.parseTabHash(location.hash, tabs.ids(), "viewer"));
   window.addEventListener("hashchange", () => {

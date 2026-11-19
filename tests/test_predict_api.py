@@ -70,7 +70,7 @@ def test_predict_happy_path_with_truth_and_one_failing_model(isolated):
     assert good["mae"] is not None and good["mae"] < 0.2 and good["r2"] is not None
     assert good["inputs_used"]["required"] == ["DTC"] and set(good["inputs_used"]["optional"]) == {"GR", "NPHI"}
     assert good["p05"] is not None and good["runtime_s"] >= 0
-    assert not by["needs_dep"]["ok"] and "sklearn" in by["needs_dep"]["error"]
+    assert not by["needs_dep"]["ok"] and "scikit-learn" in by["needs_dep"]["error"]
     assert not by["needs_pef"]["ok"] and "missing required curve" in by["needs_pef"]["error"]
     assert not by["nope"]["ok"] and "unknown model" in by["nope"]["error"]
     json.dumps(out, allow_nan=False)
@@ -298,7 +298,7 @@ def test_http_predict_and_models(base_url, isolated):
     status, out = _req(base_url + "/api/predict", {"dataset": "synthetic", "well": "SYN-06", "target": "RHOB", "models": ["template_linear", "needs_dep"]})
     assert status == 200
     by = {m["name"]: m for m in out["models"]}
-    assert by["template_linear"]["ok"] and by["template_linear"]["mae"] is not None and "sklearn" in by["needs_dep"]["error"]
+    assert by["template_linear"]["ok"] and by["template_linear"]["mae"] is not None and "scikit-learn" in by["needs_dep"]["error"]
     status, listing = _req(base_url + "/api/predict/models?dataset=synthetic&well=SYN-06&target=RHOB&metric=MAE")
     assert status == 200 and listing["best"] is None and any(m["name"] == "template_linear" and m["eligible"] for m in listing["models"])
     assert not isolated.exists() or not list(isolated.rglob("*"))

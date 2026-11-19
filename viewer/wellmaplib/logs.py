@@ -11,12 +11,20 @@ import pandas as pd
 
 SENTINELS = (-999.25, -999.0, -9999.0, 999.25, -999.25)
 
-# Standard curve keys the viewer knows how to plot.
+# Standard curve keys used for completeness and required input coverage.
 STANDARD_CURVES = ["GR", "RDEP", "RMED", "CALI", "RHOB", "NPHI", "PEF", "DTC", "DTS"]
 INTERVAL_CURVES = ["GR", "RDEP", "RHOB", "DTC"]
 LITH_KEY = "LITH"
 
+# Display-only curves packed when already present in the file. Never computed,
+# never used as targets, and never included in STANDARD_CURVES completeness.
+DISPLAY_CURVES = ["PHIE", "PHIT", "VSH", "SW", "BS", "RSHA"]
+# Text tops packed alongside depth (not curves). FORCE 2020 uses GROUP/FORMATION.
+FORMATION_COLUMNS = ["GROUP", "FORMATION"]
+PACKED_CURVES = STANDARD_CURVES + DISPLAY_CURVES
+
 # Common LAS mnemonics tried when the exact standard name is absent.
+# NPHI is not a porosity alias. Do not reuse RMED aliases (LLS, etc.) for RSHA.
 LAS_ALIASES = {
     "GR": ("GRC", "GR_1", "GAMMA"),
     "RDEP": ("ILD", "RT", "LLD", "RD", "AT90", "RLA5"),
@@ -27,6 +35,14 @@ LAS_ALIASES = {
     "PEF": ("PEFZ",),
     "DTC": ("DT", "DTCO", "AC", "DT24"),
     "DTS": ("DTSM", "DTSH", "DT4S"),
+    "PHIE": ("PHIF", "LFP_PHIE", "PHI"),
+    "PHIT": ("LFP_PHIT",),
+    "VSH": ("LFP_VSH", "VSHALE"),
+    "SW": ("SWT", "SWE", "LFP_SWT", "LFP_SW"),
+    "BS": ("BIT", "BSZ"),
+    "RSHA": ("RSHAL", "AT10", "RS", "RLA1"),
+    "GROUP": ("GRP",),
+    "FORMATION": ("FM", "FORM", "FM_NAME"),
 }
 
 PRECISION = {
@@ -41,8 +57,14 @@ PRECISION = {
     "DTC": 1,
     "DTS": 1,
     "LITH": 0,
+    "PHIE": 3,
+    "PHIT": 3,
+    "VSH": 3,
+    "SW": 3,
+    "BS": 2,
+    "RSHA": 4,
 }
-SIGFIG_CURVES = {"RDEP", "RMED"}
+SIGFIG_CURVES = {"RDEP", "RMED", "RSHA"}
 
 
 def is_valid_numeric(s: pd.Series) -> pd.Series:

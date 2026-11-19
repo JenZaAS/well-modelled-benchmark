@@ -54,3 +54,34 @@ def test_packed_depths_are_ascending_for_viewport_search(tmp_path, file_format):
 
     assert packed["d"] == [1000, 1001, 1002]
     assert packed["c"]["GR"] == [50, 51, 52]
+
+
+def test_pack_well_passes_through_display_curves_and_formations():
+    """PHIE/VSH/SW/GROUP/FORMATION are packed when present; completeness stays the 9 standard curves."""
+    frame = pd.DataFrame({
+        "DEPTH": [1000.0, 1001.0, 1002.0],
+        "GR": [40.0, 41.0, 42.0],
+        "NPHI": [0.20, 0.21, 0.22],
+        "PHIE": [0.15, 0.16, None],
+        "PHIT": [0.18, 0.19, 0.20],
+        "VSH": [0.3, 0.4, 0.5],
+        "SW": [0.6, 0.7, 0.8],
+        "BS": [8.5, 8.5, 8.5],
+        "GROUP": ["HORDALAND GP.", "HORDALAND GP.", "NORDLAND GP."],
+        "FORMATION": ["Utsira Fm.", "Utsira Fm.", None],
+    })
+    packed = pack_well({"name": "synthetic"}, {"id": "synthetic"}, frame, 20000)
+    assert packed["c"]["GR"] == [40.0, 41.0, 42.0]
+    assert packed["c"]["NPHI"] == [0.2, 0.21, 0.22]
+    assert packed["c"]["PHIE"] == [0.15, 0.16, None]
+    assert packed["c"]["PHIT"] == [0.18, 0.19, 0.2]
+    assert packed["c"]["VSH"] == [0.3, 0.4, 0.5]
+    assert packed["c"]["SW"] == [0.6, 0.7, 0.8]
+    assert packed["c"]["BS"] == [8.5, 8.5, 8.5]
+    assert packed["group"] == ["HORDALAND GP.", "HORDALAND GP.", "NORDLAND GP."]
+    assert packed["formation"] == ["Utsira Fm.", "Utsira Fm.", None]
+    # Completeness is still the 9 standard curves only — no PHIE/VSH/SW keys.
+    assert set(packed["curves"]) == {"GR", "RDEP", "RMED", "CALI", "RHOB", "NPHI", "PEF", "DTC", "DTS"}
+    assert "PHIE" not in packed["curves"]
+    assert "GROUP" not in packed["c"]
+

@@ -15,15 +15,16 @@ test("#prediction is a registered tab hash", () => {
 
 test("default display curves follow the well; More logs lists only the rest", () => {
   const avail = ["DEPTH", "PEF", "GR", "RHOB", "DTC", "LITH_X", "BS", "NPHI", "RDEP"];
-  assert.deepEqual(P.defaultDisplayCurves(avail), ["GR", "RDEP", "RHOB", "NPHI", "DTC", "PEF"]);
-  assert.deepEqual(P.moreLogs(avail), ["BS", "LITH_X"]);
-  assert.deepEqual(P.displayCurves(avail, ["BS", "GR", "NOT_THERE"]), ["GR", "RDEP", "RHOB", "NPHI", "DTC", "PEF", "BS"]);
+  assert.deepEqual(P.defaultDisplayCurves(avail), ["GR", "BS", "RDEP", "RHOB", "NPHI", "DTC", "PEF"]);
+  assert.deepEqual(P.moreLogs(avail), ["LITH_X"]);
+  assert.deepEqual(P.displayCurves(avail, ["BS", "GR", "NOT_THERE"]), ["GR", "BS", "RDEP", "RHOB", "NPHI", "DTC", "PEF"]);
   assert.deepEqual(P.displayCurves([], ["BS"]), []);
 });
 
 test("RDEP and RMED share one log track; other curves get their own", () => {
   const tracks = P.displayTracks(["GR", "RDEP", "RMED", "RHOB"]);
-  assert.deepEqual(tracks.map((t) => t.id), ["GR", "RDEP/RMED", "RHOB"]);
+  assert.deepEqual(tracks.map((t) => t.id), ["gr", "res", "dn"]);
+  assert.deepEqual(tracks.map((t) => t.curves), [["GR"], ["RDEP", "RMED"], ["RHOB"]]);
   assert.deepEqual(tracks.map((t) => t.log), [false, true, false]);
   assert.deepEqual(P.displayTracks(["RMED"]).map((t) => t.curves), [["RMED"]]);
 });
@@ -199,3 +200,51 @@ test("Best model is enabled from scoreboard rows even if the minimap constructor
   assert.match(pane.querySelector("#pd-best-note").innerHTML, /template_linear/);
   assert.match(pane.querySelector("#pd-best-note").innerHTML, /rank 1/);
 });
+
+const PU = require("../viewer/plot_utils.js");
+
+test("truthForPlot uses result.true, else the well log, even when every model failed", () => {
+  const logs = { d: [1, 2, 3], c: { DTS: [100, 120, 140] } };
+  assert.equal(P.truthForPlot(null, logs, "DTS").source, "logs");
+  assert.deepEqual(P.truthForPlot(null, logs, "DTS").values, [100, 120, 140]);
+  const failed = { depth: [1, 2, 3], true: [101, 121, 141], models: [{ name: "blue_gbt", ok: false, error: "needs scikit-learn — pip install scikit-learn" }] };
+  const t = P.truthForPlot(failed, logs, "DTS");
+  assert.equal(t.source, "result");
+  assert.deepEqual(t.values, [101, 121, 141]);
+  assert.equal(P.truthForPlot({ models: [] }, { d: [1], c: { RHOB: [2] } }, "DTS"), null);
+});
+
+test("targetScale matches the display track: Standard DTS is 240-40 even if values reach 260", () => {
+  const series = [[260, 200, 120, 80]];
+  const std = P.targetScale("DTS", series, "standard", PU);
+  assert.equal(std.xmin, 240);
+  assert.equal(std.xmax, 40);
+  const again = P.targetScale("DTS", series, "standard", PU);
+  assert.deepEqual(again, std);
+  // Auto may still snap near the standard limits; the bug was mixing Auto on the
+  // prediction track with Standard on the display track. Shared helper + mode fixes that.
+  assert.ok(P.useAutoScale("CALI", null) && !P.useAutoScale("DTS", null));
+});
+
+test("modelListState shows a failed predict error, including the sklearn install hint", () => {
+  const m = { name: "blue_gbt", eligible: true };
+  const result = { models: [{ name: "blue_gbt", ok: false, error: "needs scikit-learn — pip install scikit-learn" }] };
+  const s = P.modelListState(m, result);
+  assert.equal(s.enabled, false);
+  assert.equal(s.status, "error");
+  assert.match(s.text, /scikit-learn/);
+  assert.equal(P.eligibilityState({ eligible: false, reason: "needs scikit-learn — pip install scikit-learn" }).status, "error");
+});
+
+test("twin-curve track headers stack scales on separate lines in curve colour", () => {
+  const rows = P.trackHeaderRows(["GR", "CALI"]);
+  assert.equal(rows.length, 2);
+  assert.ok(rows[1].y > rows[0].y);
+  assert.equal(rows[0].title, "GR");
+  assert.equal(rows[1].title, "CALI");
+  assert.notEqual(rows[0].color, rows[1].color);
+  const rhob = P.trackHeaderRows(["RHOB", "NPHI"]);
+  assert.ok(rhob[1].y > rhob[0].y);
+  assert.ok(P.trackHeaderHeight([["GR", "CALI"]]) > P.trackHeaderHeight([["PEF"]]));
+});
+

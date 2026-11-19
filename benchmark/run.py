@@ -12,9 +12,11 @@ keep the older well-split behaviour for the missing_curve scenario.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import platform
+import subprocess
 import sys
 import time
 import traceback
@@ -54,6 +56,17 @@ def parse_scenarios(arg: str) -> list[str]:
 def hardware() -> dict:
     return {"machine": platform.machine(), "system": platform.system(), "processor": platform.processor(),
             "python_version": platform.python_version(), "cpu_count": os.cpu_count()}
+
+
+@functools.lru_cache(maxsize=1)
+def git_info() -> dict:
+    """{git_commit, git_commit_full} of this repo's HEAD; empty when git or the repository is unavailable."""
+    try:
+        full = subprocess.run(["git", "rev-parse", "HEAD"], cwd=REPO, capture_output=True, text=True,
+                              timeout=10, check=True).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    return {"git_commit": full[:7], "git_commit_full": full} if full else {}
 
 
 def _quantile(p: Prediction, level: float):
@@ -153,7 +166,7 @@ def _check_task_depths(tasks: list[Task], truth: dict) -> None:
 def run_scenario(model, tasks: list[Task], truth: dict, base: dict, out_root, timings: dict) -> dict:
     """Predict, validate and score one (model, target, scenario). Returns the result row (with `error` on failure)."""
     key = tasks[0].scenario_key
-    row = {**base, "scenario": key, "n_tasks": len(tasks), **timings}
+    row = {**git_info(), **base, "scenario": key, "n_tasks": len(tasks), **timings}
     out = out_root / model.name / base["dataset"] / base["target"] / key
     try:
         _check_task_depths(tasks, truth)
