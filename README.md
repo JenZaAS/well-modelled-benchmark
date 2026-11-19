@@ -90,6 +90,9 @@ Roles are flexible: people may take several, and teams may merge (e.g. blue and 
 2. Add it to the `CONTENDERS` list in the same file.
 3. `python -m benchmark.run --list` shows it; `python -m benchmark.run --contenders <name>` scores it.
 
+The "train station" (tasks, gap scenarios, `python -m benchmark.check_model <name>`) is described in
+[docs/benchmark.md](docs/benchmark.md); start from [workstreams/_template_model/](workstreams/_template_model/).
+
 ## Data rule
 
 Public open data only. **Never commit data, model weights or big outputs** (the `.gitignore` blocks the usual
@@ -98,5 +101,8 @@ scores and aggregates are published. Licences and credit lines: [docs/data-licen
 
 ## Licence
 
-MIT (see `LICENSE`). Don't bring in code, models or text that can't be released under MIT.
+Repository code is MIT (see `LICENSE`). Third-party models and datasets keep their own
+licences; see each workstream `LICENSE.md`, [docs/data-licences.md](docs/data-licences.md)
+and [THIRD_PARTY.md](THIRD_PARTY.md). Users and agents must verify a model's licence fits
+their use before running or redistributing it.
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the golden rules.

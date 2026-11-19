@@ -25,7 +25,11 @@ def discover(verbose: bool = False) -> dict:
             print(f"[registry] skipped {mod_name}:\n{traceback.format_exc(limit=2)}", file=sys.stderr)
             continue
         for factory in getattr(mod, "CONTENDERS", []):
-            c = factory()
+            try:
+                c = factory()
+            except Exception:  # a model that cannot even be built is skipped, not fatal
+                print(f"[registry] skipped a contender in {mod_name}:\n{traceback.format_exc(limit=2)}", file=sys.stderr)
+                continue
             found[c.name] = factory
             if verbose:
                 print(f"  {c.name:28s} workstream={c.workstream}")

@@ -31,4 +31,9 @@ Each workstream folder may have a `scratch/` subfolder: it is gitignored, so put
 
 ## Licence
 
-Everything here is MIT. Don't paste in code or text you can't release under MIT, and no company or client code.
+Repository code is MIT. Don't paste in code or text you can't release under MIT, and no company or client code.
+Third-party models and datasets keep their own licences. If you add a model, put a `LICENSE` or
+`LICENSE.md` in your workstream folder (licence name, URL, and a one-line summary of restrictions),
+set `licence_name`, `licence_url` and `licence_restrictions` on the class, and add a row to
+[THIRD_PARTY.md](THIRD_PARTY.md). Users and agents must verify a model's licence fits their use
+before running or redistributing it.

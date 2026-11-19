@@ -1,0 +1,30 @@
+# Task spec for the synthetic dataset (wmb.synthetic.make_wells). Used by the tests; no real data.
+# Wells and gap windows below were generated once with `python -m benchmark.make_tasks --dataset synthetic --write-spec`
+# and are used as given, so the tasks do not change if the placement code changes.
+dataset: synthetic
+seed: 2020
+targets: [RHOB, DTC, DTS]
+scenarios: [missing_curve, gap]
+gap_lengths_m: [10, 50, 100]
+synthetic: {n_wells: 8, n_samples: 1500, wells_seed: 0, test_fraction: 0.25, split_seed: 0}
+train_wells: [SYN-01, SYN-02, SYN-03, SYN-04, SYN-05, SYN-07]
+test_wells: [SYN-06, SYN-08]
+gaps:
+- {well: SYN-06, target: RHOB, gap_length_m: 10, start_md: 1548.6, end_md: 1558.65}
+- {well: SYN-06, target: RHOB, gap_length_m: 50, start_md: 1503.75, end_md: 1553.85}
+- {well: SYN-06, target: RHOB, gap_length_m: 100, start_md: 1501.5, end_md: 1601.55}
+- {well: SYN-06, target: DTC, gap_length_m: 10, start_md: 1580.55, end_md: 1590.6}
+- {well: SYN-06, target: DTC, gap_length_m: 50, start_md: 1617.9, end_md: 1668.0}
+- {well: SYN-06, target: DTC, gap_length_m: 100, start_md: 1600.65, end_md: 1700.7}
+- {well: SYN-06, target: DTS, gap_length_m: 10, start_md: 1531.05, end_md: 1541.1}
+- {well: SYN-06, target: DTS, gap_length_m: 50, start_md: 1523.55, end_md: 1573.65}
+- {well: SYN-06, target: DTS, gap_length_m: 100, start_md: 1577.85, end_md: 1677.9}
+- {well: SYN-08, target: RHOB, gap_length_m: 10, start_md: 1632.45, end_md: 1642.5}
+- {well: SYN-08, target: RHOB, gap_length_m: 50, start_md: 1563.6, end_md: 1613.7}
+- {well: SYN-08, target: RHOB, gap_length_m: 100, start_md: 1568.4, end_md: 1668.45}
+- {well: SYN-08, target: DTC, gap_length_m: 10, start_md: 1606.05, end_md: 1616.1}
+- {well: SYN-08, target: DTC, gap_length_m: 50, start_md: 1611.75, end_md: 1661.85}
+- {well: SYN-08, target: DTC, gap_length_m: 100, start_md: 1531.95, end_md: 1632.0}
+- {well: SYN-08, target: DTS, gap_length_m: 10, start_md: 1627.8, end_md: 1637.85}
+- {well: SYN-08, target: DTS, gap_length_m: 50, start_md: 1540.05, end_md: 1590.15}
+- {well: SYN-08, target: DTS, gap_length_m: 100, start_md: 1545.75, end_md: 1645.8}

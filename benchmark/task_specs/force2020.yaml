@@ -1,0 +1,11 @@
+# Task spec for FORCE 2020. Everyone uses the same tasks: the official split (98 train wells for fit;
+# leaderboard + hidden wells are tested). Wells and gap windows are resolved by
+# `python -m benchmark.make_tasks --dataset force2020 --write-spec` into force2020.windows.yaml (ids and
+# depths only, no curve values). Windows listed there are used as given; otherwise gaps are placed with
+# wmb.splits.place_gap and wmb.splits.gap_seed(seed, well, target, length).
+dataset: force2020
+seed: 2020
+split: official
+targets: [RHOB, DTC, DTS]
+scenarios: [missing_curve, gap]
+gap_lengths_m: [10, 50, 100]

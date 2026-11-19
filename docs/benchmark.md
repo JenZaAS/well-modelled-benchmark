@@ -1,24 +1,193 @@
-# Benchmark definition (draft for the team to agree)
+# Benchmark: the train station
 
-**Task:** hide one log, predict it from the others, and say how sure we are.
+Every team brings a **train** (a model). The **station** is this repo's
+benchmark: it gives every train the same tasks, hides the same depths,
+and scores the answers the same way.
+
+You do not invent your own test set, split, or metric names. You implement
+the fixed input/output contract, then run:
+
+```bash
+python -m benchmark.check_model template_linear   # does my train couple correctly?
+python -m benchmark.make_tasks --dataset force2020
+python -m benchmark.run --model template_linear --dataset force2020
+python -m benchmark.scoreboard
+```
+
+A short "how to bring your train" checklist lives in each workstream
+README and in [`workstreams/_template_model/`](../workstreams/_template_model/).
+The Python types are in `wmb.contract` and `wmb.contender`. See also
+[`src/wmb/INTERFACE.md`](../src/wmb/INTERFACE.md) and [`metrics.md`](metrics.md).
+
+## What a train receives and what it must return
+
+The station builds a **Task** and calls `predict_task(task)` (or, for older
+models, `predict(well, target)`).
+
+A Task contains:
+
+| Field | Meaning |
+|---|---|
+| `well_id` | Well name |
+| `depth` | Measured depth in metres, increasing, one value per sample |
+| `inputs` | pandas DataFrame of **canonical** curves (and a `DEPTH` column). Values may be NaN. The target curve is **not** a column, except that in the gap scenario the observed target is given separately (see below). |
+| `target` | Canonical name: `RHOB`, `DTC` or `DTS` |
+| `predict_mask` | Boolean array, same length as `depth`. `True` where the model must predict. |
+| `target_observed` | Same length as `depth`. NaN on `predict_mask`; elsewhere the measured target (gap scenario only). `None` for a whole missing curve. |
+| `scenario` | `"missing_curve"` or `"gap"` |
+| `gap_length_m` | `10`, `50` or `100` for a gap task; `None` otherwise |
+| `dataset`, `split`, `meta` | Provenance (e.g. FORCE `leaderboard` / `hidden`) |
+
+A **Prediction** must use the same depth index (same length as `task.depth`):
+
+| Field | Required? | Meaning |
+|---|---|---|
+| `p50` (or `mean`, they are aliases) | Yes | Point prediction, in the canonical unit of the target |
+| `p05` and `p95` | Optional | 5th and 95th percentiles (a 90% interval) |
+| `std` | Optional | One-sigma uncertainty. If you do not give `p05`/`p95`, the station treats the interval as Gaussian: 90% is `p50 ± 1.64485·std`, 50% is `p50 ± 0.67449·std`. |
+| `quantiles` | Optional | Dict such as `{0.05: ..., 0.50: ..., 0.95: ...}` |
+
+Units are the canonical ones from `wmb.datasets.canonical_curves.yaml`
+and `wmb.curves.UNITS`: **RHOB** in g/cm3 (g/cc), **DTC** and **DTS** in
+us/ft. Do not convert units yourself; the loader already has.
+
+The station validates the prediction before scoring: same length as
+depth, `p05 ≤ p50 ≤ p95` where all are finite, `std ≥ 0` where finite.
+NaN is allowed where you cannot predict. Clear `ValueError` messages
+explain a failed check. A broken train is skipped and recorded; it does
+not stop the other trains.
+
+## Targets
+
+For this first cut we predict three curves:
+
+| Target | Unit | Notes |
+|---|---|---|
+| RHOB | g/cm3 | Bulk density |
+| DTC | us/ft | Compressional slowness |
+| DTS | us/ft | Shear slowness (scarcer) |
+
+Allowed **inputs** are the other canonical curves that are present, plus
+depth: GR, RDEP, RMED, CALI, NPHI, PEF, and RHOB / DTC / DTS when they
+are not the target. A model must tolerate missing (NaN) inputs, and
+must declare `required_inputs` and `optional_inputs` (the older
+`inputs` list is treated as required). If a required curve is absent
+from a well, still return a Prediction (use NaN if you cannot predict);
+do not crash.
 
 ## Scenarios
-1. **Missing curve** (main): the target curve is removed from whole test wells; train on other wells. Split by whole wells (no leakage).
-2. **Gap filling:** random 20–50 m gaps masked inside test wells (`wmb.splits.gap_mask`).
-3. **Lithology classification:** FORCE 2020 labels, official train / leaderboard / hidden split, scored with the contest penalty matrix.
-4. **Fill every real gap (speed test):** every approach fills every real gap in the whole database on the same laptop CPU, and we time it. Matters most on the largest dataset.
 
-## Targets (first)
-RHOB, DTC and DTS first (DTS is the most often missing and the most useful). Then PEF and NPHI.
-Not porosity, Vshale or Sw computed by us; if used, take independent CPI curves.
+**A. Whole missing curve (`missing_curve`).** The target is hidden on
+the entire held-out well. `target_observed` is `None`. Score only at
+depths where a measured target value exists.
 
-## Datasets
-FORCE 2020 (118 wells, official split), Volve, NLOG (Netherlands), plus other open sets with a `wells.json`
-(see `data/README.md`). Diskos only if access is given; then only scores and aggregates are published.
+**B. Gap filling (`gap`).** Inside sections where the target is
+measured, the station hides one contiguous interval of **10 m**, **50 m**
+or **100 m**. The rest of the measured target is visible in
+`target_observed`. Each length is a separate task, so scores can be
+compared by gap size. Gaps are placed with a documented seed, fully
+inside a measured interval; they never start in a real hole.
 
-## Contenders
-Black (physics), blue (boosted trees), red (time-series foundation models). Every contender implements
-`wmb.contender.BaseContender`; the runner treats them all the same.
+Lithology classification and a "fill every real gap" speed test are
+later work; they are not in this cut.
 
-## Output
-`results/<contender>/<dataset>/<target>/scores.json` and one scoreboard (`python -m benchmark.scoreboard`).
+## Splits
+
+Always split by **whole wells**. No sample from a test well may appear
+in training.
+
+For FORCE 2020 we use the official split: the 98 **train** wells for
+`fit`, the **leaderboard** and **hidden** wells for testing. The exact
+well names, seeds and gap windows are in the committed files
+`benchmark/task_specs/force2020.yaml` and `force2020.windows.yaml`. Everyone uses those files, so
+every train sees the same tasks.
+
+```bash
+python -m benchmark.make_tasks --dataset force2020
+```
+
+writes the actual Task objects (arrays included) into the local cache
+(`cache_dir/tasks/…`, gitignored). If the yaml already lists wells and
+gap windows, that list is used and is not re-rolled. If a listed well
+is missing from your data, the command fails clearly.
+
+Score only where measured truth is finite **and** the model returned a
+finite `p50`. The number of scored samples is reported as `n`.
+
+## Metrics
+
+Defined in `wmb.scoring` and summarised in [`metrics.md`](metrics.md).
+All accuracy numbers are in the target's canonical unit.
+
+| Family | What we report | Better |
+|---|---|---|
+| **Accuracy** | MAE, RMSE, R² of `p50` vs truth | lower MAE/RMSE, higher R² |
+| **Uncertainty** | Coverage of the 90% interval, and of the 50% interval | close to 0.90 and 0.50 |
+| **Sharpness** | Mean width of the 90% interval (`p95 − p05`, or the Gaussian equivalent) | narrower, **only if coverage is close to 90%** |
+| **Optional** | CRPS (Gaussian when only `std` is given; otherwise from quantiles when available) and pinball at 5/50/95% | lower |
+| **Speed** | `fit_s`, `load_s` (constructing the model), `predict_s` (all test wells), `predict_s_per_well`, `predict_s_batch` (one batch of N wells), `samples_per_s`. Hardware (`machine`, Python, CPU count) is recorded. | lower time |
+
+Point-only trains (no `p05`/`p95` and no `std`) still get accuracy and
+speed. Uncertainty and sharpness are left blank and the scoreboard
+marks them as point-only (`has_uncertainty: false`).
+
+Older names `cover_1sigma` and `cover_2sigma` (mean ±1σ / ±2σ, ideals
+0.683 and 0.954) are still computed when `std` is present, so earlier
+results stay comparable.
+
+## How to run
+
+```bash
+python -m benchmark.run --list
+python -m benchmark.run --dataset synthetic --target RHOB
+python -m benchmark.run --model template_linear --dataset force2020 --scenario missing_curve --target RHOB
+python -m benchmark.run --model all --dataset force2020 --scenario all --target all
+python -m benchmark.scoreboard
+python -m benchmark.scoreboard --write
+```
+
+`--model` and the older `--contenders` flag are the same thing (a comma
+separated list, or `all`). Default dataset is `synthetic` (no real data
+needed). Default scenario is `missing_curve`, so existing scripts keep
+working.
+
+The runner builds a fresh model and times `fit` for every (model, target,
+scenario), so nothing seen in one gap length can leak into another, then
+predicts every matching task. Gaps are depth-continuous (no depth hole
+inside the interval). If one model raises, it is recorded as a failure and the
+next model runs. A workstream whose `contender.py` cannot be imported
+is skipped with a warning, as before.
+
+## Where results go
+
+Per-model files (gitignored):
+
+```
+results/<model>/<dataset>/<target>/<scenario>/scores.json
+```
+
+For `gap`, scenario is `gap_10`, `gap_50` or `gap_100`. Each run also
+writes a combined `results/runs/<timestamp>_<dataset>.json` and `.csv`
+(gitignored). `python -m benchmark.scoreboard` prints one table from
+all `scores.json` files, and `--write` updates
+`results/summary/scoreboard.md` (small; may be committed).
+
+## Adding a train
+
+1. Copy [`workstreams/_template_model/`](../workstreams/_template_model/)
+   or add a class to your own `workstreams/<team>/contender.py`.
+2. Set `name`, `workstream`, `required_inputs` / `optional_inputs`,
+   and `targets` if you only support some curves.
+3. Implement `fit(train_wells, target)` and `predict_task(task)`
+   (or the older `predict(well, target)`, which still works; the
+   station builds a `Well` from the Task, including `target_observed`
+   for gaps).
+4. Export the class in that file's `CONTENDERS` list.
+5. Add a `LICENSE.md` in the model folder and set `licence_name`, `licence_url` and
+   `licence_restrictions` (see [THIRD_PARTY.md](../THIRD_PARTY.md)). `check_model` warns if the file is missing.
+6. Run `python -m benchmark.check_model <your-name>` then a synthetic
+   `benchmark.run`. Then `make_tasks` and a real FORCE run when you are
+   ready.
+
+Do not edit `src/wmb/` or `benchmark/` to make your train pass; ask in
+the team chat if the contract needs a change.
