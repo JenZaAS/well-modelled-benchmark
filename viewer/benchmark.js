@@ -170,6 +170,11 @@
 
   // ---------- browser UI ----------
 
+  function wheelWindow(PU, win, ext, pixels, height, anchor, zoom, minSpan) {
+    return zoom ? PU.zoomAt(win, ext, anchor, Math.exp(Math.max(-6, Math.min(6, pixels * 0.003))), minSpan)
+      : PU.panBy(win, ext, pixels / height * (win.max - win.min), minSpan);
+  }
+
   const STD_SCALE = { RHOB: [1.65, 2.85], DTC: [140, 40], DTS: [240, 80] };
   const EMPTY_HELP = "No benchmark results found yet. Generate some with:\n\n" +
     "python -m benchmark.run --model template_linear --dataset force2020 --scenario all --target all\n" +
@@ -232,8 +237,11 @@
         <label>Scenario <select id="bm-scenario"></select></label>
         <label>Well <select id="bm-well"></select></label>
         <label>X scale <select id="bm-scale"><option value="auto">Auto</option><option value="std">Standard</option></select></label>
-        <button type="button" id="bm-reset">Reset depth</button>
+        <button type="button" id="bm-in">Zoom in</button>
+        <button type="button" id="bm-out">Zoom out</button>
+        <button type="button" id="bm-reset">Full depth</button>
       </div>
+      <small>Scroll or drag to pan; pinch on a trackpad or Ctrl/⌘ + scroll to zoom at the pointer.</small>
       <div id="bm-note"></div>
       <div id="bm-plot-wrap"><canvas id="bm-canvas"></canvas></div>
     </div>`;
@@ -340,13 +348,23 @@
         st.data = j.well;
         st.win = null;
         st.context = null;
+        st.ext = PU.recordedExtent(j.well.depth);
+        if (st.ext && st.ext.min === st.ext.max) st.ext = {min: st.ext.min - 0.5, max: st.ext.max + 0.5};
+        st.step = PU.medianStep(j.well.depth);
         $("bm-note").textContent = `${st.run.contender} · ${st.run.dataset} · ${st.run.target} · ${st.run.scenario} · ${st.well}`;
-        try {
+        if (j.well.context) {
+          st.context = {d: j.well.depth, c: j.well.context};
+        } else try {
           const packed = await getJson("/api/well?dataset=" + encodeURIComponent(st.run.dataset) +
             "&well=" + encodeURIComponent(j.well.well_id || st.well));
           if (token !== st.token) return;
           st.context = packed;
-        } catch (e) { st.context = null; }
+        } catch (e) { if (token !== st.token) return; }
+        if (!contextTracks(st.run.target, st.context && st.context.c).length) {
+          $("bm-note").textContent += " · No measured context tracks available for this well.";
+        }
+        st.contextStep = st.context && st.context.d !== j.well.depth && st.context.d
+          ? PU.medianStep(st.context.d) : st.step;
       } catch (e) {
         if (token !== st.token) return;
         $("bm-note").textContent = "Could not load this well: " + e.message;
@@ -361,8 +379,6 @@
     $("bm-scale").addEventListener("change", (e) => { st.scale = e.target.value; draw(); });
     for (const k of ["dataset"]) $("bm-f-" + k).addEventListener("change", renderSelectors);
 
-    function extentOf(w) { return PU.recordedExtent(w.depth); }
-    function minSpan(w, ext) { return PU.minSpanFor(PU.niceStep((ext.max - ext.min) || 1), ext); }
 
     function draw() {
       if (pane.hidden) return;
@@ -380,9 +396,8 @@
       const w = st.data;
       if (!w || !w.depth || !w.depth.length) return;
 
-      const series = [w.true, w.p50];
-      if (!st.win) st.win = PU.defaultWindow(w.depth, series);
-      const ext = extentOf(w);
+      if (!st.ext) return;
+      if (!st.win) st.win = PU.resetWindow(st.ext);
       const dmin = st.win.min, dmax = st.win.max;
       const padTop = 44, padBot = 8, depthW = 52, gap = 6;
       const plotTop = padTop, plotH = H - padTop - padBot;
@@ -390,7 +405,7 @@
       const yOf = (d) => plotTop + (d - dmin) / (dmax - dmin) * plotH;
       st.geom = { plotTop, plotH };
       const ctxTracks = contextTracks(st.run.target, (st.context && st.context.c) || {}, 3);
-      const maxGap = PU.medianStep(w.depth) * 2;
+      const maxGap = st.step * 2;
       const [i0, i1] = PU.visibleRange(w.depth, dmin, dmax);
       const rows = Math.max(1, Math.floor(plotH));
 
@@ -424,7 +439,9 @@
       function strokeSeries(depths, arr, color, xmin, xmax, x, tw, log) {
         ctx.strokeStyle = color;
         ctx.lineWidth = 1;
-        const segs = PU.buildSegments(depths, arr, { log: !!log, maxGap, i0, i1 });
+        const [start, end] = depths === w.depth ? [i0, i1] : PU.visibleRange(depths, dmin, dmax);
+        const segs = PU.buildSegments(depths, arr, { log: !!log, i0: start, i1: end,
+          maxGap: depths === w.depth ? maxGap : 2 * st.contextStep });
         for (const seg of segs) {
           const idx = PU.decimateRun(seg, depths, arr, dmin, dmax, rows);
           ctx.beginPath();
@@ -554,8 +571,8 @@
       if (!st.data || !st.win || !st.geom) return;
       e.preventDefault();
       const pixels = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? st.geom.plotH : 1);
-      const ext = extentOf(st.data);
-      st.win = PU.zoomAt(st.win, ext, depthAtEvent(e), Math.pow(1.0015, pixels), minSpan(st.data, ext));
+      st.win = wheelWindow(PU, st.win, st.ext, pixels, st.geom.plotH,
+        Math.max(st.win.min, Math.min(st.win.max, depthAtEvent(e))), e.ctrlKey || e.metaKey, st.step);
       draw();
     }, { passive: false });
     cvEl.addEventListener("pointerdown", (e) => {
@@ -565,10 +582,9 @@
       cvEl.classList.add("dragging");
     });
     cvEl.addEventListener("pointermove", (e) => {
-      if (!st.drag || st.drag.id !== e.pointerId || !st.geom) return;
-      const ext = extentOf(st.data);
+      if (!st.drag || st.drag.id !== e.pointerId || !st.geom || !st.data) return;
       const dd = -(e.clientY - st.drag.y) / st.geom.plotH * (st.drag.win.max - st.drag.win.min);
-      st.win = PU.panBy(st.drag.win, ext, dd, minSpan(st.data, ext));
+      st.win = PU.panBy(st.drag.win, st.ext, dd, st.step);
       draw();
     });
     function endDrag(e) {
@@ -581,6 +597,13 @@
     cvEl.addEventListener("pointerup", endDrag);
     cvEl.addEventListener("pointercancel", endDrag);
     cvEl.addEventListener("dblclick", () => { st.win = null; draw(); });
+    for (const [id, factor] of [["bm-in", 0.5], ["bm-out", 2]]) {
+      $(id).addEventListener("click", () => {
+        if (!st.data || !st.win) return;
+        st.win = PU.zoomAt(st.win, st.ext, (st.win.min + st.win.max) / 2, factor, st.step);
+        draw();
+      });
+    }
     $("bm-reset").addEventListener("click", () => { st.win = null; draw(); });
     window.addEventListener("resize", draw);
 
@@ -590,5 +613,5 @@
     return draw;
   }
 
-  return { parseTabHash, tabHash, createTabs, METRICS, sharpnessOf, filterRows, barFraction, bandArrays, gapIntervals, contextTracks, uniq, mount };
+  return { parseTabHash, tabHash, createTabs, METRICS, sharpnessOf, filterRows, barFraction, bandArrays, gapIntervals, contextTracks, wheelWindow, uniq, mount };
 });

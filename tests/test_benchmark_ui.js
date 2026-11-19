@@ -1,6 +1,17 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const B = require("../viewer/benchmark.js");
+const PU = require("../viewer/plot_utils.js");
+
+test("benchmark depth zoom anchors at pointer and scroll reaches both ends", () => {
+  const ext = { min: 100, max: 4100 };
+  let win = B.wheelWindow(PU, ext, ext, -200, 400, 1100, true, 0.15);
+  assert.ok(Math.abs((1100 - win.min) / (win.max - win.min) - 0.25) < 1e-10);
+  for (let i = 0; i < 10; i++) win = B.wheelWindow(PU, win, ext, -2000, 400, 1100, true, 0.15);
+  assert.ok(Math.abs(win.max - win.min - 0.15) < 1e-9);
+  assert.equal(B.wheelWindow(PU, win, ext, 1e10, 400, 1100, false, 0.15).max, ext.max);
+  assert.equal(B.wheelWindow(PU, win, ext, -1e10, 400, 1100, false, 0.15).min, ext.min);
+});
 
 const IDS = ["viewer", "benchmark"];
 
@@ -83,8 +94,8 @@ test("Benchmark mounts once and ignores stale well lists after switching runs", 
     },
   };
   const settle = () => new Promise((resolve) => setImmediate(resolve));
-  B.mount(pane, {});
-  B.mount(pane, {});
+  B.mount(pane, PU);
+  B.mount(pane, PU);
   assert.equal(pending.length, 1);
   pending[0].respond({ rows: ["m1", "m2"].map((contender) => ({
     contender, dataset: "ds", target: "RHOB", scenario: "missing_curve",
@@ -108,8 +119,10 @@ test("Benchmark mounts once and ignores stale well lists after switching runs", 
   assert.equal(pane.innerHTML, "existing pane");
   assert.equal(pending.length, 4);
   assert.equal(resize.length, 1);
-  pending[3].respond({ well: {} });
+  pending[3].respond({ well: { well_id: 'new-well', depth: [1, 2], context: {GR: [3, 4], RDEP: [1, 2]} } });
   await settle();
+  assert.equal(pending.length, 4, 'embedded logs do not require a separate well lookup');
+  assert.doesNotMatch(elements.get('#bm-note').textContent, /unavailable|could not/i);
 });
 
 test("contextTracks picks up to 3 present logs excluding the target", () => {

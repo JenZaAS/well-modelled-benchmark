@@ -118,6 +118,9 @@ def prediction_payload(base: dict, key: str, tasks: list[Task], preds: list[Pred
             "p05": _arr(p.p05) if has_band else None, "p95": _arr(p.p95) if has_band else None,
             "std": None if has_band else _arr(p.std),
             "gaps": _gap_intervals(t.depth, t.predict_mask),
+            "context": {curve: _arr(values) for curve in ("GR", "CALI", "RDEP")
+                        if curve != t.target and (values := truth.get((t.well_id, curve))) is not None
+                        and np.isfinite(values).any()},
         })
     return {"contender": base.get("contender"), "test": base.get("test"), "dataset": base["dataset"],
             "target": base["target"], "scenario": key, "wells": wells}

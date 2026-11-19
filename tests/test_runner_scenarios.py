@@ -31,6 +31,13 @@ def test_missing_curve_writes_scores_in_both_layouts(tmp_path):
     assert new == old and new["has_uncertainty"] and 0.8 < new["cover_90"] <= 1 and new["hardware"]["cpu_count"]
     assert new["samples_per_s"] and new["predict_s_batch"] is not None and new["load_s"] is not None
     assert list((tmp_path / "res/runs").glob("*_synthetic.json"))
+    payload = json.loads((tmp_path / "res/template_linear/synthetic/RHOB/missing_curve/predictions.json").read_text())
+    _, wells = mt.load_wells("synthetic", mt.load_spec("synthetic"))
+    sources = {well.name: well for well in wells}
+    for row in payload["wells"]:
+        source = sources[row["well_id"]]
+        assert row["depth"] == runner._arr(source.depth)
+        assert row["context"] == {c: runner._arr(source.curves[c]) for c in ("GR", "RDEP")}
 
 
 def test_gap_scenario_writes_each_length(tmp_path):
@@ -50,6 +57,8 @@ def test_gap_rejects_non_target_curve(tmp_path):
 def test_older_core_target_still_runs_for_missing_curve(tmp_path):
     r = run_cli(tmp_path, "--target", "GR", "--model", "red_floor_train_mean")
     assert r.returncode == 0 and (tmp_path / "res/red_floor_train_mean/synthetic/GR/missing_curve/scores.json").exists()
+    payload = json.loads((tmp_path / "res/red_floor_train_mean/synthetic/GR/missing_curve/predictions.json").read_text())
+    assert all("GR" not in row["context"] for row in payload["wells"])
 
 
 class Raises(BaseContender):
