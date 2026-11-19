@@ -24,7 +24,7 @@ from wmb.model_spec import YAML_NAME, ModelSpec, load_model_spec, yaml_candidate
 
 CHECK_SPEC = {"dataset": "synthetic", "seed": 2020, "gap_lengths_m": [10]}
 
-LICENSE_NAMES = ("LICENSE", "LICENSE.md", "LICENCE", "LICENCE.md")
+LICENSE_NAMES = ("LICENSE.md", "LICENSE", "LICENSE.txt", "LICENCE.md", "LICENCE", "LICENCE.txt")
 
 
 def _yaml_class_mismatch(model, spec: ModelSpec) -> list[str]:
@@ -39,29 +39,81 @@ def _yaml_class_mismatch(model, spec: ModelSpec) -> list[str]:
     return out
 
 
-def workstream_folder(model) -> Path | None:
-    """Directory that should hold LICENSE.md: workstreams/<workstream>, else the class module folder."""
-    ws = getattr(model, "workstream", None)
-    if ws:
-        folder = REPO / "workstreams" / str(ws)
-        if folder.is_dir():
-            return folder
+def _class_folder(model) -> Path | None:
+    """Directory of the model's wrapper class file."""
+    cls = model if isinstance(model, type) else type(model)
+    path = None
     try:
-        path = inspect.getfile(type(model))
+        path = inspect.getfile(cls)
     except TypeError:
-        return None
-    if path and path != "<stdin>":
+        mod = sys.modules.get(getattr(cls, "__module__", ""))
+        path = getattr(mod, "__file__", None)
+    if path and not str(path).startswith("<"):
         return Path(path).resolve().parent
     return None
 
 
-def missing_licence_file(model) -> str | None:
-    folder = workstream_folder(model)
+def _rel(path: Path) -> str:
+    path = path.resolve()
+    try:
+        return str(path.relative_to(REPO)).replace("\\", "/")
+    except ValueError:
+        return str(path)
+
+
+def _licence_in(folder: Path | None) -> Path | None:
     if folder is None:
-        return "could not find a workstream folder; add LICENSE.md next to the model"
-    if not any((folder / name).is_file() for name in LICENSE_NAMES):
-        return f"{folder.relative_to(REPO) if folder.is_relative_to(REPO) else folder} has no LICENSE or LICENSE.md"
+        return None
+    for name in LICENSE_NAMES:
+        p = folder / name
+        if p.is_file():
+            return p
     return None
+
+
+def model_folder(model) -> Path | None:
+    """Folder that should hold LICENSE.md: the wrapper / model.yaml directory, e.g. workstreams/<team>/models/<name>/."""
+    return _class_folder(model)
+
+
+def workstream_folder(model) -> Path | None:
+    """Team folder workstreams/<workstream>, inferred from the class path when possible."""
+    folder = _class_folder(model)
+    if folder is not None:
+        parts = folder.parts
+        if "workstreams" in parts:
+            i = parts.index("workstreams")
+            if i + 1 < len(parts):
+                return Path(*parts[: i + 2])
+    ws = getattr(model, "workstream", None)
+    if ws:
+        candidate = REPO / "workstreams" / str(ws)
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def licence_warnings(model) -> list[str]:
+    """Licence-file notes (warnings only, never a hard fail). Prefer the model folder; the team folder is a soft fallback."""
+    model_dir = model_folder(model)
+    team_dir = workstream_folder(model)
+    hint = "add one with the licence name, URL and a one-line summary of restrictions"
+    if _licence_in(model_dir):
+        return []
+    same = model_dir is not None and team_dir is not None and model_dir.resolve() == team_dir.resolve()
+    if not same and _licence_in(team_dir):
+        where = _rel(model_dir) if model_dir is not None else "the model folder (next to the wrapper / model.yaml)"
+        return [f"LICENSE.md is in {_rel(team_dir)}, not the model folder {where}; "
+                f"move or copy it next to the model ({hint})"]
+    if model_dir is not None:
+        return [f"{_rel(model_dir)} has no LICENSE.md, LICENSE or LICENSE.txt; {hint}"]
+    return [f"could not find the model folder; add LICENSE.md next to the wrapper / model.yaml; {hint}"]
+
+
+def missing_licence_file(model) -> str | None:
+    """First licence-file warning, or None if the model folder already has a licence file."""
+    notes = licence_warnings(model)
+    return notes[0] if notes else None
 
 
 
@@ -107,9 +159,7 @@ def check_contender(factory) -> tuple[str, list[str]]:
             "class metadata (targets, required_inputs, optional_inputs, licence_name) was used instead")
         if not (getattr(model, "required_inputs", None) or getattr(model, "inputs", None)):
             warnings.append("required_inputs is empty: declare the curves your model needs (and optional_inputs)")
-    missing = missing_licence_file(model)
-    if missing:
-        warnings.append(missing + "; add one with the licence name, URL and a one-line summary of restrictions")
+    warnings += licence_warnings(model)
     if not getattr(model, "licence_name", None):
         warnings.append("licence_name is empty: set licence_name, licence_url and licence_restrictions on the class")
     targets = [t for t in TARGET_CURVES if model.supports(t)]

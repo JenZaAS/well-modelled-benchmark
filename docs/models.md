@@ -14,7 +14,7 @@ To add a model, start with **[Build your model](build-your-model.md)**:
 | TTM r2 (IBM Granite) | red | Apache-2.0 | from ~1M; exogenous mixer when fine-tuned |
 
 Weights are downloaded to the local Hugging Face cache (`tools/laptop_setup/`), never committed.
-Each model folder needs a `LICENSE.md` and licence fields on the class (see `THIRD_PARTY.md`).
+Each model folder needs a `LICENSE.md` (or `LICENSE` / `LICENSE.txt`) and licence fields on the class (see `THIRD_PARTY.md`). `python -m benchmark.check_model` looks in that folder; a licence only in the team folder is a warning, not a failure.
 Restricted licences (including a modified MIT with a company-revenue limit) may be included if
 they are declared. Users and agents must verify a model's licence fits their use before running
 or redistributing it.
