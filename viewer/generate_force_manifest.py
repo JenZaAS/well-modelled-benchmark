@@ -165,6 +165,69 @@ def completeness_payload(row: pd.Series) -> dict:
     }
 
 
+def sodir_placement(hit: dict) -> tuple[dict, str | None]:
+    """Placement fields for a Sodir hit (ED50 lat/lon -> WGS84 via EPSG:1613)."""
+    note = None
+    if hit["datum"] and "ED50" not in hit["datum"].upper():
+        note = f"Sodir datum is {hit['datum']!r}, treated as ED50"
+    lat, lon = ed50_ll_to_wgs84(hit["lat_ed50"], hit["lon_ed50"])
+    return {
+        "lat": round(lat, 6),
+        "lon": round(lon, 6),
+        "crs": "EPSG:4326",
+        "x": hit["easting"],
+        "y": hit["northing"],
+        "xy_crs": f"EPSG:230{hit['utm_zone']}" if hit["utm_zone"] else "EPSG:23031",
+        "coord_source": "sodir_factpages",
+        "coord_source_name": hit["sodir_name"],
+        "coord_source_table": hit["source_table"],
+        "coord_source_crs": "EPSG:4230",
+        "coord_transform": "EPSG:1613",
+    }, note
+
+
+def place_well(
+    name: str, xy: tuple[float, float] | None, sodir: dict[str, dict]
+) -> tuple[dict, str, str | None]:
+    """Coordinate fields, report bucket and optional note for one FORCE well.
+
+    Sodir name match first, then FORCE X_LOC/Y_LOC as ED50 / UTM 31N.
+    """
+    hit = lookup_sodir(name, sodir)
+    if hit and hit["lat_ed50"] is not None and hit["lon_ed50"] is not None:
+        fields, note = sodir_placement(hit)
+        return fields, "placed_sodir", note
+    if xy is not None:
+        e, n = xy
+        lat, lon = utm_ed50_to_wgs84(e, n, zone=31, northern=True)
+        parent = parent_well_name(name)
+        parent_hit = lookup_sodir(parent, sodir) if parent else None
+        note = (
+            "No Sodir wellbore name match. Placed from median FORCE X_LOC/Y_LOC "
+            "assuming ED50 / UTM zone 31N (EPSG:23031), then EPSG:1613 to WGS84."
+        )
+        if parent_hit:
+            note += f" Closest Sodir wellbore (not used for coordinates): {parent_hit['sodir_name']}."
+        return {
+            "lat": round(lat, 6),
+            "lon": round(lon, 6),
+            "crs": "EPSG:4326",
+            "x": e,
+            "y": n,
+            "xy_crs": "EPSG:23031",
+            "coord_source": "force_xy_utm",
+            "coord_source_crs": "EPSG:23031",
+            "coord_transform": "EPSG:1613",
+            "coord_note": note,
+        }, "placed_utm_fallback", note
+    return {
+        "lat": None,
+        "lon": None,
+        "crs": "EPSG:4326",
+        "coord_source": None,
+        "coord_note": "No Sodir name match and no FORCE X_LOC/Y_LOC.",
+    }, "unplaced", None
+
 def build_manifest(
     *,
     force_dir: Path,
@@ -206,66 +269,11 @@ def build_manifest(
             "completeness": completeness_payload(row),
         }
 
-        hit = lookup_sodir(name, sodir)
-        if hit and hit["lat_ed50"] is not None and hit["lon_ed50"] is not None:
-            if hit["datum"] and "ED50" not in hit["datum"].upper():
-                report["notes"].append(f"{name}: Sodir datum is {hit['datum']!r}, treated as ED50")
-            lat, lon = ed50_ll_to_wgs84(hit["lat_ed50"], hit["lon_ed50"])
-            rec.update(
-                {
-                    "lat": round(lat, 6),
-                    "lon": round(lon, 6),
-                    "crs": "EPSG:4326",
-                    "x": hit["easting"],
-                    "y": hit["northing"],
-                    "xy_crs": f"EPSG:230{hit['utm_zone']}" if hit["utm_zone"] else "EPSG:23031",
-                    "coord_source": "sodir_factpages",
-                    "coord_source_name": hit["sodir_name"],
-                    "coord_source_table": hit["source_table"],
-                    "coord_source_crs": "EPSG:4230",
-                    "coord_transform": "EPSG:1613",
-                }
-            )
-            report["placed_sodir"].append(name)
-        elif name in xy:
-            e, n = xy[name]
-            lat, lon = utm_ed50_to_wgs84(e, n, zone=31, northern=True)
-            parent = parent_well_name(name)
-            parent_hit = lookup_sodir(parent, sodir) if parent else None
-            note = (
-                "No Sodir wellbore name match. Placed from median FORCE X_LOC/Y_LOC "
-                "assuming ED50 / UTM zone 31N (EPSG:23031), then EPSG:1613 to WGS84."
-            )
-            if parent_hit:
-                note += f" Closest Sodir wellbore (not used for coordinates): {parent_hit['sodir_name']}."
-            rec.update(
-                {
-                    "lat": round(lat, 6),
-                    "lon": round(lon, 6),
-                    "crs": "EPSG:4326",
-                    "x": e,
-                    "y": n,
-                    "xy_crs": "EPSG:23031",
-                    "coord_source": "force_xy_utm",
-                    "coord_source_crs": "EPSG:23031",
-                    "coord_transform": "EPSG:1613",
-                    "coord_note": note,
-                }
-            )
-            report["placed_utm_fallback"].append(name)
+        fields, kind, note = place_well(name, xy.get(name), sodir)
+        rec.update(fields)
+        report[kind].append(name)
+        if note:
             report["notes"].append(f"{name}: {note}")
-        else:
-            rec.update(
-                {
-                    "lat": None,
-                    "lon": None,
-                    "crs": "EPSG:4326",
-                    "coord_source": None,
-                    "coord_note": "No Sodir name match and no FORCE X_LOC/Y_LOC.",
-                }
-            )
-            report["unplaced"].append(name)
-
         wells_out.append(rec)
 
     manifest = {

@@ -16,6 +16,19 @@ STANDARD_CURVES = ["GR", "RDEP", "RMED", "CALI", "RHOB", "NPHI", "PEF", "DTC", "
 INTERVAL_CURVES = ["GR", "RDEP", "RHOB", "DTC"]
 LITH_KEY = "LITH"
 
+# Common LAS mnemonics tried when the exact standard name is absent.
+LAS_ALIASES = {
+    "GR": ("GRC", "GR_1", "GAMMA"),
+    "RDEP": ("ILD", "RT", "LLD", "RD", "AT90", "RLA5"),
+    "RMED": ("ILM", "LLS", "RM", "AT60"),
+    "CALI": ("CAL", "CALI_1", "HCAL"),
+    "RHOB": ("RHOZ", "DEN", "RHOB_1"),
+    "NPHI": ("NPOR", "TNPH", "NEU", "NPHI_1"),
+    "PEF": ("PEFZ",),
+    "DTC": ("DT", "DTCO", "AC", "DT24"),
+    "DTS": ("DTSM", "DTSH", "DT4S"),
+}
+
 PRECISION = {
     "DEPTH": 2,
     "GR": 1,
@@ -166,12 +179,26 @@ def try_read_las(path: Path, curve_map: dict[str, str]) -> pd.DataFrame:
     """Read one LAS file if lasio is installed; otherwise raise ImportError."""
     import lasio  # type: ignore
 
-    las = lasio.read(str(path), ignore_data_index_error=True)
-    data = {"DEPTH": las.depth}
+    las = lasio.read(str(path), ignore_header_errors=True, engine="normal")
+    data = {"DEPTH": las.index}
     # index mnemonics case-insensitively
     present = {str(c.mnemonic).upper(): c.mnemonic for c in las.curves}
+
+    def resolve(std: str, src: str) -> str | None:
+        candidates = [src, *LAS_ALIASES.get(std, ())]
+        for cand in candidates:
+            u = str(cand).upper()
+            if u in present:
+                return present[u]
+            # Prefixed mnemonics such as LFP_GR or WLC_DT, not e.g. VSHGR.
+            tail = "_" + u
+            for name, orig in present.items():
+                if name.endswith(tail):
+                    return orig
+        return None
+
     for std, src in curve_map.items():
-        key = present.get(str(src).upper())
+        key = resolve(std, src)
         if key is not None:
             data[std] = las[key]
     if "LITH" not in data:

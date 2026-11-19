@@ -21,6 +21,8 @@ def normalize_well_name(name: str) -> str:
 def name_aliases(name: str) -> list[str]:
     """Ordered unique aliases used when looking up a wellbore name."""
     n = normalize_well_name(name)
+    # folder-safe 15_9-F-1 -> 15/9-F-1
+    n = re.sub(r"^(\d+)_(\d+)(?=-)", r"\1/\2", n)
     out: list[str] = []
 
     def add(x: str) -> None:

@@ -144,41 +144,6 @@ def discover_for_viewer() -> list[dict[str, Any]]:
     return rows
 
 
-def _scan_las_manifest(root: Path, key: str, label: str) -> dict[str, Any] | None:
-    files = sorted(p for p in root.rglob("*") if p.is_file() and p.suffix.lower() == ".las")
-    if not files:
-        return None
-    groups: dict[str, list[Path]] = {}
-    root_res = root.resolve()
-    for f in files:
-        parent = f.parent.resolve()
-        name = parent.name if parent != root_res else f.stem
-        groups.setdefault(name, []).append(f)
-    wells = []
-    for name, flist in groups.items():
-        wells.append(
-            {
-                "name": name,
-                "files": [{"path": f.relative_to(root).as_posix(), "format": "las"} for f in flist],
-            }
-        )
-    return {
-        "manifest_version": 1,
-        "dataset": {
-            "id": key,
-            "name": label,
-            "licence": "",
-            "source_url": "",
-            "credit": "",
-            "depth_units": "m",
-            "curve_map": {},
-        },
-        "wells": wells,
-        "_data_root": str(root),
-        "_generated": True,
-    }
-
-
 def _load_json_manifest(root: Path) -> dict[str, Any] | None:
     for name in ("wells.json", "wells.manifest.json"):
         path = root / name
@@ -191,11 +156,29 @@ def _load_json_manifest(root: Path) -> dict[str, Any] | None:
     return None
 
 
-def load_dataset_manifest(key: str, path: Path, label: str) -> dict[str, Any] | None:
+def load_dataset_manifest(
+    key: str, path: Path, label: str, notes: list[str] | None = None
+) -> dict[str, Any] | None:
+    """wells.json when present, else an auto-built (cached) manifest; never raises for missing deps."""
+    _ensure_src_on_path()
+    from wmb import viewer_manifest as vm
+
+    notes = notes if notes is not None else []
     found = _load_json_manifest(path)
     if found is not None:
+        vm.enrich_unplaced(found, notes)
         return found
-    return _scan_las_manifest(path, key, label)
+    try:
+        manifest = vm.auto_manifest(key, path, label, notes)
+    except Exception as exc:
+        notes.append(f"could not build a manifest: {type(exc).__name__}: {exc}")
+        return None
+    if manifest is None:
+        return None
+    manifest = dict(manifest)
+    manifest["_data_root"] = str(path)
+    manifest["_generated"] = True
+    return manifest
 
 
 def _maybe_place(well: dict) -> None:
@@ -224,7 +207,10 @@ def wells_from_manifest(manifest: dict[str, Any], key: str) -> tuple[list[dict],
         overall = comp.get("overall")
         if overall is not None:
             try:
-                overall = round(float(overall) * (100 if float(overall) <= 1 else 1), 1)
+                overall = float(overall)
+                if overall <= 1 and not (key == "force2020" and manifest.get("_generated")):
+                    overall *= 100
+                overall = round(overall, 1)
             except (TypeError, ValueError):
                 overall = None
         has_dts = False
@@ -301,6 +287,7 @@ class ViewerState:
         self.availability = discover_for_viewer()
         self._manifests: dict[str, dict[str, Any] | None] = {}
         self._csv_frames: dict[str, Any] = {}
+        self.notes: dict[str, list[str]] = {}
         self._lock = threading.Lock()
 
     def manifest_for(self, key: str) -> dict[str, Any] | None:
@@ -312,9 +299,11 @@ class ViewerState:
             with self._lock:
                 self._manifests[key] = None
             return None
-        manifest = load_dataset_manifest(key, Path(row["path"]), row["name"])
+        notes: list[str] = []
+        manifest = load_dataset_manifest(key, Path(row["path"]), row["name"], notes)
         with self._lock:
             self._manifests[key] = manifest
+            self.notes[key] = list(dict.fromkeys(notes))
         return manifest
 
     def map_payload(self) -> dict[str, Any]:
@@ -336,10 +325,15 @@ class ViewerState:
             }
             if row["status"] == "available" and row["role"] == "wells":
                 manifest = self.manifest_for(row["key"])
+                notes = "; ".join(self.notes.get(row["key"], []))
                 if manifest is None:
-                    info["note"] = row["note"] or "no wells.json, and no LAS files to scan"
+                    info["note"] = notes or row["note"] or "no wells.json, and no LAS files to scan"
                     info["status"] = "available_no_wells"
                 else:
+                    if notes:
+                        info["note"] = notes
+                    elif manifest.get("_generated"):
+                        info["note"] = "wells generated at runtime (cached)"
                     ds = manifest.get("dataset") or {}
                     info["id"] = ds.get("id") or row["key"]
                     info["licence"] = ds.get("licence") or ""
@@ -371,7 +365,7 @@ class ViewerState:
             "live": True,
         }
 
-    def pack_logs(self, key: str, well_name: str, max_points: int = 2000) -> dict[str, Any]:
+    def pack_logs(self, key: str, well_name: str, max_points: int = 20000) -> dict[str, Any]:
         manifest = self.manifest_for(key)
         if manifest is None:
             raise FileNotFoundError(f"No manifest for dataset {key}")
@@ -383,11 +377,15 @@ class ViewerState:
 
         dataset = manifest["dataset"]
         data_root = Path(manifest["_data_root"])
-        cache_key = key
+        split = well.get("split") if key == "force2020" and manifest.get("_generated") else None
+        cache_key = f"{key}:{split}" if split else key
         with self._lock:
             frames = self._csv_frames.get(cache_key)
         if frames is None:
-            frames = load_csv_groups(manifest)
+            sub = manifest
+            if split:
+                sub = {**manifest, "wells": [w for w in manifest["wells"] if w.get("split") == split]}
+            frames = load_csv_groups(sub)
             with self._lock:
                 self._csv_frames[cache_key] = frames
         frame = load_well_frame(well, dataset, data_root, frames)
@@ -450,6 +448,12 @@ class ViewerHandler(BaseHTTPRequestHandler):
             if not HTML_PATH.is_file():
                 raise FileNotFoundError(f"Missing {HTML_PATH}")
             _send(self, 200, HTML_PATH.read_bytes(), "text/html; charset=utf-8")
+            return
+        if path == "/plot_utils.js":
+            helper = VIEWER_DIR / "plot_utils.js"
+            if not helper.is_file():
+                raise FileNotFoundError(f"Missing {helper}")
+            _send(self, 200, helper.read_bytes(), "application/javascript; charset=utf-8")
             return
         if path.startswith("/vendor/"):
             rel = path[len("/vendor/") :]
