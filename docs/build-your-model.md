@@ -25,7 +25,7 @@ In that copy of `contender.py`, rename the class and set `name` (unique in the r
 
 Fill `model.yaml` in the model folder: `name`, `licence`, and for each target the `required` and `optional` input curves (canonical names such as `GR`, `DTC`, `RHOB`; do not list `DEPTH`). See [models.md](models.md).
 
-Add `LICENSE.md` in the model folder with the licence name, URL, and a one-line summary of restrictions. `python -m benchmark.check_model` looks for `LICENSE.md` in `workstreams/<team>/`, so keep a licence file there as well if one is not already present. Set `licence_name`, `licence_url` and `licence_restrictions` on the class. Check that the licence fits your use before you run or share the model ([THIRD_PARTY.md](../THIRD_PARTY.md)).
+Add `LICENSE.md` in the model folder (next to the wrapper and `model.yaml`) with the licence name, URL, and a one-line summary of restrictions. `python -m benchmark.check_model` looks there (`LICENSE.md`, `LICENSE` or `LICENSE.txt`). A file only in the team folder still passes, with a warning asking you to move it next to the model. Set `licence_name`, `licence_url` and `licence_restrictions` on the class. Check that the licence fits your use before you run or share the model ([THIRD_PARTY.md](../THIRD_PARTY.md)).
 
 ## 4. Register it
 
