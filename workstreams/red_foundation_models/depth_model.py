@@ -22,6 +22,11 @@ def _segments(depth):
 
 class DepthForecaster(BaseContender):
     workstream = "red_foundation_models"
+    targets = ["RHOB", "DTC", "DTS"]
+    # Depth is the only hard requirement: other core logs are covariates when present.
+    # LITH is used only with facies=True, which the benchmark does not enable.
+    required_inputs = ["DEPTH"]
+    optional_inputs = list(CORE)
     inputs = [*CORE, "LITH"]
     context = 256
     horizon = 32

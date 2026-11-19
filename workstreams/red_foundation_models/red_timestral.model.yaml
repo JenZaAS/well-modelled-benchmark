@@ -1,0 +1,15 @@
+# Inputs of red_timestral per target (canonical names). DEPTH is always present; do not list it.
+# No log is required: the depth adapter uses visible target flanks (gap) or training
+# demonstrations (missing_curve), with any other core logs as covariates when present.
+name: red_timestral
+licence: Modified MIT (weights); Apache-2.0 (inference code)
+targets:
+  RHOB:
+    required: []
+    optional: [GR, RDEP, RMED, CALI, NPHI, PEF, DTC, DTS]
+  DTC:
+    required: []
+    optional: [GR, RDEP, RMED, CALI, RHOB, NPHI, PEF, DTS]
+  DTS:
+    required: []
+    optional: [GR, RDEP, RMED, CALI, RHOB, NPHI, PEF, DTC]
