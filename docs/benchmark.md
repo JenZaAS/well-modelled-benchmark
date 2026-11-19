@@ -191,3 +191,5 @@ all `scores.json` files, and `--write` updates
 
 Do not edit `src/wmb/` or `benchmark/` to make your train pass; ask in
 the team chat if the contract needs a change.
+
+An optional per-model folder layout (`workstreams/<team>/models/<name>/`) is described in [moving-models.md](moving-models.md). Existing `contender.py` registration stays valid; move your own files only when you are ready.
