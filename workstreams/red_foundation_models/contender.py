@@ -1,16 +1,12 @@
-"""Red team: time-series foundation models (Chronos-2, MOMENT, TTM).
-
-PLACEHOLDER so the benchmark runs end to end: predicts the training mean with the
-training spread as sigma (the 'know nothing' floor every real model must beat).
-TODO (red team): add Chronos2Contender / MomentContender / TTMContender here, same
-interface. Weights load from the Hugging Face cache (HF_HOME under FH2026_CACHE),
-never from the repo. Ideas and settings: docs/models.md and tools/laptop_setup/.
-"""
+"""Red team contenders. Enable optional foundation models by name before discovery."""
 from __future__ import annotations
+
+import os
 
 import numpy as np
 
 from wmb.contender import BaseContender, Prediction
+from .depth_model import DepthForecaster
 
 
 class TrainMeanFloor(BaseContender):
@@ -25,4 +21,25 @@ class TrainMeanFloor(BaseContender):
         return Prediction(np.full(n, self.mu), np.full(n, self.sd))
 
 
-CONTENDERS = [TrainMeanFloor]
+class Chronos2(DepthForecaster):
+    name = "red_chronos2"
+
+    @staticmethod
+    def load_backend():
+        from .chronos_backend import load
+        return load()
+
+
+class Timestral(DepthForecaster):
+    name = "red_timestral"
+
+    @staticmethod
+    def load_backend():
+        from .timestral_backend import load
+        return load()
+
+
+MODELS = {"chronos2": Chronos2, "timestral": Timestral}
+# The shared runner executes *every* registered model by default, even on core-only laptops.
+CONTENDERS = [TrainMeanFloor, *(MODELS[key.strip()] for key in
+              os.getenv("WMB_RED_MODELS", "").split(",") if key.strip())]
