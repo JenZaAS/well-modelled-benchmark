@@ -12,4 +12,6 @@ and keep old names working until everyone has pulled.
 | `wmb.scoring` | `regression_scores`, `classification_scores`, `crps_gaussian`, `timer` | Metric names and definitions as in `docs/metrics.md` |
 | `wmb.splits` | `well_split`, `official_split`, `gap_mask` | Split by whole wells; same seed, same split |
 | `wmb.paths` | `data_root()`, `get_dataset_path(name)`, `work_root()`, `results_root()` | Data from `data_paths.local.yaml` (see `docs/SETUP_DATA_PATHS.md`) |
+| `wmb.datasets` | `load_force2020(root=None, splits=None)`, `load_canonical_spec()`, `python -m wmb.datasets --check force2020` | Canonical curve names, metres MD, NaN for sentinels; guardrail flags on `Well.meta`; check never repairs files |
+| `wmb.onboarding` | `python -m wmb.onboarding [--status] [--redo [NAME]]` | Re-runnable; state in gitignored `.wmb/onboarding_state.json`; `ONBOARDING_VERSION` + `CHANGELOG` |
 | `wmb.synthetic` | `make_wells()` | Fake wells for smoke tests only |

@@ -1,0 +1,270 @@
+# Canonical curve names, units, aliases and guardrails for wmb loaders.
+# Standard depth unit is metres. Match mnemonics case-insensitively;
+# treat "-" as "_"; strip a trailing :N or _NO_N (deprioritise those copies).
+# First listed alias wins a coverage tie. Do not use a curve that fails a
+# unit or value guardrail even if the name matches.
+
+version: 1
+depth:
+  standard_name: DEPTH
+  standard_unit: m
+  aliases:
+    all: [DEPT, DEPTH, DEPTH_MD, TDEP, MD]
+  unit_aliases:
+    m: [m, M, metre, meter, metres, meters, I.M, H.M]
+    ft: [ft, FT, F, FEET, feet, foot]
+  conversions_to_standard:
+    ft: 0.3048          # metres = feet * 0.3048
+    ".1IN": 0.00254     # 0.1 inch index channel only; do not treat as ft or m
+  plausible_range: [0, 8000]          # metres
+  notes: >
+    FORCE and Volve are in metres. Kansas is in feet. NLOG is mixed
+    (about half the files in ft, half in m). Convert before any grid
+    or test. Reject or special-case index unit .1IN.
+
+curves:
+  GR:
+    standard_name: GR
+    standard_unit: gAPI
+    aliases:
+      FORCE-2020: [GR]
+      Volve: [GR, LFP_GR]
+      NLOG-DTS: [GR, GR_EDTC, ECGR, SGRD, GRGC, GR_STGC, GRSL]
+      Kansas-KGS-DTS: [GR, ECGR, GR_EDTC, HSGR, GRTO, GRTC]
+    unit_aliases:
+      gAPI: [gAPI, GAPI, API, api, H.GAPI]
+    conversions_to_standard: {}
+    plausible_range: [0, 500]
+    plausible_median: [5, 250]
+    exclude: [GRMAX, GRMIN, SGR, CGR, POTA, URAN, THOR, THGR, HFK, HTHO, HURA, LFP_GRMAX, LFP_GRMIN]
+    notes: >
+      Do not use GRSL when the unit is 2.1/S or H2.1/S until the values
+      are confirmed to be API. Empty unit is acceptable if values look like API.
+
+  RDEP:
+    standard_name: RDEP
+    standard_unit: ohm.m
+    aliases:
+      FORCE-2020: [RDEP]
+      Volve: [RDEP, RT, RD, LFP_RT]
+      NLOG-DTS: [RDEP, LLD, HLLD, ILD, RT, AT90, AHT90, AF90, AO90, IDPH, HRLD, THRT, M4RX, M4R9, AT60, AF60, AO60, AHT60, RD]
+      Kansas-KGS-DTS: [RDEP, RT, RT90, AT90, AHT90, AF90, AO90, AT60, AF60, AO60, AHT60]
+    unit_aliases:
+      ohm.m: [ohm.m, OHMM, OHM-M, Ohm-m, ohmm]
+    conversions_to_standard:
+      mS/m: "R_ohm.m = 1000 / C_mS/m"   # only if we deliberately keep a conductivity curve
+    plausible_range: [0.01, 100000]
+    plausible_median: [0.05, 5000]
+    exclude: [RXO, RMIC, RSHA, MSFL, RXOZ, RXOI, RXO8, RMUD, LFP_RSH, ATCO90, ATCO60, RLL]
+    notes: >
+      Priority is deep (90-inch / LLD / ILD / RT90 / AT90 / AHT90 / AF90 / AO90)
+      before 60-inch (AT60, AF60, AO60). Never prefer AF60 over AF90 on a tie.
+      Reject the curve if the unit is IN, CPS, or a conductivity unit
+      (mS/m, MS/M, MM/M, MMHO) unless an explicit conductivity conversion
+      is applied and flagged. Reject RD when unit is IN (seen on NLOG Q13-A-02;
+      values look like inches). Volve RD/RT with unit UNKNOWN is allowed if
+      values look like ohm.m.
+
+  RMED:
+    standard_name: RMED
+    standard_unit: ohm.m
+    aliases:
+      FORCE-2020: [RMED]
+      Volve: [RMED, RM, RS]
+      NLOG-DTS: [RMED, LLS, HLLS, ILM, AT30, AHT30, AF30, AO30, IMPH, M4R3, M4R2, AT20, RM]
+      Kansas-KGS-DTS: [RMED, RT30, AT30, AHT30, AF30, AO30, RT20, AT20]
+    unit_aliases:
+      ohm.m: [ohm.m, OHMM, OHM-M, Ohm-m, ohmm]
+    conversions_to_standard:
+      mS/m: "R_ohm.m = 1000 / C_mS/m"
+    plausible_range: [0.01, 100000]
+    plausible_median: [0.05, 5000]
+    exclude: [RXO, RMIC, RSHA, MSFL, RMUD, LFP_RSH]
+    notes: >
+      RS is a last-resort fallback only and must be flagged (often shallow).
+      Same conductivity / unit rejects as RDEP. Prefer 30-inch over 20-inch.
+
+  CALI:
+    standard_name: CALI
+    standard_unit: in
+    aliases:
+      FORCE-2020: [CALI]
+      Volve: [CALI, LFP_CALI]
+      NLOG-DTS: [CALI, CAL, CALIPER, HCAL, CAL1, CAL2, C1, C2, CALX, HDAR]
+      Kansas-KGS-DTS: [CALI, CALIPER, HCAL, CAL1, CAL2, C1, C2, HDAR]
+    unit_aliases:
+      in: [in, IN, inches, inch, H.IN]
+    conversions_to_standard:
+      mm: 0.03937007874
+      cm: 0.3937007874
+    plausible_range: [4, 30]
+    plausible_median: [4.5, 28]
+    exclude: [BS, BIT, BITSIZE, BS_RM, DFCAL, DCAL_BIT, LFP_BS]
+    notes: >
+      DCAL is not in the default alias list. Accept it only as a fallback
+      when (a) the description is "Density Caliper" or similar, not
+      "Differential Caliper", and (b) the median is in the hole-size range
+      (about 5-20 in), not near zero. Kansas often uses DCAL for a real
+      density-tool caliper; Schlumberger NLOG files often use it for
+      differential caliper. Reject CALI if labelled IN but median > 80
+      (Weeks Farms A 1 is an example, median 2653). Unit DEC is ambiguous;
+      use the values. Never use bit size (BS) as caliper.
+
+  RHOB:
+    standard_name: RHOB
+    standard_unit: g/cm3
+    aliases:
+      FORCE-2020: [RHOB]
+      Volve: [RHOB, DEN, LFP_RHOB, LFP_RHOB_LOG]
+      NLOG-DTS: [RHOB, RHOZ, RHOI, RHO8, ZDEN]
+      Kansas-KGS-DTS: [RHOB, RHOZ, RHO8]
+    unit_aliases:
+      g/cm3: [g/cm3, G/CM3, G/C3, G/CC, GM/CC, g/cc, H.G/CM3]
+    conversions_to_standard:
+      kg/m3: 0.001
+    plausible_range: [1.0, 3.5]
+    plausible_median: [1.1, 3.3]
+    exclude: [RHOFL, RHOMA, DRHO, DRHOZ, HDRA, DPHI, RHOL]
+    notes: >
+      No kg/m3 curves were found in this audit. Still reject a curve labelled
+      g/cm3 if the median is > 50 (would look like kg/m3). Prefer measured
+      RHOB/RHOZ/ZDEN over LFP_RHOB_LOG when both exist.
+
+  NPHI:
+    standard_name: NPHI
+    standard_unit: v/v
+    aliases:
+      FORCE-2020: [NPHI]
+      Volve: [NPHI, LFP_NPHI, NEU]
+      NLOG-DTS: [NPHI, TNPH, NPOR, CNC, CNCF]
+      Kansas-KGS-DTS: [NPHI, TNPH, NPOR, CNPOR, CNLS, NPHS, NPHL, NPHD]
+    unit_aliases:
+      v/v: [v/v, V/V, m3/m3, M3/M3, FRAC, fraction, decp, CFCF, v/v_decimal]
+      percent: ["%", PU, pu, H.PU]
+    conversions_to_standard:
+      percent: 0.01     # v/v = percent / 100, after a value check
+    plausible_range: [-0.15, 0.70]    # after conversion to v/v
+    plausible_median: [-0.05, 0.65]
+    exclude: [DPHI]
+    matrix:
+      limestone: [NPHL, NPHI_LS, CNLS, CNL, NPLS, CNC]
+      sandstone: [NPHS, NPSS]
+      dolomite: [NPHD]
+      unspecified: [NPHI, TNPH, NPOR, CNPOR, NEU, LFP_NPHI, CNCF]
+    notes: >
+      Detect scale from values, not only from the unit string. If the median
+      is > 1.5, treat as percent and divide by 100, even if the unit is PU
+      or blank. If the unit is PU or % but the median is between -0.2 and 0.7,
+      treat as already v/v (seen on Kansas Witham 13-1). Record the matrix
+      when the mnemonic or description gives it; do not mix NPHS and CNLS
+      without noting the matrix. Prefer NPHI/TNPH (stated or default matrix)
+      over a single-matrix curve when both exist.
+
+  PEF:
+    standard_name: PEF
+    standard_unit: b/e
+    aliases:
+      FORCE-2020: [PEF]
+      Volve: [PEF]
+      NLOG-DTS: [PEF, PE, PEFZ, PEFI, PEF8]
+      Kansas-KGS-DTS: [PEF, PE, PEFZ, PEF8]
+    unit_aliases:
+      b/e: [b/e, B/E, b/elec, BARN, BARNS/E, H.B/E]
+    conversions_to_standard: {}
+    plausible_range: [0, 20]
+    plausible_median: [0.4, 12]
+    exclude: []
+    notes: >
+      Blank units are common and acceptable if values look like PEF.
+      Ignore header tokens that are not units (:HRDD, :Standard, :High, 07, 45).
+
+  DTC:
+    standard_name: DTC
+    standard_unit: us/ft
+    aliases:
+      FORCE-2020: [DTC]
+      Volve: [DTC, DT, AC, LFP_DT, LFP_DT_LOG]
+      NLOG-DTS: [DTCO, DTC, DT, DTRP, DT4P, DT24, DT24QI, DTCR, DTL, DTLN, DTLF, AC, SON]
+      Kansas-KGS-DTS: [DTCO, DTC, DT, DTRP, DT4P]
+    unit_aliases:
+      us/ft: [us/ft, US/FT, US/F, USEC/FT, uspf, uSec/ft, usec/ft, I.US/FT, I.US/F]
+      us/m: [us/m, US/M, USEC/M]
+    conversions_to_standard:
+      us/m: 0.3048      # us/ft = us/m * 0.3048
+    plausible_range: [40, 200]        # us/ft, after conversion
+    plausible_median: [40, 200]
+    plausible_range_us_m: [130, 660]
+    exclude: [DTS, DTSM, DTSH, DT4S, DT2, DT2R, DTSF, DTSS, DTST, DTRS, DTYY, DTXX, ACS]
+    notes: >
+      Prefer DTCO / DTC / DTRP over generic DT when both exist. If the labelled
+      unit is us/ft but the median is > 250, or the unit is us/m and the median
+      is 40-200, treat the unit as mislabelled and convert from the values.
+      NLOG Q13-12 is a confirmed us/m well (DTC median about 322 us/m).
+      Prefer measured logs over LFP_DT / LFP_DT_LOG when both exist.
+
+  DTS:
+    standard_name: DTS
+    standard_unit: us/ft
+    aliases:
+      FORCE-2020: [DTS]
+      Volve: [DTS, LFP_DTS, LFP_DTS_LOG]
+      NLOG-DTS: [DTSM, DTS, DTRS, DTSH, DT4S, DTSQI, DT2, DT2R]
+      Kansas-KGS-DTS: [DTSM, DTS, DTRS, DT4S, DT2, DT2R]
+    unit_aliases:
+      us/ft: [us/ft, US/FT, US/F, USEC/FT, uspf, uSec/ft, usec/ft, I.US/FT]
+      us/m: [us/m, US/M, USEC/M]
+    conversions_to_standard:
+      us/m: 0.3048
+    plausible_range: [60, 500]        # us/ft; soft shale can be high
+    plausible_median: [70, 450]
+    plausible_range_us_m: [200, 1500]
+    exclude: [DTC, DTCO, DT4C, DT4P, DT, DTCR, DTRP, AC, DTST, DTYY, DTXX]
+    notes: >
+      Never map DTST (Stoneley). Prefer DTSM / DTS / DTRS ("Delta T Shear"
+      or "refracted shear") over DT2 / DT2R, and check the description.
+      ACS (Volve 15/9-F-10) is not in the default list; only use it if a
+      person confirms it is shear. After conversion, DTS should be greater
+      than DTC on the same interval. Soft North Sea shales can have DTS
+      medians around 290-370 us/ft; that is still us/ft, not us/m.
+      NLOG Q13-12 DTS is in us/m (median about 669 us/m).
+
+guardrails:
+  matching:
+    - Case-insensitive; "-" counts as "_"; strip trailing :N and _NO_N and deprioritise those copies.
+    - Name match is not enough: require n_valid > 0 and a passing unit/value check.
+    - When several candidates exist in one well, use the alias priority, then the longest valid interval, and prefer raw/measured files over LFP, CPI, PETRO and appendNTR computed curves for targets.
+  units:
+    - Normalise unit spellings with unit_aliases before comparing.
+    - Convert depth to metres, sonic to us/ft, neutron to v/v, density to g/cm3, caliper to inches, resistivity to ohm.m.
+    - If the unit is missing, infer it from the median against the plausible ranges, and flag the inference.
+  reject_or_flag:
+    - Empty or all-null curves (common sentinels: -999.25, -999, -9999, -999.95, 999.25, 9999, -32768).
+    - DTST or any curve whose description says Stoneley, mapped as DTS.
+    - ATCO* or units mS/m, MS/M, MM/M, MMHO mapped as ohm.m without conversion.
+    - RD (or any resistivity alias) with unit IN, or values that look like a caliper (about 5-15 and almost no values below 2).
+    - RLL with unit CPS.
+    - DCAL whose description is differential, or whose median is near 0 (absolute value < 3).
+    - NPHI left in percent (median > 1.5) after load.
+    - DTC labelled us/ft with median > 250, until a us/m conversion is tried.
+    - CALI labelled inches with median > 80.
+    - Index unit .1IN treated as feet or metres.
+  reported_flags:
+    - nphi_sandstone_matrix / nphi_limestone_matrix / nphi_dolomite_matrix
+    - nphi_converted_from_percent
+    - sonic_converted_from_us_m
+    - depth_converted_from_ft
+    - dcal_accepted_as_caliper
+    - resistivity_converted_from_conductivity
+    - used_shallow_fallback_RS
+    - used_LFP_or_computed_curve
+    - unit_inferred_from_values
+    - median_outside_plausible_range
+
+sources:
+  note: >
+    Drafted from a header-and-value audit of FORCE 2020, Volve, NLOG-DTS and
+    Kansas-KGS-DTS. FORCE 2020 official LAS headers (118 files in
+    LAS_files_Force_2020_all_wells_train_test_blind_hidden_final.zip) all
+    agree. The contest CSV uses the same names. NPHI unit is m3/m3 (v/v),
+    DTC/DTS us/ft, CALI in, RHOB g/cm3, GR gAPI, resistivity ohm.m, PEF b/e,
+    depth m, null -999.25.

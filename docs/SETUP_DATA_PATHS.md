@@ -4,6 +4,11 @@ Well data is **not** in git. Each person keeps a local copy of the shared team
 data folder, often in a different place. A gitignored file at the repo root,
 `data_paths.local.yaml`, tells the code where that copy is on this machine.
 
+For a walk-through that you can run again later (including the official
+FORCE 2020 demo dataset), use python -m wmb.onboarding. Re-run it with
+--status or --redo. Progress is stored in gitignored .wmb/onboarding_state.json.
+Dataset download instructions live under [datasets/](../datasets/README.md).
+
 This page is written so a user can point a coding agent (GitHub Copilot, Cursor,
 Claude, or similar) at it and the agent can finish the setup.
 

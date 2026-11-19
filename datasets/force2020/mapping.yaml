@@ -1,0 +1,192 @@
+# FORCE 2020 dataset mapping (official demo dataset).
+# Raw files are not changed. The loader reads this file and returns canonical columns.
+# Schema: see datasets/_template/mapping.yaml.
+
+dataset:
+  id: force2020
+  name: FORCE 2020 well logs and lithofacies
+  folder: FORCE2020
+  n_wells: 118
+  official_demo: true
+  source:
+    zenodo_record: "4351156"
+    doi: "https://doi.org/10.5281/zenodo.4351156"
+    zenodo_url: "https://zenodo.org/records/4351156"
+    github_url: "https://github.com/bolgebrygg/Force-2020-Machine-Learning-competition"
+    github_data_dir: "https://github.com/bolgebrygg/Force-2020-Machine-Learning-competition/tree/master/lithology_competition/data"
+  licence:
+    zenodo_record: "CC BY 4.0"
+    # The Zenodo record is tagged CC BY 4.0. Its description says the original
+    # well-log data come from the Norwegian government under "NOLD 2.0" (a typo
+    # for NLOD 2.0). Lithofacies labels were hand-crafted for the competition
+    # (Explocrowd). This NLOD-vs-CC-BY split is not fully resolved on the
+    # record itself; document both and keep the credit line.
+    original_well_logs: "NLOD 2.0"
+    lithofacies_labels: "CC BY 4.0"
+    credit: >-
+      Bormann, P., Aursand, P., Dilib, F., Manral, S. and Dischington, P. (2020).
+      FORCE 2020 Well well log and lithofacies dataset for machine learning
+      competition. Zenodo. Also credit FORCE and the Norwegian Offshore
+      Directorate (Sodir).
+    citation: >-
+      Bormann, P., Aursand, P., Dilib, F., Manral, S., & Dischington, P. (2020).
+      FORCE 2020 Well well log and lithofacies dataset for machine learning
+      competition [Dataset]. Zenodo. https://doi.org/10.5281/zenodo.4351156
+    also_cite_github: true
+
+checksums_file: checksums.sha256
+
+files:
+  # required: needed to load and to pass `python -m wmb.datasets --check force2020`
+  - name: train.csv
+    role: required
+    split: train
+    source: "Unzip train.zip from the official GitHub data folder (train.csv is not published as a loose file there)."
+    sha256: f72eaa9d4d30b0990b553333baaac7d129f2a2c5bce96fd580b31592658641da
+    size: 280485502
+  - name: train.zip
+    role: optional
+    source: "https://github.com/bolgebrygg/Force-2020-Machine-Learning-competition/raw/master/lithology_competition/data/train.zip"
+    sha256: e996c8466f2d0dc7116daa71485cc90c31fcfac6345a5bb33165026478b642e9
+    size: 91653972
+    note: "Same rows as train.csv, zipped. The check accepts a valid train.zip and will unzip it if train.csv is missing."
+  - name: leaderboard_test_features.csv
+    role: required
+    split: leaderboard
+    source: "https://github.com/bolgebrygg/Force-2020-Machine-Learning-competition/raw/master/lithology_competition/data/leaderboard_test_features.csv"
+    sha256: 4688d93728feab7e86855b9315ddfc8b498387927954235f7dbbfa2216550781
+    size: 31688732
+  - name: leaderboard_test_target.csv
+    role: required
+    split: leaderboard
+    source: "https://github.com/bolgebrygg/Force-2020-Machine-Learning-competition/raw/master/lithology_competition/data/leaderboard_test_target.csv"
+    sha256: 4fe5e59809d98eb9b8b0a3836776bd52e5c7e63ffefa31476fa17011a27ef382
+    size: 3694123
+    note: "Lithology labels for the leaderboard wells. No confidence column."
+  - name: hidden_test.csv
+    role: required
+    split: hidden
+    source: "https://github.com/bolgebrygg/Force-2020-Machine-Learning-competition/raw/master/lithology_competition/data/hidden_test.csv"
+    sha256: c75e817bfefcabd2bacdefd9e1c74dbd829d24543646bf0b85ef8fbf5c06f069
+    size: 30292497
+    note: "Official hidden / blind test. Labels are included in this public release."
+  - name: penalty_matrix.npy
+    role: recommended
+    source: "https://github.com/bolgebrygg/Force-2020-Machine-Learning-competition/raw/master/lithology_competition/data/penalty_matrix.npy"
+    sha256: c312481af94d3557616b7ed79b5d1a12afee380fd471188785ab31874f159d43
+    size: 1280
+    note: "Official lithology scoring penalty matrix."
+  - name: LAS_files_Force_2020_all_wells_train_test_blind_hidden_final.zip
+    role: optional
+    source: "https://zenodo.org/records/4351156/files/LAS_files_Force_2020_all_wells_train_test_blind_hidden_final.zip?download=1"
+    sha256: 042ef1d473100dc12768cae7107a8cead071a394f137af3bc1ddaf8a5d1b8dda
+    size: 169785172
+    note: "118 LAS 2.0 files, same wells as the CSVs. Not required by the CSV loader."
+  - name: "lithology scoring matrix cost function.xlsx"
+    role: optional
+    source: "https://zenodo.org/records/4351156/files/lithology%20scoring%20matrix%20cost%20function.xlsx?download=1"
+    sha256: 23c1bcec3454e2620aaa76ed145fa5363015afa4ccafabfb0bece64f18b3735d
+    size: 14558
+  - name: NPD_Casing_depth_most_wells.xlsx
+    role: optional
+    source: "https://zenodo.org/records/4351156/files/NPD_Casing_depth_most_wells.xlsx?download=1"
+    sha256: d36564dd821f892c58f35d1ef86fe4ca68422e133d1b9cc14cc1deb32461aeb6
+    size: 27080
+  - name: NPD_Lithostratigraphy_groups_all_wells.xlsx
+    role: optional
+    source: "https://zenodo.org/records/4351156/files/NPD_Lithostratigraphy_groups_all_wells.xlsx?download=1"
+    sha256: f0be5f3061aa0e63b8692f71264635ccb7d52cb148b00beaf7a59cd495c49025
+    size: 80797
+  - name: NPD_Lithostratigraphy_member_formations_all_wells.xlsx
+    role: optional
+    source: "https://zenodo.org/records/4351156/files/NPD_Lithostratigraphy_member_formations_all_wells.xlsx?download=1"
+    sha256: 2dd953073c459db341e6cf3243a9dbfa5a46b4bb567dddcaec2a1db4e5879518
+    size: 168501
+
+csv:
+  delimiter: ";"
+  encoding: utf-8
+  null_value: -999.25
+  # Official CSVs also use empty fields / NaN for missing values. The loader
+  # treats both NaN and the sentinel list in wmb.io.SENTINELS as missing.
+  well_id_column: WELL
+  depth_column: DEPTH_MD
+  depth_unit: m
+  coordinate_columns:
+    X_LOC: "UTM X coordinate (metres). Official starter notebook; UTM zone / EPSG is not stated in the files."
+    Y_LOC: "UTM Y coordinate (metres). Official starter notebook; UTM zone / EPSG is not stated in the files."
+    Z_LOC: "Z coordinate in metres (negative in the files; TVD-like)."
+  group_column: GROUP
+  formation_column: FORMATION
+  lithology:
+    lithology_column: FORCE_2020_LITHOFACIES_LITHOLOGY
+    canonical_name: LITH
+    confidence_column: FORCE_2020_LITHOFACIES_CONFIDENCE
+    confidence_canonical_name: LITH_CONF
+    confidence_codes:
+      1: high
+      2: medium
+      3: low
+    codes:
+      30000: Sandstone
+      65030: Sandstone/Shale
+      65000: Shale
+      80000: Marl
+      74000: Dolomite
+      70000: Limestone
+      70032: Chalk
+      88000: Halite
+      86000: Anhydrite
+      99000: Tuff
+      90000: Coal
+      93000: Basement
+    code_source: "Official FORCE 2020 starter notebook (lithology_competition/data/starter_notebook.ipynb)."
+
+splits:
+  train:
+    file: train.csv
+    n_wells: 98
+    labels: true
+  leaderboard:
+    features_file: leaderboard_test_features.csv
+    target_file: leaderboard_test_target.csv
+    n_wells: 10
+    labels: true
+    note: "Official leaderboard test. Features have no lithology columns; labels are in the target file (no confidence)."
+  hidden:
+    file: hidden_test.csv
+    n_wells: 10
+    labels: true
+    note: "Official hidden / blind test. Labels are included in this public release."
+
+# Raw contest names already match the canonical dictionary. Units need no conversion.
+# First listed alias is the column name in the CSV / LAS.
+columns:
+  DEPTH: {column: DEPTH_MD, unit: m, canonical: DEPTH}
+  GR:    {column: GR,   unit: gAPI,  canonical: GR}
+  RDEP:  {column: RDEP, unit: ohm.m, canonical: RDEP}
+  RMED:  {column: RMED, unit: ohm.m, canonical: RMED}
+  CALI:  {column: CALI, unit: in,    canonical: CALI}
+  RHOB:  {column: RHOB, unit: g/cm3, canonical: RHOB}
+  NPHI:  {column: NPHI, unit: v/v,   canonical: NPHI, file_unit: m3/m3, note: "m3/m3 is fraction, already v/v. Do not divide by 100."}
+  PEF:   {column: PEF,  unit: b/e,   canonical: PEF}
+  DTC:   {column: DTC,  unit: us/ft, canonical: DTC}
+  DTS:   {column: DTS,  unit: us/ft, canonical: DTS}
+  LITH:  {column: FORCE_2020_LITHOFACIES_LITHOLOGY, canonical: LITH}
+  LITH_CONF: {column: FORCE_2020_LITHOFACIES_CONFIDENCE, canonical: LITH_CONF}
+
+# Present in the CSVs but not mapped to a core curve. The loader may keep them
+# on Well.meta["extra"] if requested; they are not required.
+extra_columns: [RSHA, SGR, SP, BS, ROP, DCAL, DRHO, MUDWEIGHT, RMIC, ROPA, RXO]
+
+quirks:
+  - "Names and units are already uniform. No mnemonic aliasing is needed."
+  - "NPHI is a fraction (m3/m3), not percent."
+  - "RMED has no valid samples in train well 34/10-33. CALI has no valid samples in train well 35/8-4."
+  - "DTS is present in 46 of 118 wells (32 train, 6 leaderboard, 8 hidden). PEF is present in 88 of 118 wells (69 train, 10 leaderboard, 9 hidden). Presence means at least one valid sample."
+  - "PEF has values well above the 20 b/e guardrail (about 23,760 samples in 49 wells, max about 383). Flag them; do not change the files."
+  - "A smaller number of spikes fall outside the other guardrails (DTS > 500 us/ft in 6 wells, plus a few DTC, NPHI, GR, CALI, RHOB and RMED samples). Flag, do not edit."
+  - "Soft North Sea shales can have DTS medians around 290-370 us/ft; that is still us/ft, not a unit error."
+  - "The contest CSVs are semicolon-separated."
+  - "Logs were slightly cleaned and partially despiked by the competition organisers."
+  - "wells.json is not part of the official download."

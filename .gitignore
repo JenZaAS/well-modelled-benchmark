@@ -2,6 +2,9 @@
 # Per-machine data locations (never commit)
 data_paths.local.yaml
 
+# Local onboarding state (never commit)
+.wmb/
+
 # Data (lives where data_paths.local.yaml points)
 data/*
 !data/README.md

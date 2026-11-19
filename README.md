@@ -7,6 +7,41 @@ Open benchmark for predicting missing well logs (physics, gradient boosted trees
 **The idea in one line:** hide one log, predict it from the others, say how sure we are, and score every
 approach the same way: same wells, same split, same metrics (accuracy, coverage, sharpness, speed).
 
+## Quick start with the demo data
+
+FORCE 2020 is the official demo dataset (118 public wells). You do not need a
+shared team folder.
+
+1. Download the files listed in [datasets/force2020/README.md](datasets/force2020/README.md)
+   from [Zenodo 4351156](https://doi.org/10.5281/zenodo.4351156) and the official
+   [FORCE 2020 GitHub](https://github.com/bolgebrygg/Force-2020-Machine-Learning-competition)
+   (`lithology_competition/data/`). Unzip `train.zip` to get `train.csv`.
+2. Put them in a folder named `FORCE2020` under your local data folder.
+3. Run onboarding (creates gitignored `data_paths.local.yaml`):
+
+   ```bash
+   python -m wmb.onboarding
+   ```
+
+   Or set the path yourself from [docs/SETUP_DATA_PATHS.md](docs/SETUP_DATA_PATHS.md).
+4. Verify the files:
+
+   ```bash
+   python -m wmb.datasets --check force2020
+   python -m wmb.onboarding --status
+   ```
+
+Onboarding is safe to run again later: it stores progress in gitignored
+`.wmb/onboarding_state.json`, shows what is new when the onboarding version
+is bumped, skips finished steps unless you pass `--redo`, and re-verifies
+datasets you chose to use.
+
+Licence and credit: [datasets/force2020/README.md](datasets/force2020/README.md)
+(CC BY 4.0 / NLOD 2.0; Bormann, P., Aursand, P., Dilib, F., Manral, S. and
+Dischington, P. (2020). FORCE 2020 Well well log and lithofacies dataset for
+machine learning competition. Zenodo. Also credit FORCE and the Norwegian
+Offshore Directorate (Sodir).).
+
 ## Quickstart
 
 ```bash
@@ -20,10 +55,11 @@ python -m benchmark.run --dataset synthetic --target RHOB   # runs with fake wel
 python -m benchmark.scoreboard
 ```
 
-Real data: copy [data_paths.example.yaml](data_paths.example.yaml) to `data_paths.local.yaml`
-(gitignored) and set `data_root` to your local copy of the shared data folder.
+Real data: start with the demo dataset above, or copy [data_paths.example.yaml](data_paths.example.yaml)
+to `data_paths.local.yaml` (gitignored) and set `data_root` to your local data folder.
 A coding agent can do this from [docs/SETUP_DATA_PATHS.md](docs/SETUP_DATA_PATHS.md).
-Then run `python -m wmb.paths --check`, and e.g. `python -m benchmark.run --dataset force2020 --target DTS`.
+Then run `python -m wmb.paths --check` or `python -m wmb.onboarding --status`, and e.g.
+`python -m benchmark.run --dataset force2020 --target DTS`.
 
 ## Folder map: which team works where
 

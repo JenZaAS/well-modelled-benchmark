@@ -1,0 +1,40 @@
+# Copy to datasets/<id>/mapping.yaml and fill in.
+# Keep key names stable: the loader and the check command read this schema.
+
+dataset:
+  id: example_id          # lowercase, matches the datasets/<id>/ folder when possible
+  name: Example dataset
+  folder: Example-Folder  # subfolder name under data_root
+  official_demo: false
+  source:
+    url: "https://example.example/dataset"
+    doi: ""
+  licence:
+    name: ""
+    credit: ""            # verbatim credit line required by the source
+    notes: ""
+
+checksums_file: checksums.sha256
+
+files:
+  - name: example.las
+    role: required        # required | recommended | optional
+    source: "https://example.example/example.las"
+    sha256: ""
+    size: 0
+
+# csv:                     # if the dataset is CSV-based, describe it here
+#   delimiter: ","
+#   encoding: utf-8
+#   null_value: -999.25
+#   well_id_column: WELL
+#   depth_column: DEPTH
+#   depth_unit: m
+
+# columns:                 # raw column / mnemonic -> canonical name and unit
+#   GR: {column: GR, unit: gAPI, canonical: GR}
+
+# splits:
+#   train: {file: train.csv}
+
+quirks: []
