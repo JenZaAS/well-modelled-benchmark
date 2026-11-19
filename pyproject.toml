@@ -9,7 +9,7 @@ description = "well-modelled-benchmark: shared code for benchmarking missing-wel
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
-dependencies = ["numpy>=1.26", "pandas>=2.0"]
+dependencies = ["numpy>=1.26", "pandas>=2.0", "pyyaml>=6"]
 
 [project.optional-dependencies]
 las = ["lasio>=0.31"]

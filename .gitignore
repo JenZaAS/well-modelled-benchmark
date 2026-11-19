@@ -1,5 +1,8 @@
 # ==== well-modelled-benchmark: data, weights and outputs never go in git ====
-# Data (lives in FH2026_DATA / the team's shared data folder)
+# Per-machine data locations (never commit)
+data_paths.local.yaml
+
+# Data (lives where data_paths.local.yaml points)
 data/*
 !data/README.md
 cache/

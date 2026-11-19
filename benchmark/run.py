@@ -26,14 +26,14 @@ def load_dataset(name: str, seed: int):
         return splits.well_split(wells, 0.25, seed)
     if name == "force2020":
         from wmb.io import read_force_csv
-        root = paths.data_root() / "force2020"
+        root = paths.get_dataset_path("force2020")
         wells = read_force_csv(root / "train.csv", split="train")
         wells += read_force_csv(root / "leaderboard_test_features.csv", split="leaderboard")
         wells += read_force_csv(root / "hidden_test.csv", split="hidden")
         return splits.official_split(wells)
     # anything else: a folder under the data root with a wells.json manifest
     from wmb.io import iter_manifest_wells
-    wells = list(iter_manifest_wells(paths.data_root() / name))
+    wells = list(iter_manifest_wells(paths.get_dataset_path(name)))
     return splits.well_split(wells, 0.25, seed)
 
 
@@ -71,7 +71,7 @@ def run_one(factory, train, test, target, dataset, out_root):
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="well-modelled-benchmark runner")
-    ap.add_argument("--dataset", default="synthetic", help="synthetic | force2020 | <folder under FH2026_DATA with wells.json>")
+    ap.add_argument("--dataset", default="synthetic", help="synthetic | force2020 | <dataset key or folder under data_root with wells.json>")
     ap.add_argument("--target", default="RHOB", choices=CORE, help="curve to hide and predict")
     ap.add_argument("--contenders", default="all", help="comma-separated names, or 'all'")
     ap.add_argument("--seed", type=int, default=0)

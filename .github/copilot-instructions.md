@@ -24,3 +24,11 @@ Use the instructions in the <prompt-instructions>[code.prompt.md](./prompts/code
 ## COPILOT PYTHON CODE CREATION EDITS AND REFACTORING OPERATIONAL GUIDELINES
 
 Use the instructions in the <prompt-instructions>[code-python.prompt.md](./prompts/code-python.prompt.md)</prompt-instructions> file as guidance for python code generation.
+
+## DATA LOCATION
+
+Well data is not in git. Before running anything that needs data, ensure
+`data_paths.local.yaml` exists at the repository root. If it is missing, follow
+[docs/SETUP_DATA_PATHS.md](../docs/SETUP_DATA_PATHS.md): ask the user for their
+local data folder, write the file, and never commit it. Then run
+`python -m wmb.paths --check` and resolve folders with `wmb.paths.get_dataset_path`.

@@ -27,7 +27,7 @@ def main(argv=None) -> int:
         wells = synthetic.make_wells()
     else:
         from wmb.io import iter_manifest_wells
-        wells = list(iter_manifest_wells(paths.data_root() / a.dataset))
+        wells = list(iter_manifest_wells(paths.get_dataset_path(a.dataset)))
     print("well".ljust(14) + " ".join(c.rjust(5) for c in CORE))
     for w in wells:
         c = w.completeness()

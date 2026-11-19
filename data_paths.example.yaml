@@ -1,0 +1,21 @@
+# Copy this file to data_paths.local.yaml in the repo root and edit the paths.
+# data_paths.local.yaml is gitignored — never commit it.
+# A coding agent can create it for you: point the agent at docs/SETUP_DATA_PATHS.md.
+
+# data_root is the shared team data folder (one subfolder per dataset).
+# Cross-platform examples (use one, and keep the quotes if the path has spaces):
+#   Windows:  "C:/Users/you/fh2026-data"
+#   macOS:    "/Users/you/fh2026-data"
+#   Linux:    "/home/you/fh2026-data"
+data_root: "/path/to/fh2026-data"
+
+# Optional: set a key only when that dataset is not a subfolder of data_root.
+# Default subfolder names: FORCE2020, Sodir-FactPages, NLOG-DTS, Kansas-KGS-DTS, Volve.
+# force2020: "/path/to/FORCE2020"
+# sodir_factpages: "/path/to/Sodir-FactPages"
+# nlog_dts: "/path/to/NLOG-DTS"
+# kansas_kgs_dts: "/path/to/Kansas-KGS-DTS"
+# volve: "/path/to/Volve"
+
+# Optional: intermediate files, caches and prepared copies (keep this outside the repo).
+# cache_dir: "/path/to/fh2026-cache"

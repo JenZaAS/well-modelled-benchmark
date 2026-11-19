@@ -11,5 +11,5 @@ and keep old names working until everyone has pulled.
 | `wmb.contender` | `BaseContender`, `Contender` protocol, `Prediction(mean, std, quantiles)` | `fit(train_wells, target)`, `predict(well_without_target, target) -> Prediction` |
 | `wmb.scoring` | `regression_scores`, `classification_scores`, `crps_gaussian`, `timer` | Metric names and definitions as in `docs/metrics.md` |
 | `wmb.splits` | `well_split`, `official_split`, `gap_mask` | Split by whole wells; same seed, same split |
-| `wmb.paths` | `data_root()`, `work_root()`, `results_root()` | Data and work files outside the repo |
+| `wmb.paths` | `data_root()`, `get_dataset_path(name)`, `work_root()`, `results_root()` | Data from `data_paths.local.yaml` (see `docs/SETUP_DATA_PATHS.md`) |
 | `wmb.synthetic` | `make_wells()` | Fake wells for smoke tests only |

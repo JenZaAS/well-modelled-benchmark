@@ -4,29 +4,32 @@ This folder only holds this README. **Data is never committed** (`.gitignore` bl
 
 ## Where the data lives
 
-1. **Shared copy:** the team's shared data folder (ask the team for access). One subfolder per dataset, e.g. `FORCE2020/`, `Volve/`, `NLOG/`, each with a README
-   (source, licence, credit) and, where ready, a `wells.json` manifest.
-2. **Your local cache:** copy the datasets you need to `%USERPROFILE%\fh2026-cache\data\` (Windows) or
-   `~/fh2026-cache/data/` and point the code at it:
+Point the code at your local copy of the shared team data folder with a
+gitignored file at the repo root: `data_paths.local.yaml`.
 
-   ```
-   set FH2026_DATA=%USERPROFILE%\fh2026-cache\data        (cmd)
-   $env:FH2026_DATA = "$env:USERPROFILE\fh2026-cache\data"  (PowerShell)
-   export FH2026_DATA=~/fh2026-cache/data                  (bash)
-   ```
+1. Copy [`data_paths.example.yaml`](../data_paths.example.yaml) to `data_paths.local.yaml`
+   (or point a coding agent at [`docs/SETUP_DATA_PATHS.md`](../docs/SETUP_DATA_PATHS.md);
+   it will ask you for the folder and write the file).
+2. Set `data_root` to the shared team data folder. One subfolder per dataset, e.g.
+   `FORCE2020/`, `Sodir-FactPages/`, `NLOG-DTS/`, `Kansas-KGS-DTS/`, `Volve/`,
+   each with a README (source, licence, credit) and, where ready, a `wells.json` manifest.
+3. Run `python -m wmb.paths --check` and confirm the datasets you have are found.
+4. **Never commit** `data_paths.local.yaml`.
 
-   Other variables: `FH2026_WORK` (intermediate files, default `~/fh2026-cache/work`), `FH2026_CACHE`
-   (venv, model weights, Hugging Face cache), `WMB_RESULTS` (default `<repo>/results`).
-   Never put the cache inside the repo folder.
+Fallback: if that file is missing, the environment variable `FH2026_DATA` is still
+accepted as `data_root`. Other optional variables: `FH2026_WORK` (intermediate files),
+`FH2026_CACHE` (venv, model weights, Hugging Face cache; also `cache_dir` in the yaml),
+`WMB_RESULTS` (default `<repo>/results`). Never put the cache inside the repo folder.
 
-Expected layout under `FH2026_DATA`:
+Expected layout under `data_root`:
 
 ```
-force2020/        train.csv, leaderboard_test_features.csv, leaderboard_test_target.csv, hidden_test.csv, penalty_matrix.npy, wells.json
-sodir_factpages/  wellbore_*_all.csv (coordinates, tops)
+FORCE2020/        train.csv, leaderboard_test_features.csv, leaderboard_test_target.csv, hidden_test.csv, penalty_matrix.npy, wells.json
+Sodir-FactPages/  wellbore_*_all.csv (coordinates, tops)
+NLOG-DTS/         <well>/*.las, wells.json, README.md
+Kansas-KGS-DTS/   <well>/*.las, wells.json, README.md
 Volve/            LAS files per well (+ wells.json when ready)
-nlog/             <well>/*.las, wells.json, README.md
-...               any other dataset: a folder with LAS files + wells.json
+...               any other dataset: a folder with LAS or CSV files + wells.json
 ```
 
 ## The `wells.json` contract (manifest_version 1)
@@ -41,6 +44,7 @@ Full schema: [`viewer/manifest.schema.json`](../viewer/manifest.schema.json); de
 - Core curve names: `GR, RDEP, RMED, CALI, RHOB, NPHI, PEF, DTC, DTS` (+ `LITH` for lithology).
 
 Load any of it in Python with `wmb.io.iter_manifest_wells(<folder>)` (LAS) or `wmb.io.read_force_csv(<file>)` (FORCE CSV).
+Resolve the folder with `wmb.paths.get_dataset_path("force2020")` (also `sodir_factpages`, `nlog_dts`, `kansas_kgs_dts`, `volve`).
 
 ## Rules
 

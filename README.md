@@ -18,8 +18,10 @@ python -m benchmark.run --dataset synthetic --target RHOB   # runs with fake wel
 python -m benchmark.scoreboard
 ```
 
-Real data: set `FH2026_DATA` to your local copy of the shared data folder (see [data/README.md](data/README.md)),
-then e.g. `python -m benchmark.run --dataset force2020 --target DTS`.
+Real data: copy [data_paths.example.yaml](data_paths.example.yaml) to `data_paths.local.yaml`
+(gitignored) and set `data_root` to your local copy of the shared data folder.
+A coding agent can do this from [docs/SETUP_DATA_PATHS.md](docs/SETUP_DATA_PATHS.md).
+Then run `python -m wmb.paths --check`, and e.g. `python -m benchmark.run --dataset force2020 --target DTS`.
 
 ## Folder map: which team works where
 
