@@ -50,16 +50,21 @@ python -m venv .venv
 pip install -r requirements.txt        # core only; ML extras: see tools/laptop_setup/
 pip install -e .                       # makes `import wmb` work everywhere
 
-python -m benchmark.run --list                              # all contenders
-python -m benchmark.run --dataset synthetic --target RHOB   # runs with fake wells, no data needed
+python -m benchmark.run --list
+python -m benchmark.run --list-tests
+python -m benchmark.run --model template_linear --test synthetic_rhob_missing   # fake wells, no data needed
+python -m benchmark.run --model template_linear --test rhob_missing             # needs FORCE demo data
+python -m benchmark.new_test my_test                                            # add your own test
 python -m benchmark.scoreboard
 ```
+
+`--test all` runs every shipped test (and any you have added). The older flags `--dataset`, `--scenario` and `--target` still work.
 
 Real data: start with the demo dataset above, or copy [data_paths.example.yaml](data_paths.example.yaml)
 to `data_paths.local.yaml` (gitignored) and set `data_root` to your local data folder.
 A coding agent can do this from [docs/SETUP_DATA_PATHS.md](docs/SETUP_DATA_PATHS.md).
 Then run `python -m wmb.paths --check` or `python -m wmb.onboarding --status`, and e.g.
-`python -m benchmark.run --dataset force2020 --target DTS`.
+`python -m benchmark.run --model template_linear --test rhob_missing`.
 
 ## Folder map: which team works where
 
@@ -85,13 +90,16 @@ Roles are flexible: people may take several, and teams may merge (e.g. blue and 
 
 ## Adding a model (any team)
 
-1. In your `workstreams/<team>/contender.py`, write a class based on `wmb.contender.BaseContender`
-   with `fit(train_wells, target)` and `predict(well, target) -> Prediction(mean, std)`.
-2. Add it to the `CONTENDERS` list in the same file.
-3. `python -m benchmark.run --list` shows it; `python -m benchmark.run --contenders <name>` scores it.
+Follow **[Build your model](docs/build-your-model.md)**. In short: copy
+[workstreams/_template_model/](workstreams/_template_model/) to `workstreams/<team>/models/<name>/`,
+fill `model.yaml` and `LICENSE.md`, register the class in your team's `CONTENDERS`, then:
 
-The "train station" (tasks, gap scenarios, `python -m benchmark.check_model <name>`) is described in
-[docs/benchmark.md](docs/benchmark.md); start from [workstreams/_template_model/](workstreams/_template_model/).
+```bash
+python -m benchmark.check_model <name>
+python -m benchmark.run --model <name> --test all
+```
+
+The contract and metrics are in [docs/benchmark.md](docs/benchmark.md). The older flags `--dataset`, `--scenario` and `--target` still work.
 
 ## Data rule
 

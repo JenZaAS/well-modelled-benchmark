@@ -1,0 +1,24 @@
+version: 1
+name: dtc_missing
+description: >
+  Predict compressional sonic (DTC) on the FORCE 2020 test wells with the curve hidden throughout the well.
+dataset: force2020
+target: DTC
+scenario:
+  type: missing_curve
+wells:
+  split: test
+  names: []
+inputs_policy: model
+metrics:
+  - MAE
+  - RMSE
+  - R2
+  - cover_90
+  - cover_50
+  - interval_width_90
+  - has_uncertainty
+  - load_s
+  - fit_s
+  - predict_s
+  - samples_per_s

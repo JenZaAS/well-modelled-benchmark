@@ -9,9 +9,10 @@ import argparse
 import json
 
 from benchmark.registry import REPO  # noqa: F401  (sets sys.path)
+from benchmark.test_def import generated_name
 from wmb import paths
 
-COLS = ["dataset", "target", "scenario", "contender", "workstream", "MAE", "RMSE", "R2", "cover_90", "cover_50",
+COLS = ["test", "dataset", "target", "scenario", "contender", "workstream", "MAE", "RMSE", "R2", "cover_90", "cover_50",
         "interval_width_90", "has_uncertainty", "cover_1sigma", "cover_2sigma", "sharpness_mean_sigma", "CRPS",
         "load_s", "fit_s", "predict_s", "predict_s_per_well", "samples_per_s", "predict_s_per_1000"]
 
@@ -24,8 +25,9 @@ def collect() -> list[dict]:
         for p in sorted(root.glob(pattern)):
             r = json.loads(p.read_text())
             r.setdefault("scenario", "missing_curve")
-            rows[(r["contender"], r["dataset"], r["target"], r["scenario"])] = r
-    return sorted(rows.values(), key=lambda r: (r["dataset"], r["target"], r["scenario"], r.get("MAE", 1e9)))
+            r.setdefault("test", generated_name(r["dataset"], r["target"], r["scenario"]))
+            rows[(r["contender"], r["test"], r["dataset"], r["target"], r["scenario"])] = r
+    return sorted(rows.values(), key=lambda r: (r["test"], r["dataset"], r["target"], r["scenario"], r.get("MAE", 1e9)))
 
 
 def to_markdown(rows: list[dict]) -> str:

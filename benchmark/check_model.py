@@ -1,4 +1,4 @@
-"""Check that a model meets the station contract on tiny synthetic tasks (no data needed).
+"""Check that a model meets the benchmark contract on tiny synthetic tasks (no data needed).
 
     python -m benchmark.check_model template_linear
     python -m benchmark.check_model my_package.my_module:MyModel
@@ -142,7 +142,7 @@ def check_contender(factory) -> tuple[str, list[str]]:
 
 
 def main(argv=None) -> int:
-    ap = argparse.ArgumentParser(description="Check a model against the station contract")
+    ap = argparse.ArgumentParser(description="Check a model against the benchmark contract")
     ap.add_argument("name", help="contender name from the registry, or module:Class")
     a = ap.parse_args(argv)
     try:

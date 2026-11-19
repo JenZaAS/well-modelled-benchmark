@@ -1,5 +1,9 @@
 # Models (short reference; details in the pitch deck reference slides)
 
+To add a model, start with **[Build your model](build-your-model.md)**:
+`python -m benchmark.check_model <name>`, then
+`python -m benchmark.run --model <name> --test all`.
+
 | Model | Team | Licence | Notes |
 |---|---|---|---|
 | Gardner (1974) | black | — | ρ ≈ 0.31·Vp^0.25 (Vp in m/s); RHOB from DTC |

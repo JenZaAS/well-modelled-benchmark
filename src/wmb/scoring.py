@@ -26,7 +26,7 @@ _Z = {0.90: Z90, 0.50: Z50}
 
 
 def gaussian_interval(p50, std, level: float = 0.90) -> tuple[np.ndarray, np.ndarray]:
-    """Central interval p50 +- z * std for a Gaussian predictive distribution (the station's only definition)."""
+    """Central interval p50 +- z * std for a Gaussian predictive distribution (the benchmark's only definition)."""
     z = _Z.get(level) or NormalDist().inv_cdf(0.5 + level / 2)
     p50, std = np.asarray(p50, float), np.asarray(std, float)
     return p50 - z * std, p50 + z * std

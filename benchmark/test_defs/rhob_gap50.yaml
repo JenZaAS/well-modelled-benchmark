@@ -1,0 +1,26 @@
+version: 1
+name: rhob_gap50
+description: >
+  Predict bulk density (RHOB) on the FORCE 2020 test wells inside one hidden 50 m gap per well.
+dataset: force2020
+target: RHOB
+scenario:
+  type: gap
+  gap_length_m: 50
+  n_gaps: 1
+wells:
+  split: test
+  names: []
+inputs_policy: model
+metrics:
+  - MAE
+  - RMSE
+  - R2
+  - cover_90
+  - cover_50
+  - interval_width_90
+  - has_uncertainty
+  - load_s
+  - fit_s
+  - predict_s
+  - samples_per_s

@@ -1,6 +1,6 @@
-# Template train
+# Template model
 
-A working example of a model for the benchmark ("the station", see [`docs/benchmark.md`](../../docs/benchmark.md)).
+A working example of a model for the benchmark (see [Build your model](../../docs/build-your-model.md) and [`docs/benchmark.md`](../../docs/benchmark.md)).
 Copy this folder, rename the class and `name`, and change the model.
 
 `template_linear` (numpy only): for RHOB, DTC and DTS it fits `ln(target)` on transformed inputs with
@@ -12,10 +12,12 @@ target in gap tasks.
 
 ```
 python -m benchmark.check_model template_linear
-python -m benchmark.run --model template_linear --dataset synthetic --scenario all --target all
+python -m benchmark.run --model template_linear --test all
 ```
 
-## How to bring your train
+The older flags `--dataset`, `--scenario` and `--target` still work. To add a test: `python -m benchmark.new_test`.
+
+## How to add your model
 
 1. Put your model in `workstreams/<team>/contender.py` (copy `contender.py` from here). Do not edit `src/wmb/` or `benchmark/`.
 2. Subclass `wmb.contender.BaseContender`. Set `name` (unique), `workstream`, `targets` (any of `RHOB`, `DTC`, `DTS`),
@@ -27,7 +29,7 @@ python -m benchmark.run --model template_linear --dataset synthetic --scenario a
    `predict_mask` is True (other samples are not scored). Never read the hidden target.
 5. Use canonical units (RHOB g/cm3, DTC and DTS us/ft). Do not convert and do not load data yourself in `predict`.
 6. List the class in `CONTENDERS`.
-7. Run `python -m benchmark.check_model <name>`, then a synthetic `python -m benchmark.run --model <name> --scenario all --target all`.
-8. When both pass, run `python -m benchmark.make_tasks --dataset force2020` and a FORCE run, then `python -m benchmark.scoreboard`.
+7. Run `python -m benchmark.check_model <name>`, then `python -m benchmark.run --model <name> --test all` (use `--test synthetic_rhob_missing` if you do not have FORCE data yet).
+8. When those pass, run a FORCE test (`--test rhob_missing`) and `python -m benchmark.scoreboard`.
 9. Note decisions that matter for reproducibility (data, preprocessing, model choice) briefly in your team README or `docs/`.
 10. Add a `LICENSE` or `LICENSE.md` in your model folder with the licence name, URL, and a one-line summary of restrictions. Set `licence_name`, `licence_url` and `licence_restrictions` on the class. Restricted licences may be used if declared; users must verify the licence fits their use. `python -m benchmark.check_model <name>` warns if the file is missing. Update [THIRD_PARTY.md](../../THIRD_PARTY.md).

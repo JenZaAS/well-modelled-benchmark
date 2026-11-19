@@ -1,4 +1,4 @@
-"""The fixed input/output contract of the benchmark ("the station").
+"""The fixed input/output contract of the benchmark.
 
 A `Task` is what a model receives; `validate_prediction` checks what it returns.
 Full description: docs/benchmark.md.
@@ -48,7 +48,10 @@ class Task:
 
 
 def scenario_key(scenario: str, gap_length_m: float | None = None) -> str:
-    return f"gap_{int(gap_length_m)}" if scenario == SCENARIO_GAP else scenario
+    if scenario != SCENARIO_GAP:
+        return scenario
+    length = float(gap_length_m)
+    return f"gap_{int(length) if length.is_integer() else length}"
 
 
 def task_input_columns(target: str) -> list[str]:

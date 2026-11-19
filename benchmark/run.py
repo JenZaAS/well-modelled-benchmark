@@ -25,6 +25,7 @@ import numpy as np
 import pandas as pd
 
 from benchmark import make_tasks as mt
+from benchmark import test_def as td
 from benchmark.registry import REPO, discover  # noqa: F401  (also puts src/ on sys.path)
 from wmb import paths, scoring, splits
 from wmb.contender import Prediction
@@ -118,13 +119,13 @@ def prediction_payload(base: dict, key: str, tasks: list[Task], preds: list[Pred
             "std": None if has_band else _arr(p.std),
             "gaps": _gap_intervals(t.depth, t.predict_mask),
         })
-    return {"contender": base.get("contender"), "dataset": base["dataset"],
+    return {"contender": base.get("contender"), "test": base.get("test"), "dataset": base["dataset"],
             "target": base["target"], "scenario": key, "wells": wells}
 
 
 def _fail(row: dict, out, exc: Exception) -> dict:
     row["error"] = f"{type(exc).__name__}: {exc}"
-    _write(out, "failure.json", {k: row[k] for k in ("contender", "dataset", "target", "scenario", "error")}
+    _write(out, "failure.json", {k: row.get(k) for k in ("contender", "test", "dataset", "target", "scenario", "error")}
            | {"traceback": traceback.format_exc(limit=4)})
     (out / "scores.json").unlink(missing_ok=True)  # a failed rerun must not leave a stale scoreboard row
     (out / "predictions.json").unlink(missing_ok=True)
@@ -191,8 +192,12 @@ def run_scenario(model, tasks: list[Task], truth: dict, base: dict, out_root, ti
 
 
 def run_model(name: str, factory, train, test_tasks: list[Task], truth: dict, target: str, scenarios: list[str],
-              dataset: str, out_root) -> list[dict]:
-    """All selected scenarios of one target for one model. Failures are returned as rows with `error`."""
+              dataset: str, out_root, test_name=None) -> list[dict]:
+    """All selected scenarios of one target for one model. Failures are returned as rows with `error`.
+
+    test_name: callable (target, scenario_key) -> test name; default is the shipped def that matches, else a generated name.
+    """
+    test_name = test_name or (lambda tg, k: td.generated_def(dataset, tg, k).name)
     by_key = {k: [t for t in test_tasks if t.target == target and t.scenario_key == k] for k in scenarios}
     by_key = {k: v for k, v in by_key.items() if v}
     if not by_key:
@@ -202,6 +207,7 @@ def run_model(name: str, factory, train, test_tasks: list[Task], truth: dict, ta
         # fresh model and fit per scenario so nothing observed in one scenario leaks into another
         timings: dict = {}
         out = out_root / name / dataset / target / k
+        test = test_name(target, k)
         try:
             with scoring.timer(timings, "load_s"):
                 model = factory()
@@ -210,9 +216,11 @@ def run_model(name: str, factory, train, test_tasks: list[Task], truth: dict, ta
             with scoring.timer(timings, "fit_s"):
                 model.fit(train, target)
         except Exception as exc:
-            rows.append(_fail({"contender": name, "dataset": dataset, "target": target, "scenario": k}, out, exc))
+            rows.append(_fail({"contender": name, "test": test, "dataset": dataset, "target": target, "scenario": k},
+                              out, exc))
             continue
-        base = {"contender": model.name, "workstream": model.workstream, "dataset": dataset, "target": target,
+        base = {"contender": model.name, "test": test, "workstream": model.workstream, "dataset": dataset,
+                "target": target,
                 "n_train_wells": len(train), "n_test_wells": len({t.well_id for t in ts}),
                 "hardware": hardware(), "machine": f"{platform.processor() or platform.machine()} / {platform.system()}",
                 "run_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
@@ -226,19 +234,107 @@ def _fmt(row: dict) -> str:
             f"fit={g('fit_s'):.2f}s pred={g('predict_s'):.2f}s")
 
 
+def _truth(test: list) -> dict:
+    truth = {(w.name, t): w.curves[t] for w in test for t in CORE if t in w.curves}
+    truth.update({(w.name, "DEPTH"): w.depth for w in test})
+    return truth
+
+
+def _print_rows(n: str, got: list[dict]) -> None:
+    for r in got:
+        label = f"{n} {r['target']} {r['scenario']} [{r['test']}]"
+        print(f"  {label:60s} " + (f"FAILED {r['error']}" if "error" in r else _fmt(r)))
+
+
+def _write_runs(out_root, rows: list[dict], tag: str) -> None:
+    runs = out_root / "runs"
+    runs.mkdir(parents=True, exist_ok=True)
+    stem = f"{time.strftime('%Y%m%dT%H%M%S')}_{tag}"
+    (runs / f"{stem}.json").write_text(json.dumps(rows, indent=2, default=str))
+    pd.DataFrame([{k: v for k, v in r.items() if k != "hardware"} for r in rows]).to_csv(runs / f"{stem}.csv", index=False)
+
+
+def run_tests(defs: list[td.TestDef], found: dict, names: list[str], cache, out_root) -> list[dict]:
+    """Run each test def for every named model (fresh fit per def). A def that cannot run yields error rows."""
+    loaded: dict = {}
+    rows = []
+    for d in defs:
+        key = d.scenario_key
+        print(f"test={d.name} dataset={d.dataset} target={d.target} scenario={key} wells={d.wells_split}")
+        try:
+            ds_key = (d.dataset, td.effective_seed(d))
+            if ds_key not in loaded:
+                train, test = load_dataset(*ds_key)
+                loaded[ds_key] = (train, test, _truth(test))
+            train, test, truth = loaded[ds_key]
+            tasks = td.build_def_tasks(d, train, test, cache)
+            if not tasks:
+                raise ValueError(f"test {d.name} has no tasks: no selected test well has {d.target} for {key}")
+        except (Exception, SystemExit) as exc:
+            err = exc if isinstance(exc, Exception) else RuntimeError(str(exc) or "exited")
+            for n in names:
+                if n not in found:
+                    print(f"unknown contender: {n}", file=sys.stderr); continue
+                row = {"contender": n, "test": d.name, "dataset": d.dataset, "target": d.target, "scenario": key}
+                rows.append(_fail(row, out_root / n / d.dataset / d.target / key, err))
+                _print_rows(n, [row])
+            continue
+        print(f"  train_wells={len(train)} test_wells={len({t.well_id for t in tasks})} tasks={len(tasks)}")
+        for n in names:
+            if n not in found:
+                print(f"unknown contender: {n}", file=sys.stderr); continue
+            got = run_model(n, found[n], train, tasks, truth, d.target, [key], d.dataset, out_root, lambda *_: d.name)
+            if not got:
+                print(f"  {n:24s} skipped (target not supported or no test tasks)")
+            _print_rows(n, got)
+            rows += got
+    return rows
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="well-modelled-benchmark runner")
-    ap.add_argument("--dataset", default="synthetic", help="synthetic | force2020 | <dataset key or folder under data_root with wells.json>")
-    ap.add_argument("--target", default="RHOB", help="a core curve (any for missing_curve; RHOB, DTC, DTS for gap) or 'all' (= RHOB, DTC, DTS)")
-    ap.add_argument("--scenario", default=SCENARIO_MISSING, choices=SCENARIO_CHOICES, help="default missing_curve")
+    ap.add_argument("--test", help="test definition name from benchmark/test_defs/ (comma-separated), or 'all'; see --list-tests")
+    ap.add_argument("--dataset", default=None, help="synthetic | force2020 | <dataset key or folder under data_root with wells.json> (default synthetic)")
+    ap.add_argument("--target", default=None, help="a core curve (any for missing_curve; RHOB, DTC, DTS for gap) or 'all' (= RHOB, DTC, DTS); default RHOB")
+    ap.add_argument("--scenario", help=f"one of {', '.join(SCENARIO_CHOICES)} (default missing_curve), or the scenario key of --test")
     ap.add_argument("--contenders", "--model", dest="contenders", default="all", help="comma-separated names, or 'all'")
     ap.add_argument("--seed", type=int, default=0, help="well split seed for datasets without a task spec")
     ap.add_argument("--cache", help="task cache directory (see benchmark.make_tasks)")
     ap.add_argument("--list", action="store_true", help="list contenders and exit")
+    ap.add_argument("--list-tests", action="store_true", help="list the runnable test definitions and exit")
     a = ap.parse_args(argv)
 
     if a.list:
         print("Contenders:"); discover(verbose=True); return 0
+    if a.list_tests:
+        for d in td.list_defs():
+            print(f"{d.name:24s} {d.dataset:10s} {d.target:5s} {d.scenario_key:14s} {d.description}")
+        return 0
+
+    if a.test is not None:
+        try:
+            defs = td.list_defs() if a.test == "all" else [td.load_def(n.strip()) for n in a.test.split(",")]
+        except td.TestDefError as exc:
+            ap.error(str(exc))
+        if not defs:
+            ap.error("no runnable test definitions found")
+        for d in defs:  # explicit flags must agree with every selected def
+            for flag, given, want in (("--dataset", a.dataset, d.dataset), ("--target", a.target, d.target),
+                                      ("--scenario", a.scenario, d.scenario_key)):
+                if given is not None and given != want:
+                    ap.error(f"{flag} {given} conflicts with test {d.name} ({want}); drop {flag} or pick another test")
+        found = discover()
+        names = list(found) if a.contenders == "all" else a.contenders.split(",")
+        out_root = paths.results_root()
+        rows = run_tests(defs, found, names, a.cache, out_root)
+        if rows:
+            _write_runs(out_root, rows, next(iter({d.dataset for d in defs})) if len({d.dataset for d in defs}) == 1 else "tests")
+        print(f"scores written under {out_root}")
+        return 0
+
+    a.dataset, a.target, a.scenario = a.dataset or "synthetic", a.target or "RHOB", a.scenario or SCENARIO_MISSING
+    if a.scenario not in SCENARIO_CHOICES:
+        ap.error(f"unknown scenario {a.scenario}; choose from {', '.join(SCENARIO_CHOICES)}")
     targets = list(TARGET_CURVES) if a.target == "all" else [a.target]
     if targets[0] not in CORE and a.target != "all":
         ap.error(f"unknown target {a.target}; choose from {', '.join(CORE)} or 'all'")
@@ -255,8 +351,7 @@ def main(argv=None) -> int:
         print(f"warning: --seed {a.seed} ignored; dataset {a.dataset} uses its committed task spec "
               f"(seed {mt.load_spec(a.dataset)['seed']})", file=sys.stderr)
     train, test = load_dataset(a.dataset, a.seed)
-    truth = {(w.name, t): w.curves[t] for w in test for t in CORE if t in w.curves}
-    truth.update({(w.name, "DEPTH"): w.depth for w in test})
+    truth = _truth(test)
     spec_targets = mt.load_spec(a.dataset)["targets"] if mt.has_spec(a.dataset) else []
     tasks: list[Task] = []
     for target in targets:
@@ -276,16 +371,10 @@ def main(argv=None) -> int:
             got += run_model(n, found[n], train, tasks, truth, target, scenarios, a.dataset, out_root)
         if not got:
             print(f"  {n:24s} skipped (target not supported or no test tasks for {a.target}/{a.scenario})")
-        for r in got:
-            label = f"{n} {r['target']} {r['scenario']}"
-            print(f"  {label:44s} " + (f"FAILED {r['error']}" if "error" in r else _fmt(r)))
+        _print_rows(n, got)
         rows += got
     if rows:
-        runs = out_root / "runs"
-        runs.mkdir(parents=True, exist_ok=True)
-        stem = f"{time.strftime('%Y%m%dT%H%M%S')}_{a.dataset}"
-        (runs / f"{stem}.json").write_text(json.dumps(rows, indent=2, default=str))
-        pd.DataFrame([{k: v for k, v in r.items() if k != "hardware"} for r in rows]).to_csv(runs / f"{stem}.csv", index=False)
+        _write_runs(out_root, rows, a.dataset)
     print(f"scores written under {out_root}")
     return 0
 

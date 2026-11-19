@@ -1,27 +1,25 @@
-# Benchmark: the train station
+# Benchmark
 
-Every team brings a **train** (a model). The **station** is this repo's
-benchmark: it gives every train the same tasks, hides the same depths,
-and scores the answers the same way.
+Every team provides a **model**. This repo's benchmark gives every model
+the same tasks, hides the same depths, and scores the answers the same way.
 
-You do not invent your own test set, split, or metric names. You implement
-the fixed input/output contract, then run:
+Start with the short guide: [**Build your model**](build-your-model.md).
+You implement the fixed input/output contract, then run:
 
 ```bash
-python -m benchmark.check_model template_linear   # does my train couple correctly?
-python -m benchmark.make_tasks --dataset force2020
-python -m benchmark.run --model template_linear --dataset force2020
+python -m benchmark.check_model template_linear
+python -m benchmark.run --model template_linear --test all
 python -m benchmark.scoreboard
 ```
 
-A short "how to bring your train" checklist lives in each workstream
-README and in [`workstreams/_template_model/`](../workstreams/_template_model/).
 The Python types are in `wmb.contract` and `wmb.contender`. See also
-[`src/wmb/INTERFACE.md`](../src/wmb/INTERFACE.md) and [`metrics.md`](metrics.md).
+[`src/wmb/INTERFACE.md`](../src/wmb/INTERFACE.md), [`tests.md`](tests.md)
+and [`metrics.md`](metrics.md). The older `--dataset` / `--scenario` /
+`--target` flags still work.
 
-## What a train receives and what it must return
+## What a model receives and what it must return
 
-The station builds a **Task** and calls `predict_task(task)` (or, for older
+The runner builds a **Task** and calls `predict_task(task)` (or, for older
 models, `predict(well, target)`).
 
 A Task contains:
@@ -44,18 +42,18 @@ A **Prediction** must use the same depth index (same length as `task.depth`):
 |---|---|---|
 | `p50` (or `mean`, they are aliases) | Yes | Point prediction, in the canonical unit of the target |
 | `p05` and `p95` | Optional | 5th and 95th percentiles (a 90% interval) |
-| `std` | Optional | One-sigma uncertainty. If you do not give `p05`/`p95`, the station treats the interval as Gaussian: 90% is `p50 ± 1.64485·std`, 50% is `p50 ± 0.67449·std`. |
+| `std` | Optional | One-sigma uncertainty. If you do not give `p05`/`p95`, the runner treats the interval as Gaussian: 90% is `p50 ± 1.64485·std`, 50% is `p50 ± 0.67449·std`. |
 | `quantiles` | Optional | Dict such as `{0.05: ..., 0.50: ..., 0.95: ...}` |
 
 Units are the canonical ones from `wmb.datasets.canonical_curves.yaml`
 and `wmb.curves.UNITS`: **RHOB** in g/cm3 (g/cc), **DTC** and **DTS** in
 us/ft. Do not convert units yourself; the loader already has.
 
-The station validates the prediction before scoring: same length as
+The runner validates the prediction before scoring: same length as
 depth, `p05 ≤ p50 ≤ p95` where all are finite, `std ≥ 0` where finite.
 NaN is allowed where you cannot predict. Clear `ValueError` messages
-explain a failed check. A broken train is skipped and recorded; it does
-not stop the other trains.
+explain a failed check. A broken model is skipped and recorded; it does
+not stop the other models.
 
 ## Targets
 
@@ -82,7 +80,7 @@ the entire held-out well. `target_observed` is `None`. Score only at
 depths where a measured target value exists.
 
 **B. Gap filling (`gap`).** Inside sections where the target is
-measured, the station hides one contiguous interval of **10 m**, **50 m**
+measured, the benchmark hides one contiguous interval of **10 m**, **50 m**
 or **100 m**. The rest of the measured target is visible in
 `target_observed`. Each length is a separate task, so scores can be
 compared by gap size. Gaps are placed with a documented seed, fully
@@ -100,7 +98,7 @@ For FORCE 2020 we use the official split: the 98 **train** wells for
 `fit`, the **leaderboard** and **hidden** wells for testing. The exact
 well names, seeds and gap windows are in the committed files
 `benchmark/task_specs/force2020.yaml` and `force2020.windows.yaml`. Everyone uses those files, so
-every train sees the same tasks.
+every model sees the same tasks.
 
 ```bash
 python -m benchmark.make_tasks --dataset force2020
@@ -127,7 +125,7 @@ All accuracy numbers are in the target's canonical unit.
 | **Optional** | CRPS (Gaussian when only `std` is given; otherwise from quantiles when available) and pinball at 5/50/95% | lower |
 | **Speed** | `fit_s`, `load_s` (constructing the model), `predict_s` (all test wells), `predict_s_per_well`, `predict_s_batch` (one batch of N wells), `samples_per_s`. Hardware (`machine`, Python, CPU count) is recorded. | lower time |
 
-Point-only trains (no `p05`/`p95` and no `std`) still get accuracy and
+Point-only models (no `p05`/`p95` and no `std`) still get accuracy and
 speed. Uncertainty and sharpness are left blank and the scoreboard
 marks them as point-only (`has_uncertainty: false`).
 
@@ -139,17 +137,19 @@ results stay comparable.
 
 ```bash
 python -m benchmark.run --list
-python -m benchmark.run --dataset synthetic --target RHOB
-python -m benchmark.run --model template_linear --dataset force2020 --scenario missing_curve --target RHOB
-python -m benchmark.run --model all --dataset force2020 --scenario all --target all
+python -m benchmark.run --list-tests
+python -m benchmark.run --model template_linear --test synthetic_rhob_missing
+python -m benchmark.run --model template_linear --test rhob_missing
+python -m benchmark.run --model template_linear --test all
 python -m benchmark.scoreboard
 python -m benchmark.scoreboard --write
 ```
 
 `--model` and the older `--contenders` flag are the same thing (a comma
-separated list, or `all`). Default dataset is `synthetic` (no real data
-needed). Default scenario is `missing_curve`, so existing scripts keep
-working.
+separated list, or `all`). `--test` is the usual way to choose what to
+run (see [tests.md](tests.md)). The older `--dataset` / `--scenario` /
+`--target` flags still work; the default dataset is `synthetic` (no real
+data needed) and the default scenario is `missing_curve`.
 
 The runner builds a fresh model and times `fit` for every (model, target,
 scenario), so nothing seen in one gap length can leak into another, then
@@ -157,6 +157,18 @@ predicts every matching task. Gaps are depth-continuous (no depth hole
 inside the interval). If one model raises, it is recorded as a failure and the
 next model runs. A workstream whose `contender.py` cannot be imported
 is skipped with a warning, as before.
+
+## Make your own test
+
+A test is one YAML file in `benchmark/test_defs/` (dataset, target, scenario, wells). Create, check and run one:
+
+```bash
+python -m benchmark.new_test my_test
+python -m benchmark.check_test my_test
+python -m benchmark.run --model template_linear --test my_test     # or --test all
+```
+
+See [`tests.md`](tests.md) for the schema and the shipped tests.
 
 ## Where results go
 
@@ -166,30 +178,29 @@ Per-model files (gitignored):
 results/<model>/<dataset>/<target>/<scenario>/scores.json
 ```
 
+Each `scores.json`, `failure.json` and `predictions.json` also carries a `test` field (the test definition name, or
+a generated one such as `synthetic_rhob_missing` for the old flags); the paths do not change.
 For `gap`, scenario is `gap_10`, `gap_50` or `gap_100`. Each run also
 writes a combined `results/runs/<timestamp>_<dataset>.json` and `.csv`
 (gitignored). `python -m benchmark.scoreboard` prints one table from
 all `scores.json` files, and `--write` updates
 `results/summary/scoreboard.md` (small; may be committed).
 
-## Adding a train
+## Adding a model
 
-1. Copy [`workstreams/_template_model/`](../workstreams/_template_model/)
-   or add a class to your own `workstreams/<team>/contender.py`.
-2. Set `name`, `workstream`, `required_inputs` / `optional_inputs`,
-   and `targets` if you only support some curves.
-3. Implement `fit(train_wells, target)` and `predict_task(task)`
-   (or the older `predict(well, target)`, which still works; the
-   station builds a `Well` from the Task, including `target_observed`
-   for gaps).
-4. Export the class in that file's `CONTENDERS` list.
-5. Add a `LICENSE.md` in the model folder and set `licence_name`, `licence_url` and
-   `licence_restrictions` (see [THIRD_PARTY.md](../THIRD_PARTY.md)). `check_model` warns if the file is missing.
-6. Run `python -m benchmark.check_model <your-name>` then a synthetic
-   `benchmark.run`. Then `make_tasks` and a real FORCE run when you are
-   ready.
+Follow [**Build your model**](build-your-model.md). In short: copy
+[`workstreams/_template_model/`](../workstreams/_template_model/) to
+`workstreams/<team>/models/<name>/`, fill `model.yaml` and `LICENSE.md`,
+register the class in your team's `CONTENDERS`, then:
 
-Do not edit `src/wmb/` or `benchmark/` to make your train pass; ask in
-the team chat if the contract needs a change.
+```bash
+python -m benchmark.check_model <name>
+python -m benchmark.run --model <name> --test all
+```
 
-An optional per-model folder layout (`workstreams/<team>/models/<name>/`) is described in [moving-models.md](moving-models.md). Existing `contender.py` registration stays valid; move your own files only when you are ready.
+Implement `fit(train_wells, target)` and `predict_task(task)` (the older
+`predict(well, target)` still works; the runner builds a `Well` from the
+Task, including `target_observed` for gaps). Do not edit `src/wmb/` or
+`benchmark/` to make your model pass; ask in the team chat if the
+contract needs a change. The optional `models/` layout is also in
+[moving-models.md](moving-models.md).

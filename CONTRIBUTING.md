@@ -1,5 +1,10 @@
 # Contributing: golden rules
 
+To add a model, follow **[Build your model](docs/build-your-model.md)**
+(`python -m benchmark.check_model <name>`, then
+`python -m benchmark.run --model <name> --test all`). To add a test,
+`python -m benchmark.new_test`.
+
 We all work on `main`, with or without branches. These rules keep us out of each other's way.
 
 1. **Only edit your own folder** (`workstreams/<your team>/`, or your team's folder in the README table).
@@ -17,7 +22,8 @@ We all work on `main`, with or without branches. These rules keep us out of each
 ```bash
 git pull --rebase
 # ...work in your folder...
-python -m benchmark.run --dataset synthetic      # still runs?
+python -m benchmark.check_model <name>
+python -m benchmark.run --model <name> --test synthetic_rhob_missing   # still runs? (no data needed)
 git add workstreams/<your team>/
 git commit -m "<team>: <what changed>"
 git pull --rebase && git push

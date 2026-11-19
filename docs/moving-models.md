@@ -17,7 +17,7 @@ to restructure anything to run or score it.
         contender.py              # stays; this is the registration file
         models/
             <model_name>/
-                ... your code and a thin station wrapper ...
+                ... your code and a thin wrapper that implements BaseContender ...
                 LICENSE.md
                 README.md         # optional
 
@@ -45,8 +45,9 @@ example).
 5. In the workstream's existing `contender.py`, import the class and
    include it in `CONTENDERS`. Do not remove a working entry until the
    new import runs.
-6. `python -m benchmark.check_model <name>`, then a synthetic
-   `python -m benchmark.run --model <name> --dataset synthetic`.
+6. `python -m benchmark.check_model <name>`, then
+   `python -m benchmark.run --model <name> --test all` (or `--test synthetic_rhob_missing`
+   if you do not have the FORCE data yet). See [build-your-model.md](build-your-model.md).
 
 ## Why the registry does not scan `models/` yet
 

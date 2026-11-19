@@ -1,0 +1,24 @@
+version: 1
+name: synthetic_rhob_missing
+description: >
+  Predict RHOB on the synthetic test wells with the curve hidden throughout the well. Runs without any data files.
+dataset: synthetic
+target: RHOB
+scenario:
+  type: missing_curve
+wells:
+  split: test
+  names: []
+inputs_policy: model
+metrics:
+  - MAE
+  - RMSE
+  - R2
+  - cover_90
+  - cover_50
+  - interval_width_90
+  - has_uncertainty
+  - load_s
+  - fit_s
+  - predict_s
+  - samples_per_s

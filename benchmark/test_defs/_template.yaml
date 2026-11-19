@@ -1,0 +1,33 @@
+# Template for a benchmark test definition (not runnable: files starting with "_" are skipped).
+# Create yours with:  python -m benchmark.new_test my_test
+# Check it with:      python -m benchmark.check_test my_test
+# Run it with:        python -m benchmark.run --model template_linear --test my_test
+# Full guide: docs/tests.md
+version: 1                    # only 1 is supported
+name: my_test                 # must equal the file name without .yaml
+description: >                # plain words, for humans and agents
+  Predict bulk density (RHOB) on held-out wells with the curve hidden
+  throughout the well.
+dataset: force2020            # synthetic | force2020 | another dataset with a task spec or data folder
+target: RHOB                  # RHOB | DTC | DTS
+scenario:
+  type: missing_curve         # missing_curve | gap
+  gap_length_m: null          # required (> 0) for type gap, e.g. 50; null for missing_curve
+  n_gaps: 1                   # optional (gap only): number of non-overlapping gaps per well
+  seed: null                  # optional: placement seed; null = the dataset task-spec seed
+wells:
+  split: test                 # test (official test wells) | leaderboard (FORCE only) | list
+  names: []                   # non-empty well ids when split is list; train wells stay the official train set
+inputs_policy: model          # the model picks its inputs (model.yaml / required_inputs); do not list curves here
+metrics:                      # keys of scores.json shown by the scoreboard
+  - MAE
+  - RMSE
+  - R2
+  - cover_90
+  - cover_50
+  - interval_width_90
+  - has_uncertainty
+  - load_s
+  - fit_s
+  - predict_s
+  - samples_per_s
