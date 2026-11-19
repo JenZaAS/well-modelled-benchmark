@@ -12,11 +12,39 @@ Gardner, weighted density, Greenberg-Castagna and similar rules: fast, explainab
 Contender classes in `contender.py` returning `Prediction(mean, std)`.
 
 ## What's here
-`contender.py` with `black_gardner` (RHOB from DTC) and `black_castagna_dts` (DTS from DTC, mudrock line).
+
+Seven registered physics contenders. Each is a pointwise cross-log predictor for whole missing curves and
+gaps. Choose by the input logs you have; each model card lists units, assumptions, fit requirements,
+abstention rules and examples.
+
+| ID | Target ← inputs | Model card |
+| --- | --- | --- |
+| `black_gardner` | RHOB ← DTC | [Gardner, refitted a and b](models/gardner/README.md) |
+| `black_gardner_fixed` | RHOB ← DTC | [Gardner, published 0.31 · Vp^0.25](models/gardner/README.md) |
+| `black_castagna_dts` | DTS ← DTC | [Castagna mudrock line](models/castagna_mudrock/README.md) |
+| `black_gc_brine_gr` | DTS ← DTC, GR | [Greenberg–Castagna, brine sand/shale from GR](models/greenberg_castagna/README.md) |
+| `black_wyllie_nphi` | DTC ← NPHI | [Wyllie time average, NPHI as porosity](models/wyllie/README.md) |
+| `black_density_nphi` | RHOB ← NPHI | [Volumetric density, NPHI as porosity](models/volumetric_density/README.md) |
+| `black_vpvs_ratio` | DTS ← DTC | [One fitted DTS/DTC ratio (control)](models/vpvs_ratio/README.md) |
+
+- `contender.py`: explicit registration (`CONTENDERS`); `Gardner` and `MudrockDTS` stay importable from it.
+- `models/<family>/`: `equation.py` (plain NumPy), `wrapper.py` (station wrapper), `README.md` (model card),
+  `LICENSE.md`. `models/_shared/` has slowness conversion, curve access and uncertainty calibration.
+- Each model returns NaN, not an error, wherever an input is missing or outside the equation's domain. It
+  returns one Gaussian σ from equal-well-weight residuals (out-of-fold when parameters are fitted), or
+  `std=None` when fewer than two wells contribute.
+- [`VALIDATION.md`](VALIDATION.md): FORCE 2020 results (error, fill fraction, common-support comparisons,
+  interval coverage, timing) and how to run a black model next to your own on the same depths.
+- `validate_force.py`: the aggregate-only script behind that note, including a gap-only straight-line
+  interpolation reference.
+- `tests/`: focused tests (`python -m pytest -q workstreams/black_physics/tests`).
 
 Run it:
 ```
-python -m benchmark.run --dataset synthetic --target RHOB --contenders black_gardner
+python -m benchmark.check_model black_gc_brine_gr
+python -m benchmark.run --dataset synthetic --model black_gardner,black_gc_brine_gr --target all --scenario all
+python -m benchmark.run --dataset force2020 --model black_gc_brine_gr,template_linear --target DTS --scenario gap_50
+python -m workstreams.black_physics.validate_force --compare template_linear --check-results
 ```
 
 ## Rules for this folder
