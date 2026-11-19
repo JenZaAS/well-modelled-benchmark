@@ -1,0 +1,12 @@
+# Core: enough to run the benchmark skeleton, the viewer builder and the physics/tree baselines on CPU.
+# Full ML stack (torch, Chronos-2, MOMENT, TTM): tools/laptop_setup/requirements.txt + setup-fh2026.ps1.
+numpy>=1.26,<3
+pandas>=2.0,<4
+lasio>=0.31
+scikit-learn>=1.4,<1.8
+xgboost>=2.1
+lightgbm>=4.3
+matplotlib>=3.8
+pyproj>=3.6          # tools/fetch_open_data (CRS conversion)
+requests>=2.31       # fetch scripts
+pytest>=8

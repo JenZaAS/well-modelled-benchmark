@@ -1,0 +1,32 @@
+# FH2026 laptop environment (Python 3.12, Windows, CPU only).
+# Installed by setup-fh2026.ps1 in three steps:
+#   1) torch from the PyTorch CPU index (pinned there, not here)
+#   2) this file
+#   3) momentfm==0.1.4 with --no-deps (its own pins are too old for Python 3.12)
+# Version bounds come from granite-tsfm 0.3.12 (torch <2.12, scikit-learn <1.8,
+# transformers >=4.57.6) and chronos-forecasting 2.x (transformers <6).
+
+# --- Database pipeline ---
+lasio>=0.31
+numpy>=1.26,<3
+pandas>=2.3.3,<4
+pyarrow>=15
+duckdb>=1.1
+pdfplumber>=0.11
+requests>=2.31
+matplotlib>=3.8
+openpyxl>=3.1          # reads the Zenodo .xlsx files (scoring matrix, NPD tops)
+
+# --- ML stretch ---
+scikit-learn>=1.4,<1.8
+scipy>=1.11
+xgboost>=2.1
+lightgbm>=4.3          # optional baseline, small wheel
+joblib
+tqdm
+einops>=0.7
+accelerate>=1.1
+transformers>=4.57.6,<6
+huggingface_hub>=0.34
+chronos-forecasting>=2.2,<3
+granite-tsfm>=0.3.12,<0.4

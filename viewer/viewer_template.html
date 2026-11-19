@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<style>
+__LEAFLET_CSS__
+</style>
+<style>
+:root {
+  --bg: #eef0ee;
+  --panel: #ffffff;
+  --ink: #1f1f1f;
+  --muted: #5c5c5c;
+  --line: #d5d5d3;
+  --accent: #2b3a42;
+  --red: #c0392b;
+  --amber: #d28c00;
+  --green: #2e7d32;
+  sidebar-w: 300px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink);
+  font: 13px/1.4 "Segoe UI", system-ui, sans-serif; }
+#app { display: flex; flex-direction: column; height: 100%; }
+header {
+  display: flex; align-items: baseline; gap: 16px;
+  padding: 8px 14px; background: var(--panel); border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+header h1 { font-size: 15px; font-weight: 650; margin: 0; letter-spacing: 0.01em; }
+header .sub { color: var(--muted); font-size: 12px; }
+#main { flex: 1 1 auto; display: flex; min-height: 0; }
+#side {
+  width: 300px; min-width: 240px; max-width: 380px;
+  background: var(--panel); border-right: 1px solid var(--line);
+  display: flex; flex-direction: column; min-height: 0;
+}
+#map { flex: 1 1 auto; min-width: 0; background: #cfd8d4; }
+#plot {
+  flex: 0 0 0; height: 0; background: var(--panel);
+  border-top: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0;
+  transition: none;
+}
+#plot.open { flex: 0 0 46%; height: 46%; }
+#plot-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 4px 10px; border-bottom: 1px solid var(--line); flex: 0 0 auto;
+}
+#plot-head h2 { font-size: 13px; margin: 0; font-weight: 650; }
+#plot-head .meta { color: var(--muted); font-size: 12px; }
+#plot-head button { margin-left: auto; border: 1px solid var(--line); background: #fafafa;
+  padding: 2px 8px; cursor: pointer; font: inherit; }
+#plot-canvas-wrap { flex: 1 1 auto; min-height: 0; position: relative; }
+#plot-canvas-wrap canvas { display: block; width: 100%; height: 100%; }
+.filters, .legend { padding: 8px 12px; border-bottom: 1px solid var(--line); }
+.filters label { margin-right: 10px; white-space: nowrap; cursor: pointer; }
+.legend .row, .swatch-row { display: flex; align-items: center; gap: 8px; margin: 3px 0; flex-wrap: nowrap; }
+.dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; border: 1px solid #333; }
+.dot.sq { border-radius: 1px; }
+.dot.tri { width: 0; height: 0; border: 6px solid transparent; border-bottom-color: #333;
+  background: none; border-radius: 0; }
+.dot.dts { box-shadow: 0 0 0 2px #111; }
+#table-wrap { flex: 1 1 auto; overflow: auto; min-height: 0; }
+table { width: 100%; border-collapse: collapse; font-size: 12px; }
+th, td { padding: 3px 8px; text-align: left; border-bottom: 1px solid #eee; white-space: nowrap; }
+th { position: sticky; top: 0; background: #f7f7f6; cursor: pointer; font-weight: 600; }
+tr:hover td { background: #f3f6f4; }
+tr.active td { background: #e7eee8; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.leaflet-tooltip.well-tip {
+  background: #fff; border: 1px solid #bbb; border-radius: 2px;
+  padding: 6px 8px; font: 12px/1.35 "Segoe UI", system-ui, sans-serif;
+  box-shadow: 0 1px 4px rgba(0,0,0,.15); color: #222;
+}
+.leaflet-tooltip.well-tip br { line-height: 1.3; }
+.leaflet-container { font: inherit; background: #d3ddd8; }
+.leaflet-control-attribution { font-size: 10px; }
+#credit-pop { display: none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>__TITLE__</h1>
+    <div class="sub" id="header-sub"></div>
+  </header>
+  <div id="main">
+    <aside id="side">
+      <div class="filters" id="filters"></div>
+      <div class="legend" id="legend"></div>
+      <div id="table-wrap"><table id="well-table"></table></div>
+    </aside>
+    <div id="map"></div>
+  </div>
+  <div id="plot">
+    <div id="plot-head">
+      <h2 id="plot-title"></h2>
+      <div class="meta" id="plot-meta"></div>
+      <button type="button" id="plot-close">Close</button>
+    </div>
+    <div id="plot-canvas-wrap"><canvas id="plot-canvas"></canvas></div>
+  </div>
+</div>
+<script>
+__LEAFLET_JS__
+</script>
+<script>
+window.WELLMAP_DATA = __WELLMAP_DATA__;
+(function () {
+  const DATA = window.WELLMAP_DATA;
+  const TRACKS = [
+    { id: "gr", title: "GR", curves: [{ k: "GR", color: "#1b7a3a", xmin: 0, xmax: 150 }] },
+    { id: "res", title: "RDEP / RMED", log: true, curves: [
+      { k: "RDEP", color: "#111", xmin: 0.2, xmax: 200 },
+      { k: "RMED", color: "#c0392b", xmin: 0.2, xmax: 200 }
+    ]},
+    { id: "dn", title: "RHOB / NPHI", curves: [
+      { k: "RHOB", color: "#c0392b", xmin: 1.65, xmax: 2.85 },
+      { k: "NPHI", color: "#1d4ed8", xmin: 0.45, xmax: -0.15 }
+    ]},
+    { id: "son", title: "DTC / DTS", curves: [
+      { k: "DTC", color: "#111", xmin: 140, xmax: 40 },
+      { k: "DTS", color: "#7c3aed", xmin: 240, xmax: 80 }
+    ]},
+    { id: "cal", title: "CALI", curves: [{ k: "CALI", color: "#7a4a12", xmin: 6, xmax: 16 }] },
+    { id: "pef", title: "PEF", curves: [{ k: "PEF", color: "#d97706", xmin: 0, xmax: 15 }] },
+    { id: "lith", title: "LITH", lith: true }
+  ];
+
+  const state = {
+    splits: new Set(),
+    datasets: new Set(),
+    dtsOnly: false,
+    sortKey: "overall",
+    sortDir: -1,
+    selected: null,
+    markers: {},
+  };
+
+  function completenessColor(pct) {
+    if (pct == null || isNaN(pct)) return "#888";
+    if (pct < 60) return "#c0392b";
+    if (pct <= 85) return "#d28c00";
+    return "#2e7d32";
+  }
+  function shapeFor(split) {
+    const s = (split || "").toLowerCase();
+    if (s === "leaderboard") return "square";
+    if (s === "hidden") return "triangle";
+    return "circle";
+  }
+  function wellId(w) { return w.id || (w.dataset + "::" + w.name); }
+
+  function markerSvg(w, size) {
+    const fill = completenessColor(w.overall);
+    const dts = w.has_dts;
+    const stroke = dts ? "#111" : "#333";
+    const sw = dts ? 2.4 : 1.2;
+    const s = size || 16;
+    const c = s / 2;
+    const shape = shapeFor(w.split);
+    let body = "";
+    if (shape === "square") {
+      body = `<rect x="3" y="3" width="${s-6}" height="${s-6}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
+    } else if (shape === "triangle") {
+      body = `<polygon points="${c},2 ${s-2},${s-2} 2,${s-2}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
+    } else {
+      body = `<circle cx="${c}" cy="${c}" r="${c-3}" fill="${fill}" stroke="${stroke}" stroke-width="${sw}"/>`;
+    }
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${s}" height="${s}" viewBox="0 0 ${s} ${s}">${body}</svg>`;
+  }
+
+  function tipHtml(w) {
+    const curves = w.curves || {};
+    const keys = ["GR","RDEP","RMED","CALI","RHOB","NPHI","PEF","DTC","DTS"];
+    const lines = keys.map(k => `${k} ${curves[k] == null ? "—" : curves[k] + "%"}`).join(" · ");
+    return `<strong>${esc(w.name)}</strong><br>${esc(w.dataset)} · ${esc(w.split || "")} · ${w.overall}%`
+      + (w.has_dts ? " · DTS" : "")
+      + `<br><span style="color:#555">${lines}</span>`;
+  }
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"
+    }[c]));
+  }
+
+  function visibleWells() {
+    return DATA.wells.filter(w => {
+      if (w.lat == null || w.lon == null) return false;
+      if (state.splits.size && !state.splits.has(w.split || "")) return false;
+      if (state.datasets.size && !state.datasets.has(w.dataset)) return false;
+      if (state.dtsOnly && !w.has_dts) return false;
+      return true;
+    });
+  }
+
+  // ----- map -----
+  const map = L.map("map", { zoomControl: true, attributionControl: true });
+  const tiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    subdomains: "abc",
+    maxZoom: 12,
+  });
+  let tilesOk = false;
+  const coast = L.geoJSON(DATA.coast || { type: "FeatureCollection", features: [] }, {
+    style: { color: "#5b6b63", weight: 1.2, opacity: 0.9, fill: false },
+    interactive: false,
+  });
+  function showCoastFallback() {
+    if (!tilesOk && !map.hasLayer(coast)) coast.addTo(map);
+  }
+  tiles.on("load", () => {
+    tilesOk = true;
+    if (map.hasLayer(coast)) map.removeLayer(coast);
+  });
+  tiles.on("tileerror", showCoastFallback);
+  tiles.addTo(map);
+
+  const markersLayer = L.layerGroup().addTo(map);
+
+  function addMarkers() {
+    markersLayer.clearLayers();
+    state.markers = {};
+    const vis = visibleWells();
+    for (const w of vis) {
+      const s = w.has_dts ? 18 : 16;
+      const icon = L.divIcon({
+        className: "well-icon",
+        html: markerSvg(w, s),
+        iconSize: [s, s],
+        iconAnchor: [s/2, s/2],
+        popupAnchor: [0, -s/2],
+      });
+      const m = L.marker([w.lat, w.lon], { icon, riseOnHover: true, title: w.name });
+      m.bindTooltip(tipHtml(w), { className: "well-tip", sticky: true, direction: "top", opacity: 1 });
+      m.on("click", () => selectWell(w, false));
+      m.addTo(markersLayer);
+      state.markers[wellId(w)] = m;
+    }
+    return vis;
+  }
+
+  function fitToMarkers(vis) {
+    if (!vis.length) {
+      map.setView([59.5, 3.2], 6);
+      return;
+    }
+    const b = L.latLngBounds(vis.map(w => [w.lat, w.lon]));
+    map.fitBounds(b.pad(0.12), { maxZoom: 8 });
+  }
+
+  // ----- filters / legend / table -----
+  function unique(arr) { return [...new Set(arr)]; }
+
+  function renderFilters() {
+    const splits = unique(DATA.wells.map(w => w.split || "")).filter(Boolean);
+    const datasets = unique(DATA.wells.map(w => w.dataset)).filter(Boolean);
+    const el = document.getElementById("filters");
+    let html = "";
+    if (datasets.length > 1) {
+      html += datasets.map(d =>
+        `<label><input type="checkbox" data-ds="${esc(d)}" checked> ${esc(d)}</label>`
+      ).join("");
+      html += "<br>";
+    }
+    html += splits.map(s =>
+      `<label><input type="checkbox" data-split="${esc(s)}" checked> ${esc(s)}</label>`
+    ).join("");
+    html += ` <label><input type="checkbox" id="flt-dts"> has DTS</label>`;
+    el.innerHTML = html;
+    el.querySelectorAll("input[data-split]").forEach(inp => {
+      inp.addEventListener("change", () => {
+        state.splits = new Set([...el.querySelectorAll("input[data-split]:checked")].map(i => i.dataset.split));
+        // if all checked, treat as no filter
+        if (state.splits.size === splits.length) state.splits = new Set();
+        refresh();
+      });
+    });
+    el.querySelectorAll("input[data-ds]").forEach(inp => {
+      inp.addEventListener("change", () => {
+        state.datasets = new Set([...el.querySelectorAll("input[data-ds]:checked")].map(i => i.dataset.ds));
+        if (state.datasets.size === datasets.length) state.datasets = new Set();
+        refresh();
+      });
+    });
+    el.querySelector("#flt-dts").addEventListener("change", e => {
+      state.dtsOnly = e.target.checked;
+      refresh();
+    });
+  }
+
+  function renderLegend() {
+    document.getElementById("legend").innerHTML = `
+      <div class="swatch-row">
+        <span class="dot" style="background:#c0392b"></span>&lt;60%
+        <span class="dot" style="background:#d28c00"></span>60–85%
+        <span class="dot" style="background:#2e7d32"></span>&gt;85%
+      </div>
+      <div class="swatch-row">
+        <span class="dot" style="background:#888"></span>train
+        <span class="dot sq" style="background:#888"></span>leaderboard
+        <span style="display:inline-block;width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:11px solid #888;vertical-align:middle"></span>&nbsp;hidden
+        <span class="dot dts" style="background:#888;margin-left:8px"></span>DTS
+      </div>`;
+  }
+
+  function sortedVisible() {
+    const vis = visibleWells().slice();
+    const key = state.sortKey;
+    const dir = state.sortDir;
+    vis.sort((a, b) => {
+      let va, vb;
+      if (key === "name") { va = a.name; vb = b.name; }
+      else if (key === "split") { va = a.split || ""; vb = b.split || ""; }
+      else { va = a.overall; vb = b.overall; }
+      if (va < vb) return -1 * dir;
+      if (va > vb) return 1 * dir;
+      return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+    });
+    return vis;
+  }
+
+  function renderTable() {
+    const vis = sortedVisible();
+    const sel = state.selected ? wellId(state.selected) : null;
+    const arrow = (k) => state.sortKey === k ? (state.sortDir < 0 ? " ▼" : " ▲") : "";
+    let html = `<thead><tr>
+      <th data-k="name">Well${arrow("name")}</th>
+      <th data-k="split">Split${arrow("split")}</th>
+      <th data-k="overall">%${arrow("overall")}</th>
+    </tr></thead><tbody>`;
+    for (const w of vis) {
+      const id = wellId(w);
+      html += `<tr data-id="${esc(id)}" class="${id===sel?"active":""}">
+        <td><span class="c" style="background:${completenessColor(w.overall)}"></span>${esc(w.name)}${w.has_dts?" · DTS":""}</td>
+        <td>${esc(w.split||"")}</td>
+        <td class="num">${w.overall}</td>
+      </tr>`;
+    }
+    html += "</tbody>";
+    const tbl = document.getElementById("well-table");
+    tbl.innerHTML = html;
+    tbl.querySelectorAll("th").forEach(th => {
+      th.addEventListener("click", () => {
+        const k = th.dataset.k;
+        if (state.sortKey === k) state.sortDir *= -1;
+        else { state.sortKey = k; state.sortDir = k === "name" ? 1 : -1; }
+        renderTable();
+      });
+    });
+    tbl.querySelectorAll("tbody tr").forEach(tr => {
+      tr.addEventListener("click", () => {
+        const w = DATA.wells.find(x => wellId(x) === tr.dataset.id);
+        if (w) selectWell(w, true);
+      });
+    });
+  }
+
+  function refresh() {
+    const vis = addMarkers();
+    renderTable();
+    document.getElementById("header-sub").textContent =
+      `${vis.length} wells` + (DATA.unplaced && DATA.unplaced.length ? ` · ${DATA.unplaced.length} unplaced` : "");
+  }
+
+  // ----- log plot -----
+  const plotEl = document.getElementById("plot");
+  const canvas = document.getElementById("plot-canvas");
+  const ctx = canvas.getContext("2d");
+
+  function closePlot() {
+    plotEl.classList.remove("open");
+    state.selected = null;
+    renderTable();
+    setTimeout(() => map.invalidateSize(), 50);
+  }
+  document.getElementById("plot-close").addEventListener("click", closePlot);
+
+  function selectWell(w, pan) {
+    state.selected = w;
+    plotEl.classList.add("open");
+    document.getElementById("plot-title").textContent = w.name;
+    const bits = [w.dataset, w.split, w.overall + "%", w.has_dts ? "DTS" : null, w.depth_units || "m"];
+    document.getElementById("plot-meta").textContent = bits.filter(Boolean).join(" · ");
+    renderTable();
+    setTimeout(() => { map.invalidateSize(); if (pan && w.lat != null) map.panTo([w.lat, w.lon]); drawPlot(); }, 40);
+    const id = wellId(w);
+    if (history.replaceState) {
+      const url = new URL(location.href);
+      url.searchParams.set("well", w.name);
+      history.replaceState(null, "", url);
+    }
+  }
+
+  function curvePresent(w, k) {
+    const a = w.c && w.c[k];
+    return Array.isArray(a) && a.some(v => v != null);
+  }
+
+  function medianStep(d) {
+    if (!d || d.length < 2) return 0.15;
+    const diffs = [];
+    for (let i = 1; i < d.length; i++) diffs.push(Math.abs(d[i] - d[i-1]));
+    diffs.sort((a,b) => a-b);
+    return diffs[Math.floor(diffs.length/2)] || 0.15;
+  }
+
+  function drawPlot() {
+    const w = state.selected;
+    if (!w || !plotEl.classList.contains("open")) return;
+    const wrap = canvas.parentElement;
+    const W = wrap.clientWidth, H = wrap.clientHeight;
+    if (W < 20 || H < 20) return;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = Math.floor(W * dpr);
+    canvas.height = Math.floor(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    const depths = w.d || [];
+    if (!depths.length) {
+      ctx.fillStyle = "#666";
+      ctx.fillText("No curve data", 16, 24);
+      return;
+    }
+    const dmin = depths[0] < depths[depths.length-1] ? depths[0] : depths[depths.length-1];
+    const dmax = depths[0] < depths[depths.length-1] ? depths[depths.length-1] : depths[0];
+    const padTop = 28, padBot = 10, depthW = 52, lithW = 26, gap = 6;
+    const tracks = TRACKS.filter(t => t.lith ? (w.lith && w.lith.some(v => v != null)) : t.curves.some(c => curvePresent(w, c.k)));
+    // always show the standard tracks even if empty, so missing data is visible as blank
+    const shown = TRACKS.filter(t => t.lith || t.curves.length);
+    const nFlex = shown.filter(t => !t.lith).length;
+    const innerW = W - depthW - 8 - (shown.some(t => t.lith) ? lithW + gap : 0) - gap * shown.length;
+    const flexW = nFlex ? Math.max(60, innerW / nFlex) : 60;
+    const plotTop = padTop, plotH = H - padTop - padBot;
+    const yOf = (d) => plotTop + (d - dmin) / (dmax - dmin) * plotH;
+
+    // depth track
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, W, H);
+    ctx.strokeStyle = "#ddd";
+    ctx.beginPath(); ctx.moveTo(depthW, plotTop); ctx.lineTo(depthW, plotTop+plotH); ctx.stroke();
+    ctx.fillStyle = "#444";
+    ctx.font = "11px Segoe UI, system-ui, sans-serif";
+    ctx.textAlign = "right";
+    ctx.textBaseline = "middle";
+    ctx.fillText("m", depthW - 6, 12);
+    const step = niceStep(dmax - dmin);
+    for (let d = Math.ceil(dmin / step) * step; d <= dmax; d += step) {
+      const y = yOf(d);
+      ctx.strokeStyle = "#eee";
+      ctx.beginPath(); ctx.moveTo(depthW, y); ctx.lineTo(W, y); ctx.stroke();
+      ctx.fillStyle = "#444";
+      ctx.fillText(String(Math.round(d)), depthW - 6, y);
+    }
+
+    let x = depthW + gap;
+    for (const t of shown) {
+      const tw = t.lith ? lithW : flexW;
+      drawTrackBorder(x, plotTop, tw, plotH);
+      if (t.lith) drawLith(w, x, tw, yOf, dmin, dmax);
+      else drawCurves(w, t, x, tw, yOf, dmin, dmax);
+      x += tw + gap;
+    }
+  }
+
+  function niceStep(span) {
+    if (span <= 0) return 50;
+    const raw = span / 6;
+    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const n = raw / mag;
+    if (n < 1.5) return mag;
+    if (n < 3.5) return 2 * mag;
+    if (n < 7.5) return 5 * mag;
+    return 10 * mag;
+  }
+
+  function drawTrackBorder(x, y, w, h) {
+    ctx.strokeStyle = "#ccc";
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  }
+
+  function xScale(v, xmin, xmax, x, w) {
+    if (xmax === xmin) return x + w / 2;
+    return x + (v - xmin) / (xmax - xmin) * w;
+  }
+  function xScaleLog(v, xmin, xmax, x, w) {
+    if (v == null || v <= 0) return null;
+    const a = Math.log10(xmin), b = Math.log10(xmax);
+    return x + (Math.log10(v) - a) / (b - a) * w;
+  }
+
+  function drawCurves(well, track, x, tw, yOf, dmin, dmax) {
+    const depths = well.d;
+    const dz = medianStep(depths) * 3;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.font = "10px Segoe UI, system-ui, sans-serif";
+    const labels = [];
+    track.curves.forEach((c, i) => {
+      ctx.fillStyle = c.color;
+      const lo = Math.min(c.xmin, c.xmax), hi = Math.max(c.xmin, c.xmax);
+      const lab = `${c.k} ${c.xmin}–${c.xmax}`;
+      ctx.fillText(lab, x + 3, 2 + i * 11);
+    });
+    // vertical grid for log/linear
+    if (track.log) {
+      ctx.strokeStyle = "#f0f0f0";
+      [0.2, 1, 10, 100].forEach(v => {
+        const xx = xScaleLog(v, track.curves[0].xmin, track.curves[0].xmax, x, tw);
+        if (xx != null) { ctx.beginPath(); ctx.moveTo(xx, yOf(dmin)); ctx.lineTo(xx, yOf(dmax)); ctx.stroke(); }
+      });
+    }
+    for (const c of track.curves) {
+      const arr = (well.c && well.c[c.k]) || [];
+      ctx.strokeStyle = c.color;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      let drawing = false;
+      let lastD = null;
+      for (let i = 0; i < depths.length; i++) {
+        const v = arr[i];
+        const d = depths[i];
+        if (v == null || (track.log && v <= 0)) {
+          drawing = false;
+          lastD = d;
+          continue;
+        }
+        if (lastD != null && Math.abs(d - lastD) > dz) drawing = false;
+        const xx = track.log ? xScaleLog(v, c.xmin, c.xmax, x, tw) : xScale(v, c.xmin, c.xmax, x, tw);
+        const yy = yOf(d);
+        if (xx == null) { drawing = false; lastD = d; continue; }
+        if (!drawing) { ctx.moveTo(xx, yy); drawing = true; }
+        else ctx.lineTo(xx, yy);
+        lastD = d;
+      }
+      ctx.stroke();
+    }
+  }
+
+  function drawLith(well, x, tw, yOf, dmin, dmax) {
+    ctx.fillStyle = "#444";
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.font = "10px Segoe UI, system-ui, sans-serif";
+    ctx.fillText("LITH", x + 2, 2);
+    const scheme = (DATA.lithology && (DATA.lithology[well.lithology_scheme] || DATA.lithology.force2020)) || { codes: {} };
+    const codes = scheme.codes || {};
+    const depths = well.d;
+    const lith = well.lith || [];
+    const n = Math.min(depths.length, lith.length);
+    for (let i = 0; i < n; i++) {
+      const code = lith[i];
+      if (code == null) continue;
+      const y1 = yOf(depths[i]);
+      const y2 = yOf(i + 1 < n ? depths[i + 1] : depths[i] + 0.15);
+      const info = codes[String(code)] || codes[code] || { color: "#999" };
+      ctx.fillStyle = info.color;
+      const top = Math.min(y1, y2), h = Math.max(1, Math.abs(y2 - y1) + 0.4);
+      ctx.fillRect(x + 1, top, tw - 2, h);
+    }
+  }
+
+  window.addEventListener("resize", () => { map.invalidateSize(); drawPlot(); });
+  if (window.ResizeObserver) {
+    new ResizeObserver(() => { drawPlot(); }).observe(document.getElementById("plot-canvas-wrap"));
+  }
+
+  // ----- boot -----
+  const nAll = DATA.wells.length;
+  const nPlaced = DATA.wells.filter(w => w.lat != null && w.lon != null).length;
+  document.getElementById("header-sub").textContent = `${nPlaced} / ${nAll} wells`;
+  renderFilters();
+  renderLegend();
+  const vis = addMarkers();
+  fitToMarkers(vis);
+  renderTable();
+
+  function openFromUrl() {
+    const u = new URL(location.href);
+    let q = u.searchParams.get("well") || "";
+    if (!q && location.hash) {
+      const h = location.hash.replace(/^#/, "");
+      if (h.startsWith("well=")) q = decodeURIComponent(h.slice(5));
+      else q = decodeURIComponent(h);
+    }
+    if (!q) return;
+    const match = DATA.wells.find(w => w.name === q || wellId(w) === q || wellId(w).endsWith("::" + q));
+    if (match) selectWell(match, true);
+  }
+  openFromUrl();
+})();
+</script>
+</body>
+</html>

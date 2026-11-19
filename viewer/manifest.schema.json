@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fh2026.local/wellmap/manifest.schema.json",
+  "title": "FH2026 well dataset manifest",
+  "description": "One wells.json file per dataset folder. Paths are relative to the directory that contains this manifest (the data root). The viewer never hard-codes a dataset; drop data, write a manifest, and rebuild.",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["manifest_version", "dataset", "wells"],
+  "properties": {
+    "manifest_version": {
+      "type": "integer",
+      "const": 1
+    },
+    "dataset": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["id", "name"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]+$",
+          "description": "Stable machine id (e.g. force2020, volve, nlog)."
+        },
+        "name": { "type": "string", "minLength": 1 },
+        "licence": { "type": "string" },
+        "source_url": { "type": "string" },
+        "credit": { "type": "string" },
+        "citation": { "type": "string" },
+        "depth_units": { "type": "string", "enum": ["m", "ft"], "default": "m" },
+        "crs": {
+          "type": "string",
+          "description": "Default CRS for well lat/lon. Use EPSG:4326 (WGS84) in the viewer."
+        },
+        "xy_crs": {
+          "type": "string",
+          "description": "Default CRS for well x/y if lat/lon is absent (e.g. EPSG:23031)."
+        },
+        "curve_map": {
+          "type": "object",
+          "additionalProperties": { "type": "string" },
+          "description": "Map from standard property (GR, RDEP, RMED, CALI, RHOB, NPHI, PEF, DTC, DTS) to the source mnemonic or CSV column. Per-well curve_map overrides this."
+        },
+        "lithology_column": { "type": "string" },
+        "lithology_scheme": { "type": "string" },
+        "files": {
+          "type": "array",
+          "description": "Default file descriptors inherited by wells that omit files.",
+          "items": { "$ref": "#/$defs/fileRef" }
+        }
+      }
+    },
+    "wells": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/well" }
+    }
+  },
+  "$defs": {
+    "fileRef": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["path", "format"],
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "Path relative to the manifest directory (the data root)."
+        },
+        "format": {
+          "type": "string",
+          "enum": ["csv", "las", "csv-target"]
+        },
+        "delimiter": { "type": "string", "default": "," },
+        "encoding": { "type": "string", "default": "utf-8" },
+        "well_column": { "type": "string" },
+        "depth_column": { "type": "string" },
+        "x_column": { "type": "string" },
+        "y_column": { "type": "string" },
+        "lithology_column": { "type": "string" },
+        "well_name": {
+          "type": "string",
+          "description": "If the file holds a single well and has no well column."
+        }
+      }
+    },
+    "well": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "dataset": {
+          "type": "string",
+          "description": "Defaults to dataset.id."
+        },
+        "split": { "type": "string", "description": "e.g. train, leaderboard, hidden, or any label." },
+        "lat": { "type": ["number", "null"], "description": "WGS84 latitude (EPSG:4326) for the map." },
+        "lon": { "type": ["number", "null"], "description": "WGS84 longitude (EPSG:4326) for the map." },
+        "crs": { "type": "string", "description": "CRS of lat/lon as stored; should be EPSG:4326." },
+        "x": { "type": ["number", "null"] },
+        "y": { "type": ["number", "null"] },
+        "xy_crs": { "type": "string" },
+        "coord_source": { "type": "string" },
+        "coord_source_crs": { "type": "string" },
+        "coord_transform": { "type": "string" },
+        "coord_note": { "type": "string" },
+        "licence": { "type": "string" },
+        "credit": { "type": "string" },
+        "depth_units": { "type": "string", "enum": ["m", "ft"] },
+        "curve_map": {
+          "type": "object",
+          "additionalProperties": { "type": "string" }
+        },
+        "files": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/fileRef" }
+        },
+        "completeness": {
+          "type": "object",
+          "description": "Optional precomputed completeness. overall is 0–100 (one decimal). curves.<STANDARD> are integers 0–100.",
+          "additionalProperties": true,
+          "properties": {
+            "overall": { "type": "number" },
+            "depth_from": { "type": ["number", "null"] },
+            "depth_to": { "type": ["number", "null"] },
+            "n_samples": { "type": "integer" },
+            "curves": {
+              "type": "object",
+              "additionalProperties": { "type": "number" }
+            }
+          }
+        }
+      }
+    }
+  }
+}
