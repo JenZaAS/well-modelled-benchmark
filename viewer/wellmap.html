@@ -276,6 +276,10 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
         <button type="button" id="xscale-auto" aria-pressed="false" title="Auto for all tracks: full-well P1-P99 (ignoring at least one sample at each end), plus 5% padding and round limits (decades for resistivity). Uses Standard when there are too few samples.">Auto</button>
         <button type="button" id="xscale-std" aria-pressed="false" title="Fixed scales for all tracks: GR 0-150 gAPI, resistivity 0.2-2000 log, RHOB 1.95-2.95, NPHI 0.45 to -0.15, DTC 140-40, DTS 240-40, CALI 6-16, PEF 0-10, porosity 0-0.5, VSH 0-1, SW 0-1.">Standard</button>
       </div>
+      <div class="range" id="fill-ctl" title="Shade zone bands behind all tracks. The TOPS strip and top lines always show.">
+        <label for="fill-src">Formation fill</label>
+        <select id="fill-src"><option value="formation" selected>Formation</option><option value="group">Group</option><option value="off">Off</option></select>
+      </div>
       <button type="button" id="plot-close" title="Close the log plot">Close</button>
     </div>
     <div id="plot-canvas-wrap"><canvas id="plot-canvas"></canvas></div>
@@ -701,6 +705,8 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
   function setXMode(m) { xMode = m; syncXScaleButtons(); drawPlot(); }
   document.getElementById("xscale-auto").addEventListener("click", () => setXMode("auto"));
   document.getElementById("xscale-std").addEventListener("click", () => setXMode("standard"));
+  let fillSource = "formation";
+  document.getElementById("fill-src").addEventListener("change", (e) => { fillSource = e.target.value; drawPlot(); });
 
   // Ranges and clip counts use the full well, cached by curve payload and scale mode.
   function effectiveTracks(w) {
@@ -718,6 +724,10 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
         const useAuto = PS ? PS.useAutoScale(c.canon || c.k, xMode) : (xMode === "auto" || (xMode === null && DEFAULT_AUTO.has(c.k)));
         const std = [c.xmin, c.xmax];
         const range = useAuto ? PU.autoValueRange(series, { std, log: log || !!c.log }) : { xmin: c.xmin, xmax: c.xmax };
+        if (useAuto && PS) {
+          const inc = PS.ensureIncreasingScale(c.canon || c.k, range.xmin, range.xmax);
+          range.xmin = inc[0]; range.xmax = inc[1];
+        }
         const clipped = PU.countOutside(series, range.xmin, range.xmax, log || !!c.log);
         return Object.assign({}, c, { xmin: range.xmin, xmax: range.xmax, clipped });
       })});
@@ -807,6 +817,11 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
       x += stripW + gap;
     }
     const tracksLeft = x;
+    const fills = (PS && fillSource !== "off") ? PS.formationIntervals(w.d, w.formation || w.FORMATION, w.group || w.GROUP, fillSource) : [];
+    if (fills.length && shown.length) {
+      const span = shown.reduce((s, t) => s + (t.lith ? lithW : flexW) + gap, 0) - gap;
+      PS.fillFormationBands(ctx, fills, tracksLeft, span, yOf, plotTop, plotH, PS.FORMATION_FILL_ALPHA);
+    }
     for (const t of shown) {
       const tw = t.lith ? lithW : flexW;
       if (t.lith) {
@@ -830,16 +845,14 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
     }
     if (tops.length && PS) {
       ctx.save();
-      ctx.strokeStyle = PS.TOP_LINE;
       ctx.fillStyle = PS.TOP_LINE;
-      ctx.lineWidth = 1;
       ctx.font = "10px Segoe UI, system-ui, sans-serif";
       ctx.textAlign = "left";
       ctx.textBaseline = "bottom";
       for (const iv of tops) {
         const y = yOf(iv.top);
         if (y < plotTop || y > plotTop + plotH) continue;
-        ctx.beginPath(); ctx.moveTo(tracksLeft, y); ctx.lineTo(x - gap, y); ctx.stroke();
+        PS.strokeTopLine(ctx, tracksLeft, x - gap, y);
         ctx.fillText(iv.name, tracksLeft + 2, y - 1);
       }
       ctx.restore();
@@ -1002,7 +1015,7 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
         const rv = (well.c && well.c[cr.k]) || [], nv = (well.c && well.c[cn.k]) || [];
         for (let i = i0; i < Math.min(i1, depths.length - 1); i++) {
           const kind = PS.densityNeutronFill(rv[i], nv[i], [cr.xmin, cr.xmax], [cn.xmin, cn.xmax]);
-          if (!kind) continue;
+          if (!kind || !PS.fillPairOk(depths, i, maxGap / 2, [rv, nv], [false, false])) continue;
           const x1r = Xc(cr, rv[i]), x1n = Xc(cn, nv[i]), x2r = Xc(cr, rv[i + 1]), x2n = Xc(cn, nv[i + 1]);
           const y1 = yOf(depths[i]), y2 = yOf(depths[i + 1]);
           if (![x1r, x1n, x2r, x2n, y1, y2].every(Number.isFinite)) continue;
@@ -1021,7 +1034,7 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
       ctx.fillStyle = c.fillColor;
       for (let i = i0; i < Math.min(i1, depths.length - 1); i++) {
         const x1 = Xc(c, arr[i]), x2 = Xc(c, arr[i + 1]), y1 = yOf(depths[i]), y2 = yOf(depths[i + 1]);
-        if (![x1, x2, y1, y2].every(Number.isFinite)) continue;
+        if (![x1, x2, y1, y2].every(Number.isFinite) || !PS.fillPairOk(depths, i, maxGap / 2, [arr], [track.log || !!c.log])) continue;
         ctx.beginPath();
         ctx.moveTo(x0, y1); ctx.lineTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x0, y2);
         ctx.closePath(); ctx.fill();

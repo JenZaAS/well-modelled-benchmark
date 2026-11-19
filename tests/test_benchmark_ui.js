@@ -99,16 +99,19 @@ test("Benchmark mounts once and ignores stale well lists after switching runs", 
   assert.equal(pending.length, 1);
   pending[0].respond({ rows: ["m1", "m2"].map((contender) => ({
     contender, dataset: "ds", target: "RHOB", scenario: "missing_curve",
+    test: "named", prediction_test: contender === "m1" ? "" : "named",
+    stale: contender === "m2", run_at: "2026-03-01T00:00:00Z",
   })) });
   await settle();
   assert.equal(resize.length, 1);
   assert.match(pending[1].url, /contender=m1/);
+  assert.doesNotMatch(pending[1].url, /&test=/);
 
   elements.get("#bm-model").listeners[0]({ target: { value: "m2" } });
   assert.match(pending[2].url, /contender=m2/);
   pending[2].respond({ wells: ["new-well"] });
   await settle();
-  assert.match(pending[3].url, /contender=m2.*well=new-well/);
+  assert.match(pending[3].url, /contender=m2.*well=new-well&test=named/);
   pending[1].respond({ wells: ["stale-well"] });
   await settle();
   assert.equal(pending.length, 4);
@@ -121,8 +124,12 @@ test("Benchmark mounts once and ignores stale well lists after switching runs", 
   assert.equal(resize.length, 1);
   pending[3].respond({ well: { well_id: 'new-well', depth: [1, 2], context: {GR: [3, 4], RDEP: [1, 2]} } });
   await settle();
-  assert.equal(pending.length, 4, 'embedded logs do not require a separate well lookup');
+  assert.equal(pending[4].url, "/api/well?dataset=ds&well=new-well");
+  pending[4].respond({d: [1, 1.5, 2], formation: ["F", "F", "F"]});
+  await settle();
   assert.doesNotMatch(elements.get('#bm-note').textContent, /unavailable|could not/i);
+  assert.doesNotMatch(elements.get('#bm-note').textContent, /no measured context tracks/i);
+  assert.match(elements.get('#bm-note').textContent, /2026.*stale/);
 });
 
 test("contextTracks picks up to 3 present logs excluding the target", () => {

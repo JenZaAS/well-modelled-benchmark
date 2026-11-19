@@ -76,6 +76,30 @@ test("density-neutron crossover: yellow when density porosity > neutron, grey ot
   assert.equal(S.densityNeutronFill(null, 0.20), null);
 });
 
+test("fills are not bridged across gaps or depth jumps", () => {
+  const depth = [100, 100.5, 101, 105, 105.5];
+  const v = [1, 2, null, 3, 4];
+  assert.equal(S.fillPairOk(depth, 0, 0.5, [v], [false]), true);
+  assert.equal(S.fillPairOk(depth, 1, 0.5, [v], [false]), false);
+  assert.equal(S.fillPairOk(depth, 2, 0.5, [[1, 2, 3, 4, 5]], [false]), false);
+  assert.equal(S.fillPairOk(depth, 3, 0.5, [v], [false]), true);
+  assert.equal(S.fillPairOk(depth, 0, 0.5, [[-1, 2]], [true]), false);
+});
+
+test("formation fill source does not fall back to GROUP", () => {
+  const depth = [100, 110, 120];
+  const formation = [null, "TY R", "TY R"];
+  const group = ["NORDLAND GP", "HORDALAND GP", "HORDALAND GP"];
+  const fill = S.formationIntervals(depth, formation, group, "formation");
+  assert.equal(fill.length, 1);
+  assert.equal(fill[0].name, "TY R");
+  assert.equal(fill[0].top, 110);
+  const byGroup = S.formationIntervals(depth, formation, group, "group");
+  assert.equal(byGroup[0].name, "NORDLAND GP");
+  assert.equal(byGroup[1].name, "HORDALAND GP");
+  assert.deepEqual(S.formationIntervals(depth, formation, group, "off"), []);
+});
+
 test("formation intervals prefer FORMATION over GROUP and colour the strip", () => {
   const depth = [100, 110, 120, 130, 140];
   const formation = [null, "HORDALAND GP", "HORDALAND GP", "TY R", "TY R"];

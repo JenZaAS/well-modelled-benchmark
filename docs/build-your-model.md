@@ -57,4 +57,5 @@ The older flags `--dataset`, `--scenario` and `--target` still work.
 
 Double-click `Launch viewer.bat` (Windows), `launch_viewer.command` (macOS) or `launch_viewer.sh` (Linux). Use the **Benchmark** tab for scored runs and the **Prediction** tab to try a model on a well.
 
-Scores are also written to `results/<model>/<dataset>/<target>/<scenario>/scores.json` (gitignored). `python -m benchmark.scoreboard` prints the table.
+With `--test`, scores are written to `results/<model>/<dataset>/<target>/<scenario>/<test>/scores.json`
+(gitignored). `python -m benchmark.scoreboard` prints the table.

@@ -159,10 +159,11 @@ test("summary switches calibration visuals and keeps a single speed dial", () =>
   assert.doesNotMatch(all, /bm-cal-tick/);
   assert.equal((all.match(/>3 pt</g) || []).length, 1);
   assert.match(all, /Full bar = on target/);
-  assert.match(all, /Linear baseline/);
+  assert.doesNotMatch(all, /Linear baseline/);
   assert.doesNotMatch(all, /baseline = 1\.0/);
-  assert.match(all, /better than Linear/);
-  assert.match(all, />worse</);
+  assert.doesNotMatch(all, /better than Linear/);
+  assert.match(all, /better: more accurate and sharper/);
+  assert.match(all, /worse: less accurate and wider bands/);
   assert.doesNotMatch(all, /Linear template is the reference/);
   assert.equal((all.match(/class="bm-dial"/g) || []).length, 1);
   assert.equal((all.match(/<title>[^<]+ per well<\/title>/g) || []).length, 2);
@@ -184,9 +185,14 @@ test("relative scatter is centred on the Linear baseline (0..2) with quadrant la
     [{ id: "template_linear", acc: 1, width: 1, calClass: "ok" }],
     { prop: "ALL", all: true, colorOf: () => "#2F6FAE" },
   );
-  assert.match(only, /Linear template is the reference \(1\.0x\); add models to compare/);
-  assert.match(only, /Linear baseline/);
-  assert.match(only, /better than Linear/);
+  assert.doesNotMatch(only, /Linear template is the reference/);
+  assert.doesNotMatch(only, /Linear baseline/);
+  assert.doesNotMatch(only, /better than Linear/);
+  assert.match(only, /better: more accurate and sharper/);
+  assert.match(only, /worse: less accurate and wider bands/);
+  assert.match(only, /sharper bands, but less accurate/);
+  assert.match(only, /more accurate, but wider bands/);
+  assert.match(only, /r="3.5"/);
   const svg = B.scatterSvg(
     [{ id: "template_linear", acc: 1, width: 1, calClass: "ok" }],
     { all: true, colorOf: () => "#2F6FAE" },

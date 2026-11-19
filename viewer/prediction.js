@@ -234,7 +234,12 @@
   function targetScale(curve, series, xMode, PU) {
     const std = (PS && PS.standardScale(curve)) || STD_SCALE[curve] || [0, 1];
     const log = PS ? PS.isLogCurve(curve) : LOG_CURVES.indexOf(curve) >= 0;
-    if (useAutoScale(curve, xMode)) return PU.autoValueRange(series, { std, log });
+    if (useAutoScale(curve, xMode)) {
+      const r = PU.autoValueRange(series, { std, log });
+      if (!PS || !r) return r;
+      const inc = PS.ensureIncreasingScale(curve, r.xmin, r.xmax);
+      return Object.assign({}, r, { xmin: inc[0], xmax: inc[1] });
+    }
     return { xmin: std[0], xmax: std[1] };
   }
   // Prefer /api/predict "true"; fall back to the well's display logs so the black line can appear even with no result.
@@ -282,7 +287,7 @@
     const st = { well: null, target: "RHOB", models: [], manual: new Set(), useBest: false, metric: "MAE", scenario: "missing_curve",
       rows: [], extra: new Set(), logs: null, result: null, curves: [], notes: [], token: 0, wellToken: 0, busy: false,
       modelsReady: false, modelsLoading: true, modelError: "", logError: "", rowsError: "", dropped: [],
-      xMode: null, datasets: new Set(), splits: new Set(), hasTargetOn: true, hasLog: "" };
+      xMode: null, fillSource: "formation", datasets: new Set(), splits: new Set(), hasTargetOn: true, hasLog: "" };
     const dsChoices = WF ? WF.datasetChoices(wells) : [];
     const splitOpts = WF ? WF.splitChoices(wells) : [];
     pane.innerHTML = `<div class="pd">
@@ -308,6 +313,8 @@
           <div id="pd-best-note" class="na"></div>
         </div>
         <button id="pd-run" type="button">Predict</button>
+        <button id="pd-rerun" type="button" title="Recompute and replace the cached prediction">Rerun</button>
+        <span id="pd-cache" class="na"></span>
         <h3>More logs <span class="na">(display only)</span></h3>
         <div id="pd-more" class="pd-more"></div>
       </div>
@@ -318,6 +325,8 @@
             <button type="button" id="pd-xscale-auto" aria-pressed="false">Auto</button>
             <button type="button" id="pd-xscale-std" aria-pressed="false">Standard</button>
           </div>
+          <label id="pd-fill-ctl" title="Shade zone bands behind all tracks. The TOPS strip and top lines always show.">Formation fill
+            <select id="pd-fill"><option value="formation">Formation</option><option value="group">Group</option><option value="off">Off</option></select></label>
         </div>
         <div id="pd-legend" class="pd-legend"></div>
         <div id="pd-wrap"><canvas id="pd-canvas"></canvas></div>
@@ -428,7 +437,7 @@
 
     async function loadLogs(w, token) {
       try {
-        let logs = w.c && !w.logs_pending ? { d: w.d, c: w.c } : null;
+        let logs = w.c && !w.logs_pending ? w : null;
         if (!logs) logs = await getJson(`/api/well?dataset=${encodeURIComponent(datasetOf(w))}&well=${encodeURIComponent(w.name)}`);
         if (token !== st.wellToken) return;
         st.logs = { d: logs.d || [], c: logs.c || {}, formation: logs.formation || logs.FORMATION, group: logs.group || logs.GROUP };
@@ -513,6 +522,7 @@
           : st.modelsLoading ? "Checking model eligibility…" : !st.modelsReady ? "Model eligibility unavailable."
             : `No matching benchmark results for an eligible model. Run:<br><code>${esc(RUN_HINT)}</code>`;
       $("pd-run").disabled = st.busy || !st.well || !st.modelsReady;
+      $("pd-rerun").disabled = $("pd-run").disabled;
     }
 
     function renderMore() {
@@ -531,6 +541,7 @@
       if (st.well && st.models.length && !eligibleNames().length) bits.push("No eligible model for this well and target.");
       if (!st.well) bits.push("Pick a well on the minimap.");
       $("pd-note").innerHTML = bits.map(esc).join("<br>");
+      $("pd-cache").textContent = cacheBadge(st.result);
     }
 
     function renderLegend() {
@@ -577,29 +588,40 @@
     $("pd-xscale-auto").addEventListener("click", () => { st.xMode = "auto"; syncXButtons(); draw(); });
     $("pd-xscale-std").addEventListener("click", () => { st.xMode = "standard"; syncXButtons(); draw(); });
     syncXButtons();
+    $("pd-fill").value = st.fillSource;
+    $("pd-fill").addEventListener("change", (e) => { st.fillSource = e.target.value; draw(); });
     applyFilters();
     $("pd-best").addEventListener("change", (e) => { st.useBest = e.target.checked; });
     $("pd-metric").addEventListener("change", (e) => { st.metric = e.target.value; renderBest(); });
     $("pd-scenario").addEventListener("change", (e) => { st.scenario = e.target.value; renderBest(); });
-    $("pd-run").addEventListener("click", run);
+    $("pd-run").addEventListener("click", () => run(false));
+    $("pd-rerun").addEventListener("click", () => run(true));
 
-    async function run() {
+    function cacheBadge(j) {
+      const ms = (j && j.models || []).filter((m) => m.ok);
+      const hit = ms.filter((m) => m.cached);
+      if (!hit.length) return "";
+      const at = hit.map((m) => m.cached_at).filter(Boolean).sort().pop() || "";
+      return at ? `cached, ${at}` : "cached";
+    }
+
+    async function run(force) {
       if (!st.well || st.busy || !st.modelsReady) return;
       const best = st.useBest ? currentBest() : null;
       const models = mergeSelection(Array.from(st.manual), best && best.model, st.useBest);
       if (!models.length) { st.notes = ["Select at least one eligible model (or turn on Best model)."]; renderNote(); return; }
-      st.busy = true; st.notes = ["Predicting…"]; renderNote(); $("pd-run").disabled = true;
+      st.busy = true; st.notes = ["Predicting…"]; renderNote(); $("pd-run").disabled = true; $("pd-rerun").disabled = true;
       const token = st.token;
       try {
         const j = await getJson("/api/predict", { method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ dataset: datasetOf(st.well), well: st.well.name, target: st.target, models }) });
+          body: JSON.stringify({ dataset: datasetOf(st.well), well: st.well.name, target: st.target, models, force: force === true }) });
         if (token !== st.token) return;
         st.result = j; st.curves = j.curves || st.curves; st.notes = [];
         if (best) st.notes.push("Best model: " + bestText(best));
       } catch (e) {
         if (token === st.token) st.notes = ["Prediction failed: " + e.message];
       } finally {
-        st.busy = false; renderBest();
+        st.busy = false; renderBest(); $("pd-rerun").disabled = !st.well || !st.modelsReady;
       }
       renderModels(); renderMore(); renderNote(); renderLegend(); draw();
     }
@@ -630,6 +652,7 @@
       const r = st.result;
       const disp = st.logs ? displayTracks(displayCurves(availableCurves(), Array.from(st.extra))) : [];
       const tops = (PS && st.logs) ? PS.formationIntervals(st.logs.d, st.logs.formation, st.logs.group) : [];
+      const fills = (PS && st.logs && st.fillSource !== "off") ? PS.formationIntervals(st.logs.d, st.logs.formation, st.logs.group, st.fillSource) : [];
       const TW = 100, PW = 260, L0 = 58, B = 8, STRIP = tops.length ? 18 : 0;
       const T = Math.max(36, trackHeaderHeight(disp));
       const width = Math.max(box.width, L0 + STRIP + disp.length * TW + (r || st.well ? PW : 0) + 16);
@@ -717,6 +740,9 @@
         x += STRIP + 4;
       }
       const tracksLeft = x;
+      if (fills.length && disp.length) {
+        PS.fillFormationBands(ctx2, fills, tracksLeft, disp.length * TW + 10 + PW, Y, T, ph, PS.FORMATION_FILL_ALPHA);
+      }
       for (const t of disp) {
         frame(x, TW, t.curves.length ? "" : (t.title || t.id));
         if (!t.curves.length) {
@@ -731,8 +757,9 @@
           const kn = t.curves.find((k) => (PS.canonName(k) || k) === "NPHI");
           if (kr && kn) {
             const Xr = Xof(kr, x), Xn = Xof(kn, x), sr = scaleOf(kr), sn = scaleOf(kn);
-            const depth = st.logs.d, rv = c[kr] || [], nv = c[kn] || [];
+            const depth = st.logs.d, rv = c[kr] || [], nv = c[kn] || [], step = PU.medianStep(depth);
             for (let i = 0; i < depth.length - 1; i++) {
+              if (!PS.fillPairOk(depth, i, step, [rv, nv], [false, false])) continue;
               const kind = PS.densityNeutronFill(rv[i], nv[i], [sr.xmin, sr.xmax], [sn.xmin, sn.xmax]);
               if (!kind) continue;
               const x1r = Xr(rv[i]), x1n = Xn(nv[i]), x2r = Xr(rv[i + 1]), x2n = Xn(nv[i + 1]);
@@ -748,10 +775,11 @@
         t.curves.forEach((k) => {
           const def = PS && PS.curveDef(k);
           if (def && def.fillFrom != null && def.fillColor) {
-            const X = Xof(k, x), arr = c[k] || [], depth = st.logs.d, x0 = X(def.fillFrom);
+            const X = Xof(k, x), arr = c[k] || [], depth = st.logs.d, x0 = X(def.fillFrom), step = PU.medianStep(depth);
             if (Number.isFinite(x0)) {
               ctx2.fillStyle = def.fillColor;
               for (let i = 0; i < depth.length - 1; i++) {
+                if (!PS.fillPairOk(depth, i, step, [arr], [tlog(k)])) continue;
                 const x1 = X(arr[i]), x2 = X(arr[i + 1]), y1 = Y(depth[i]), y2 = Y(depth[i + 1]);
                 if (![x1, x2, y1, y2].every(Number.isFinite)) continue;
                 ctx2.beginPath();
@@ -784,12 +812,12 @@
       function drawTopsAcross(right) {
         if (!tops.length || !PS) return;
         ctx2.save();
-        ctx2.strokeStyle = PS.TOP_LINE; ctx2.fillStyle = PS.TOP_LINE; ctx2.lineWidth = 1;
+        ctx2.fillStyle = PS.TOP_LINE;
         ctx2.font = "10px sans-serif"; ctx2.textAlign = "left"; ctx2.textBaseline = "bottom";
         for (const iv of tops) {
           const y = Y(iv.top);
           if (y < T || y > T + ph) continue;
-          ctx2.beginPath(); ctx2.moveTo(tracksLeft, y); ctx2.lineTo(right, y); ctx2.stroke();
+          PS.strokeTopLine(ctx2, tracksLeft, right, y);
           ctx2.fillText(iv.name, tracksLeft + 2, y - 1);
         }
         ctx2.restore();

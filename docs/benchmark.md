@@ -181,8 +181,8 @@ Per-model files (gitignored):
 results/<model>/<dataset>/<target>/<scenario>/scores.json
 ```
 
-Each `scores.json`, `failure.json` and `predictions.json` also carries a `test` field (the test definition name, or
-a generated one such as `synthetic_rhob_missing` for the old flags); the paths do not change.
+With `--test`, these files go one level deeper, under `<scenario>/<test>/`. Each also carries a `test` field
+(the test definition name, or a generated one such as `synthetic_rhob_missing` for the old flags).
 For `gap`, scenario is `gap_10`, `gap_50` or `gap_100`. Each run also
 writes a combined `results/runs/<timestamp>_<dataset>.json` and `.csv`
 (gitignored). `python -m benchmark.scoreboard` prints one table from

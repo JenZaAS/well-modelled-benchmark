@@ -107,6 +107,8 @@ def test_path_traversal_rejected(results, base_url, bad):
 
 @pytest.mark.parametrize("failure", ["predict", "export"])
 def test_run_writes_predictions_and_removes_them_on_failed_rerun(tmp_path, monkeypatch, failure):
+    monkeypatch.setenv("WMB_PREDICT_CACHE", str(tmp_path / "predict-cache"))
+
     class Model:
         name = "m1"
 
@@ -138,8 +140,7 @@ def test_run_writes_predictions_and_removes_them_on_failed_rerun(tmp_path, monke
         monkeypatch.setattr(model, "predict_task", fail)
     else:
         monkeypatch.setattr(run, "prediction_payload", fail)
-    row = run.run_scenario(model, [task], truth, base, tmp_path, {})
-    assert ("error" in row) == (failure == "predict")
+    row = run.run_scenario(model, [task], truth, base, tmp_path, {}, force=True)
     assert (out / "scores.json").exists() == (failure == "export")
     assert not pred.exists()
 

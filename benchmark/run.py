@@ -12,6 +12,7 @@ keep the older well-split behaviour for the missing_curve scenario.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import functools
 import json
 import os
@@ -29,7 +30,7 @@ import pandas as pd
 from benchmark import make_tasks as mt
 from benchmark import test_def as td
 from benchmark.registry import REPO, discover  # noqa: F401  (also puts src/ on sys.path)
-from wmb import paths, scoring, splits
+from wmb import paths, predict_cache, scoring, splits
 from wmb.contender import Prediction
 from wmb.contract import GAP_LENGTHS_M, SCENARIO_MISSING, TARGET_CURVES, Task, validate_prediction
 from wmb.curves import CORE
@@ -139,13 +140,13 @@ def prediction_payload(base: dict, key: str, tasks: list[Task], preds: list[Pred
             "target": base["target"], "scenario": key, "wells": wells}
 
 
-def _fail(row: dict, out, exc: Exception) -> dict:
+def _fail(row: dict, out, exc: Exception, classic: bool = True) -> dict:
     row["error"] = f"{type(exc).__name__}: {exc}"
     _write(out, "failure.json", {k: row.get(k) for k in ("contender", "test", "dataset", "target", "scenario", "error")}
            | {"traceback": traceback.format_exc(limit=4)})
     (out / "scores.json").unlink(missing_ok=True)  # a failed rerun must not leave a stale scoreboard row
     (out / "predictions.json").unlink(missing_ok=True)
-    if row["scenario"] == SCENARIO_MISSING:
+    if classic and row["scenario"] == SCENARIO_MISSING:
         (out.parent / "scores.json").unlink(missing_ok=True)
     return row
 
@@ -163,31 +164,85 @@ def _check_task_depths(tasks: list[Task], truth: dict) -> None:
             raise ValueError(f"task {t.well_id}: depth values differ from the loaded well; rebuild the task cache")
 
 
-def run_scenario(model, tasks: list[Task], truth: dict, base: dict, out_root, timings: dict) -> dict:
-    """Predict, validate and score one (model, target, scenario). Returns the result row (with `error` on failure)."""
+def _task_cache_key(model, task: Task, dataset: str, test: str, thash: str, mhash: str) -> str:
+    inputs = [c for c in task.inputs.columns if c != "DEPTH"]
+    return predict_cache.cache_key(
+        model=model.name, model_hash=mhash, dataset=dataset, target=task.target, well=task.well_id, inputs=inputs,
+        data_hash=predict_cache.data_hash_from_task(task, inputs), train_hash=thash, test=test or "",
+        scenario=task.scenario_key)
+
+
+def _scenario_cache_keys(model, tasks: list[Task], base: dict, thash: str, mhash: str) -> list[str]:
+    keys = [_task_cache_key(model, task, base["dataset"], base.get("test") or "", thash, mhash)
+            for task in tasks]
+    # A model may carry state between task calls. Isolate different task sequences.
+    scope = hashlib.sha256("".join(keys).encode()).hexdigest()
+    return [hashlib.sha256(f"{scope}:{i}:{key}".encode()).hexdigest() for i, key in enumerate(keys)]
+
+
+def run_scenario(model, tasks: list[Task], truth: dict, base: dict, out_root, timings: dict,
+                 per_test: bool = False, force: bool = False, train=None) -> dict:
+    """Predict, validate and score one (model, target, scenario). Returns the result row (with `error` on failure).
+
+    per_test writes under .../<scenario>/<test>/ and leaves the classic .../<scenario>/scores.json alone.
+    When train is supplied, fit only on a miss and cache each prediction. `force` bypasses reads.
+    """
     key = tasks[0].scenario_key
     row = {**git_info(), **base, "scenario": key, "n_tasks": len(tasks), **timings}
-    out = out_root / model.name / base["dataset"] / base["target"] / key
+    out = predict_cache.result_dir(out_root, model.name, base["dataset"], base["target"], key,
+                                   base.get("test") if per_test else None)
     try:
         _check_task_depths(tasks, truth)
-        t: dict = {}
+        mhash = row["model_hash"] = predict_cache.fingerprint(model)
+        if train is not None:
+            thash = predict_cache.train_hash(train, base["target"])
+            keys = _scenario_cache_keys(model, tasks, base, thash, mhash)
+        else:
+            keys = [None] * len(tasks)  # Caller supplied an already fitted model with unknown training identity.
+        cached = [predict_cache.load_prediction(ck, task) if ck and not force else None
+                  for task, ck in zip(tasks, keys)]
+        # Replay the full sequence if any entry is missing, so stateful predictions are reproducible.
+        use_cache = all(hit is not None for hit in cached)
+        hits = len(tasks) if use_cache else 0
+        t: dict = {"predict_s_batch": None}
+        if train is not None:
+            t["fit_s"] = None
+            if not use_cache:
+                with scoring.timer(t, "fit_s"):
+                    model.fit(train, base["target"])
         preds = []
-        with scoring.timer(t, "predict_s"):
-            for task in tasks:
-                preds.append(validate_prediction(task, model.predict_task(task)))
+        predict_time = 0.0
+        for task, ck, hit in zip(tasks, keys, cached):
+            if use_cache and hit is not None:
+                pred = hit[0]
+            else:
+                start = time.perf_counter()
+                pred = validate_prediction(task, model.predict_task(task))
+                predict_time += time.perf_counter() - start
+                if ck:
+                    try:
+                        predict_cache.save_record(predict_cache.record_from_prediction(ck, pred, model=model.name))
+                    except (OSError, ValueError, TypeError) as exc:
+                        print(f"warning: prediction cache not written: {exc}", file=sys.stderr)
+            preds.append(pred)
+        row["cached_tasks"] = hits
         n_samples = int(sum(task.predict_mask.sum() for task in tasks))
-        try:
-            with scoring.timer(t, "predict_s_batch"):
-                model.predict_batch(tasks)
-        except Exception:  # timing only; the per-well predictions were already validated
-            t["predict_s_batch"] = None
+        # A run with any cache hits does not measure representative model throughput.
+        t["predict_s"] = None if hits else predict_time
+        if not hits:
+            try:
+                with scoring.timer(t, "predict_s_batch"):
+                    model.predict_batch(tasks)
+            except Exception:  # timing only; the per-well predictions were already validated
+                t["predict_s_batch"] = None
         row.update(score_tasks(tasks, preds, truth))
         row.update({k: (None if v is None else round(v, 4)) for k, v in t.items()})
-        row.update(predict_s_per_well=round(t["predict_s"] / len(tasks), 6),
-                   predict_s_per_1000=round(t["predict_s"] / max(n_samples, 1) * 1000, 6),
-                   samples_per_s=round(n_samples / t["predict_s"], 1) if t["predict_s"] > 0 else None, n_samples=n_samples)
+        row.update(predict_s_per_well=None if hits else round(predict_time / len(tasks), 6),
+                   predict_s_per_1000=None if hits else round(predict_time / max(n_samples, 1) * 1000, 6),
+                   samples_per_s=round(n_samples / predict_time, 1) if not hits and predict_time > 0 else None,
+                   n_samples=n_samples)
     except Exception as exc:
-        return _fail(row, out, exc)
+        return _fail(row, out, exc, classic=not per_test)
     (out / "failure.json").unlink(missing_ok=True)
     _write(out, "scores.json", row)
     prediction_path = out / "predictions.json"
@@ -202,16 +257,17 @@ def run_scenario(model, tasks: list[Task], truth: dict, base: dict, out_root, ti
             staged.replace(prediction_path)
     except (OSError, ValueError, TypeError) as exc:
         print(f"warning: predictions.json not written for {model.name}/{key}: {exc}", file=sys.stderr)
-    if key == SCENARIO_MISSING:  # older layout, kept for existing readers
+    if key == SCENARIO_MISSING and not per_test:  # older layout, kept for existing readers
         _write(out.parent, "scores.json", row)
     return row
 
 
 def run_model(name: str, factory, train, test_tasks: list[Task], truth: dict, target: str, scenarios: list[str],
-              dataset: str, out_root, test_name=None) -> list[dict]:
+              dataset: str, out_root, test_name=None, per_test: bool = False, force: bool = False) -> list[dict]:
     """All selected scenarios of one target for one model. Failures are returned as rows with `error`.
 
     test_name: callable (target, scenario_key) -> test name; default is the shipped def that matches, else a generated name.
+    per_test: write under .../<scenario>/<test>/ (the --test layout). force: ignore the prediction cache.
     """
     test_name = test_name or (lambda tg, k: td.generated_def(dataset, tg, k).name)
     by_key = {k: [t for t in test_tasks if t.target == target and t.scenario_key == k] for k in scenarios}
@@ -222,25 +278,24 @@ def run_model(name: str, factory, train, test_tasks: list[Task], truth: dict, ta
     for k, ts in by_key.items():
         # fresh model and fit per scenario so nothing observed in one scenario leaks into another
         timings: dict = {}
-        out = out_root / name / dataset / target / k
         test = test_name(target, k)
+        out = predict_cache.result_dir(out_root, name, dataset, target, k, test if per_test else None)
         try:
             with scoring.timer(timings, "load_s"):
                 model = factory()
             if hasattr(model, "supports") and not model.supports(target):
                 return []
-            with scoring.timer(timings, "fit_s"):
-                model.fit(train, target)
         except Exception as exc:
             rows.append(_fail({"contender": name, "test": test, "dataset": dataset, "target": target, "scenario": k},
-                              out, exc))
+                              out, exc, classic=not per_test))
             continue
         base = {"contender": model.name, "test": test, "workstream": model.workstream, "dataset": dataset,
                 "target": target,
                 "n_train_wells": len(train), "n_test_wells": len({t.well_id for t in ts}),
                 "hardware": hardware(), "machine": f"{platform.processor() or platform.machine()} / {platform.system()}",
                 "run_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
-        rows.append(run_scenario(model, ts, truth, base, out_root, {k_: round(v, 4) for k_, v in timings.items()}))
+        rows.append(run_scenario(model, ts, truth, base, out_root, {k_: round(v, 4) for k_, v in timings.items()},
+                                 per_test=per_test, force=force, train=train))
     return rows
 
 
@@ -270,7 +325,7 @@ def _write_runs(out_root, rows: list[dict], tag: str) -> None:
     pd.DataFrame([{k: v for k, v in r.items() if k != "hardware"} for r in rows]).to_csv(runs / f"{stem}.csv", index=False)
 
 
-def run_tests(defs: list[td.TestDef], found: dict, names: list[str], cache, out_root) -> list[dict]:
+def run_tests(defs: list[td.TestDef], found: dict, names: list[str], cache, out_root, force: bool = False) -> list[dict]:
     """Run each test def for every named model (fresh fit per def). A def that cannot run yields error rows."""
     loaded: dict = {}
     rows = []
@@ -292,14 +347,16 @@ def run_tests(defs: list[td.TestDef], found: dict, names: list[str], cache, out_
                 if n not in found:
                     print(f"unknown contender: {n}", file=sys.stderr); continue
                 row = {"contender": n, "test": d.name, "dataset": d.dataset, "target": d.target, "scenario": key}
-                rows.append(_fail(row, out_root / n / d.dataset / d.target / key, err))
+                rows.append(_fail(row, predict_cache.result_dir(out_root, n, d.dataset, d.target, key, d.name), err,
+                                  classic=False))
                 _print_rows(n, [row])
             continue
         print(f"  train_wells={len(train)} test_wells={len({t.well_id for t in tasks})} tasks={len(tasks)}")
         for n in names:
             if n not in found:
                 print(f"unknown contender: {n}", file=sys.stderr); continue
-            got = run_model(n, found[n], train, tasks, truth, d.target, [key], d.dataset, out_root, lambda *_: d.name)
+            got = run_model(n, found[n], train, tasks, truth, d.target, [key], d.dataset, out_root, lambda *_: d.name,
+                            per_test=True, force=force)
             if not got:
                 print(f"  {n:24s} skipped (target not supported or no test tasks)")
             _print_rows(n, got)
@@ -316,6 +373,7 @@ def main(argv=None) -> int:
     ap.add_argument("--contenders", "--model", dest="contenders", default="all", help="comma-separated names, or 'all'")
     ap.add_argument("--seed", type=int, default=0, help="well split seed for datasets without a task spec")
     ap.add_argument("--cache", help="task cache directory (see benchmark.make_tasks)")
+    ap.add_argument("--rerun", "--force", dest="rerun", action="store_true", help="ignore cached predictions and recompute")
     ap.add_argument("--list", action="store_true", help="list contenders and exit")
     ap.add_argument("--list-tests", action="store_true", help="list the runnable test definitions and exit")
     a = ap.parse_args(argv)
@@ -342,7 +400,7 @@ def main(argv=None) -> int:
         found = discover()
         names = list(found) if a.contenders == "all" else a.contenders.split(",")
         out_root = paths.results_root()
-        rows = run_tests(defs, found, names, a.cache, out_root)
+        rows = run_tests(defs, found, names, a.cache, out_root, force=a.rerun)
         if rows:
             _write_runs(out_root, rows, next(iter({d.dataset for d in defs})) if len({d.dataset for d in defs}) == 1 else "tests")
         print(f"scores written under {out_root}")
@@ -384,7 +442,7 @@ def main(argv=None) -> int:
             print(f"unknown contender: {n}", file=sys.stderr); continue
         got = []
         for target in targets:
-            got += run_model(n, found[n], train, tasks, truth, target, scenarios, a.dataset, out_root)
+            got += run_model(n, found[n], train, tasks, truth, target, scenarios, a.dataset, out_root, force=a.rerun)
         if not got:
             print(f"  {n:24s} skipped (target not supported or no test tasks for {a.target}/{a.scenario})")
         _print_rows(n, got)

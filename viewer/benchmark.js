@@ -256,7 +256,9 @@
     const last = latestRow(run.rows);
     const full = last && typeof last.git_commit_full === "string" ? last.git_commit_full : "";
     const commit = last && typeof last.git_commit === "string" && last.git_commit ? last.git_commit : full.slice(0, 7);
-    return { wells, samples, time: last ? formatRunTime(last.run_at) : null, commit: commit || null, hardware: hardwareLabel(run.rows) };
+    const header = { wells, samples, time: last ? formatRunTime(last.run_at) : null, commit: commit || null, hardware: hardwareLabel(run.rows) };
+    if (run.rows.some((r) => r.stale === true)) header.stale = true;
+    return header;
   }
 
   // Per-property wells and samples (by model-max) for the By property column headers.
@@ -543,27 +545,32 @@
       `<rect x="${x1.toFixed(1)}" y="${y2.toFixed(1)}" width="${(x2 - x1).toFixed(1)}" height="${(y1 - y2).toFixed(1)}" fill="${r.fg}" opacity=".12"/>` +
       `<rect x="${x0.toFixed(1)}" y="${y2.toFixed(1)}" width="${(x1 - x0).toFixed(1)}" height="${(y1 - y2).toFixed(1)}" fill="#c4a35a" opacity=".10"/>` +
       `<rect x="${x1.toFixed(1)}" y="${y1.toFixed(1)}" width="${(x2 - x1).toFixed(1)}" height="${(y0 - y1).toFixed(1)}" fill="#c4a35a" opacity=".10"/>` +
-      `<text x="${((x0 + x1) / 2).toFixed(1)}" y="${((y0 + y1) / 2 + 4).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="${g.fg}">better than Linear</text>` +
-      `<text x="${((x1 + x2) / 2).toFixed(1)}" y="${((y1 + y2) / 2 + 4).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="${r.fg}">worse</text>` +
-      `<text x="${((x0 + x1) / 2).toFixed(1)}" y="${((y1 + y2) / 2 + 4).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="#7a6230">mixed</text>` +
-      `<text x="${((x1 + x2) / 2).toFixed(1)}" y="${((y0 + y1) / 2 + 4).toFixed(1)}" text-anchor="middle" font-size="11" font-weight="700" fill="#7a6230">mixed</text>`
+      `<text x="${((x0 + x1) / 2).toFixed(1)}" y="${((y0 + y1) / 2 - 4).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="${g.fg}">better: more accurate and sharper</text>` +
+      `<text x="${((x1 + x2) / 2).toFixed(1)}" y="${((y1 + y2) / 2 - 4).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="${r.fg}">worse: less accurate and wider bands</text>` +
+      `<text x="${((x0 + x1) / 2).toFixed(1)}" y="${((y1 + y2) / 2 - 4).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#7a6230">sharper bands, but less accurate</text>` +
+      `<text x="${((x1 + x2) / 2).toFixed(1)}" y="${((y0 + y1) / 2 + 4).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#7a6230">more accurate, but wider bands</text>`
     ) : "";
     const base = ctx.all
-      ? `<line x1="${x1.toFixed(1)}" y1="${m.t}" x2="${x1.toFixed(1)}" y2="${H - m.b}" stroke="#2F6FAE" stroke-dasharray="2 3"/>` +
-        `<line x1="${m.l}" y1="${y1.toFixed(1)}" x2="${W - m.r}" y2="${y1.toFixed(1)}" stroke="#2F6FAE" stroke-dasharray="2 3"/>` +
-        `<text x="${(x1 + 5).toFixed(1)}" y="${m.t + 11}" font-size="10" font-weight="650" fill="#2F6FAE">Linear baseline</text>` +
-        `<text x="${(W - m.r - 4).toFixed(1)}" y="${(y1 - 5).toFixed(1)}" text-anchor="end" font-size="10" font-weight="650" fill="#2F6FAE">Linear baseline</text>`
+      ? `<line x1="${x1.toFixed(1)}" y1="${m.t}" x2="${x1.toFixed(1)}" y2="${H - m.b}" stroke="#8a8f94" stroke-width="1"/>` +
+        `<line x1="${m.l}" y1="${y1.toFixed(1)}" x2="${W - m.r}" y2="${y1.toFixed(1)}" stroke="#8a8f94" stroke-width="1"/>`
       : "";
     const front = Q.paretoFront(pts.map((p) => ({ x: p.width, y: p.acc })));
     const frontLine = front.length > 1
       ? `<polyline points="${front.map((p) => `${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(" ")}" fill="none" stroke="#4a5560" stroke-width="1.5" stroke-dasharray="6 4"/>` : "";
     const marks = pts.map((p) => {
       const x = sx(p.width), y = sy(p.acc), c = ctx.colorOf(p.id);
+      const name = modelName(p.id), label = name.length > 23 ? name.slice(0, 22) + "\u2026" : name;
+      const isLinear = ctx.all && (p.id === Q.BASELINE_MODEL || p.id === "template_linear");
+      if (isLinear) {
+        const right = x + 12 + label.length * 6 < W - m.r;
+        return `<g><title>${esc(name)}: Linear reference (1.0)</title>` +
+          `<circle cx="${x}" cy="${y}" r="3.5" fill="#8B929A" stroke="#fff" stroke-width="1"/>` +
+          `<text x="${x + (right ? 10 : -10)}" y="${y + 3}" text-anchor="${right ? "start" : "end"}" font-size="10" font-weight="600" fill="#6b6f76">${esc(label)}</text></g>`;
+      }
       const calOk = p.calClass === "good" || p.calClass === "ok";
       const ring = calOk
         ? `<circle cx="${x}" cy="${y}" r="14" fill="${g.fg}" opacity=".18"/><circle cx="${x}" cy="${y}" r="10.5" fill="none" stroke="${c}" stroke-width="2.5"/>`
         : `<circle cx="${x}" cy="${y}" r="10.5" fill="none" stroke="${p.calClass ? r.fg : "#8B929A"}" stroke-width="2" stroke-dasharray="3 2.5"/>`;
-      const name = modelName(p.id), label = name.length > 23 ? name.slice(0, 22) + "\u2026" : name;
       const right = x + 17 + label.length * 7 < W - m.r;
       return `<g><title>${esc(name)}: ${p.calClass ? `calibration ${p.calClass}` : "no calibration score"}</title>${ring}` +
         `<circle cx="${x}" cy="${y}" r="6.5" fill="${c}" stroke="#fff" stroke-width="1.5"/>` +
@@ -597,9 +604,7 @@
     const title = ctx.all ? "All properties \u2014 accuracy vs sharpness (relative to Linear)" : `${ctx.prop} \u2014 accuracy vs sharpness`;
     const models = items.map((i) => `<div class="bm-nm">${dot(ctx.colorOf(i.id))}${esc(modelName(i.id))}</div>`).join("");
     const nScatter = items.filter((i) => i.acc != null && i.width != null).length;
-    const caption = ctx.all && nScatter <= 1
-      ? '<p class="bm-scatter-note">Linear template is the reference (1.0x); add models to compare</p>'
-      : "";
+    const caption = "";
     return `<div class="bm-cards">${cardAccuracy(items, ctx)}${cardCalibration(items, ctx)}${cardSharpness(items, ctx)}${cardSpeed(items, ctx)}</div>` +
       `<div class="bm-tradeoff"><section class="bm-card bm-scatter-card"><h3>${esc(title)}</h3><span class="na">bottom-left is best \u00B7 ring = calibration</span>` +
       `${scatterSvg(items, ctx)}${caption}</section><aside class="bm-card"><h4>Models</h4><div class="bm-models">${models}</div>` +
@@ -702,7 +707,7 @@
       return null;
     }
     const runs = groupRuns(rows);
-    const st = { sel: runs[0], mode: "summary", prop: null, model: "", target: "", well: "", scale: "auto", data: null, token: 0 };
+    const st = { sel: runs[0], mode: "summary", prop: null, model: "", target: "", well: "", scale: "auto", fillSource: "formation", data: null, token: 0 };
     pane.innerHTML = `<div class="bm">
       <div class="bm-top">
         <div>
@@ -728,6 +733,7 @@
           <label>Property <select id="bm-target"></select></label>
           <label>Well <select id="bm-well"></select></label>
           <label>X scale <select id="bm-scale"><option value="auto">Auto</option><option value="std">Standard</option></select></label>
+          <label title="Shade zone bands behind all tracks. The TOPS strip and top lines always show.">Formation fill <select id="bm-fill"><option value="formation">Formation</option><option value="group">Group</option><option value="off">Off</option></select></label>
           <button type="button" id="bm-in">Zoom in</button>
           <button type="button" id="bm-out">Zoom out</button>
           <button type="button" id="bm-reset">Full depth</button>
@@ -783,7 +789,8 @@
         .filter(Boolean).map(esc).join(' <span class="bm-sep">\u00B7</span> ');
       const h = runHeader(st.sel, by ? null : st.prop);
       const bits = [h.wells && `<strong>${esc(h.wells)}</strong>`, h.samples && `<span>${esc(h.samples)}</span>`,
-        h.time && `<span>${esc(h.time)}</span>`, h.commit && `<span>commit <code>${esc(h.commit)}</code></span>`].filter(Boolean);
+        h.time && `<span>${esc(h.time)}</span>`, h.commit && `<span>commit <code>${esc(h.commit)}</code></span>`,
+        h.stale && `<span class="na" title="The model code changed after this run; rerun to refresh the scores.">stale: model changed since this run</span>`].filter(Boolean);
       $("bm-meta").innerHTML = bits.join('<span class="bm-sep" aria-hidden="true">\u00B7</span>');
       $("bm-hw").innerHTML = h.hardware ? `${h.hardware.chip ? `<b>${esc(h.hardware.chip)}</b>` : ""}${esc(h.hardware.detail)}` : "";
       return h;
@@ -870,8 +877,10 @@
 
     function query(well) {
       const r = st.run;
+      const test = r.prediction_test ?? r.test;
       return `contender=${encodeURIComponent(r.contender)}&dataset=${encodeURIComponent(r.dataset)}&target=${encodeURIComponent(r.target)}` +
-        `&scenario=${encodeURIComponent(r.scenario)}&well=${encodeURIComponent(well)}`;
+        `&scenario=${encodeURIComponent(r.scenario)}&well=${encodeURIComponent(well)}` +
+        (test ? `&test=${encodeURIComponent(test)}` : "");
     }
 
     // well=* lists the well keys stored in the run's predictions file.
@@ -912,10 +921,14 @@
         st.data = j.well;
         st.win = null;
         st.context = null;
+        st.zones = null;
         st.ext = PU.recordedExtent(j.well.depth);
         if (st.ext && st.ext.min === st.ext.max) st.ext = {min: st.ext.min - 0.5, max: st.ext.max + 0.5};
         st.step = PU.medianStep(j.well.depth);
         $("bm-note").textContent = `${st.run.contender} · ${st.run.dataset} · ${st.run.target} · ${st.run.scenario} · ${st.well}`;
+        const runTime = formatRunTime(st.run.run_at);
+        if (runTime) $("bm-note").textContent += " · " + runTime;
+        if (st.run.stale) $("bm-note").textContent += " · stale: model changed since this run";
         const example = !!(j.well && (j.well.example || j.example)) || !!j.example;
         if (st.data) st.data.example = example;
         const ex = $("bm-example");
@@ -927,13 +940,21 @@
           }
         }
         if (j.well.context) {
-          st.context = {d: j.well.depth, c: j.well.context};
-        } else try {
-          const packed = await getJson("/api/well?dataset=" + encodeURIComponent(st.run.dataset) +
-            "&well=" + encodeURIComponent(j.well.well_id || st.well));
-          if (token !== st.token) return;
-          st.context = packed;
-        } catch (e) { if (token !== st.token) return; }
+          st.context = {d: j.well.depth, c: j.well.context, formation: j.well.formation || j.well.FORMATION,
+            group: j.well.group || j.well.GROUP};
+        }
+        if (!st.context || (!st.context.formation && !st.context.group)) {
+          try {
+            const packed = await getJson("/api/well?dataset=" + encodeURIComponent(st.run.dataset) +
+              "&well=" + encodeURIComponent(j.well.well_id || st.well));
+            if (token !== st.token) return;
+            if (!st.context) st.context = packed;
+            st.zones = packed; // Zone samples may be on a different depth grid from embedded logs.
+          } catch (e) {
+            if (token !== st.token) return;
+          }
+        }
+        st.zones = st.zones || st.context;
         if (!contextTracks(st.run.target, st.context && st.context.c).length) {
           $("bm-note").textContent += " · No measured context tracks available for this well.";
         }
@@ -950,6 +971,7 @@
     $("bm-target").addEventListener("change", (e) => { st.target = e.target.value; renderSelectors(); });
     $("bm-well").addEventListener("change", (e) => { st.well = e.target.value; loadWell(); });
     $("bm-scale").addEventListener("change", (e) => { st.scale = e.target.value; draw(); });
+    $("bm-fill").addEventListener("change", (e) => { st.fillSource = e.target.value; draw(); });
 
     function draw() {
       if (pane.hidden) return;
@@ -1050,7 +1072,10 @@
       }
 
       let x = depthW + gap;
-      const tops = (PS && st.context) ? PS.formationIntervals(st.context.d, st.context.formation, st.context.group) : [];
+      const zones = st.zones;
+      const intervals = (source) => PS && zones
+        ? PS.formationIntervals(zones.d, zones.formation || zones.FORMATION, zones.group || zones.GROUP, source) : [];
+      const tops = intervals("auto");
       const STRIP = tops.length ? 18 : 0;
       if (STRIP) {
         ctx.fillStyle = "#222";
@@ -1071,6 +1096,17 @@
         x += STRIP + gap;
       }
       const tracksLeft = x;
+      const fills = intervals(st.fillSource);
+      if (fills.length) {
+        PS.fillFormationBands(ctx, fills, tracksLeft, ctxTracks.length * (CTX_TRACK_W + gap) + PRED_TRACK_W,
+          yOf, plotTop, plotH, PS.FORMATION_FILL_ALPHA);
+      }
+      const autoScale = (series, std, log, name) => {
+        const r = PU.autoValueRange(series, { std: std, log: !!log });
+        if (!PS || !r) return r;
+        const inc = PS.ensureIncreasingScale(name, r.xmin, r.xmax);
+        return Object.assign({}, r, { xmin: inc[0], xmax: inc[1] });
+      };
       ctxTracks.forEach((t) => {
         const tw = CTX_TRACK_W;
         const arr = (st.context.c && st.context.c[t.id]) || [];
@@ -1078,7 +1114,7 @@
         const std = [t.xmin, t.xmax];
         const sc = st.scale === "std"
           ? { xmin: t.xmin, xmax: t.xmax }
-          : PU.autoValueRange(arr, { std: std, log: !!t.log });
+          : autoScale(arr, std, t.log, t.id);
         const clip = PU.clipRect(x, plotTop, tw, plotH);
         ctx.save();
         ctx.beginPath(); ctx.rect(clip.x, clip.y, clip.w, clip.h); ctx.clip();
@@ -1106,7 +1142,7 @@
       // Range from true + p50 only so a wide 90% band cannot smear the track.
       const sc = st.scale === "std" && STD_SCALE[st.run.target]
         ? { xmin: std[0], xmax: std[1] }
-        : PU.autoValueRange([w.true, w.p50], { std: std });
+        : autoScale([w.true, w.p50], std, false, st.run.target);
       const band = bandArrays(w);
       const clip = PU.clipRect(x, plotTop, tw, plotH);
       ctx.save();
@@ -1165,16 +1201,14 @@
       }
       if (tops.length && PS) {
         ctx.save();
-        ctx.strokeStyle = PS.TOP_LINE;
         ctx.fillStyle = PS.TOP_LINE;
-        ctx.lineWidth = 1;
         ctx.font = "10px sans-serif";
         ctx.textAlign = "left";
         ctx.textBaseline = "bottom";
         for (const iv of tops) {
           const y = yOf(iv.top);
           if (y < plotTop || y > plotTop + plotH) continue;
-          ctx.beginPath(); ctx.moveTo(tracksLeft, y); ctx.lineTo(x + tw, y); ctx.stroke();
+          PS.strokeTopLine(ctx, tracksLeft, x + tw, y);
           ctx.fillText(iv.name, tracksLeft + 2, y - 1);
         }
         ctx.restore();

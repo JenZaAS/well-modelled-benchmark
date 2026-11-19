@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 import numpy as np
+import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "src"))
@@ -17,8 +18,14 @@ from wmb.contender import BaseContender, Prediction  # noqa: E402
 from wmb.curves import CORE  # noqa: E402
 
 
+@pytest.fixture(autouse=True)
+def isolate_prediction_cache(tmp_path, monkeypatch):
+    monkeypatch.setenv("WMB_PREDICT_CACHE", str(tmp_path / "predict"))
+
+
 def run_cli(tmp_path, *args):
-    env = {**os.environ, "WMB_RESULTS": str(tmp_path / "res"), "WMB_TASK_CACHE": str(tmp_path / "tasks")}
+    env = {**os.environ, "WMB_RESULTS": str(tmp_path / "res"), "WMB_TASK_CACHE": str(tmp_path / "tasks"),
+           "WMB_PREDICT_CACHE": str(tmp_path / "predict")}
     return subprocess.run([sys.executable, "-m", "benchmark.run", "--dataset", "synthetic", *args], cwd=REPO,
                           env=env, capture_output=True, text=True)
 
@@ -38,6 +45,35 @@ def test_missing_curve_writes_scores_in_both_layouts(tmp_path):
         source = sources[row["well_id"]]
         assert row["depth"] == runner._arr(source.depth)
         assert row["context"] == {c: runner._arr(source.curves[c]) for c in ("GR", "RDEP")}
+
+
+def test_named_test_writes_its_own_folder_and_uses_prediction_cache(tmp_path):
+    args = ("--test", "synthetic_rhob_missing", "--model", "template_linear")
+    base = tmp_path / "res/template_linear/synthetic/RHOB/missing_curve"
+    classic = run_cli(tmp_path, "--target", "RHOB", "--model", "template_linear")
+    assert classic.returncode == 0, classic.stderr
+    classic_before = (base / "scores.json").read_bytes()
+    cache_dir = tmp_path / "predict"
+    classic_cache = set(cache_dir.rglob("*.json"))
+    first = run_cli(tmp_path, *args, "--force")
+    assert first.returncode == 0, first.stderr
+    s1 = json.loads((base / "synthetic_rhob_missing/scores.json").read_text())
+    assert s1["model_hash"] and s1["cached_tasks"] == 0
+    cached = run_cli(tmp_path, *args)
+    assert cached.returncode == 0, cached.stderr
+    again = json.loads((base / "synthetic_rhob_missing/scores.json").read_text())
+    assert again["cached_tasks"] == again["n_tasks"] and again["MAE"] == s1["MAE"]
+    assert all(again[k] is None for k in ("fit_s", "predict_s", "predict_s_batch", "samples_per_s"))
+    records = set(cache_dir.rglob("*.json"))
+    next(iter(records - classic_cache or records)).unlink()
+    recovered = run_cli(tmp_path, *args)
+    assert recovered.returncode == 0, recovered.stderr
+    recovered_row = json.loads((base / "synthetic_rhob_missing/scores.json").read_text())
+    assert recovered_row["cached_tasks"] == 0 and recovered_row["MAE"] == s1["MAE"]
+    forced = run_cli(tmp_path, *args, "--rerun")
+    assert forced.returncode == 0, forced.stderr
+    assert json.loads((base / "synthetic_rhob_missing/scores.json").read_text())["cached_tasks"] == 0
+    assert (base / "scores.json").read_bytes() == classic_before
 
 
 def test_gap_scenario_writes_each_length(tmp_path):

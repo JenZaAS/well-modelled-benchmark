@@ -4,9 +4,9 @@
  * DOM-free; node-tested.
  */
 (function (root, factory) {
-  if (typeof module === "object" && module.exports) module.exports = factory();
-  else root.WmbPlotStyle = factory();
-})(typeof self !== "undefined" ? self : this, function () {
+  if (typeof module === "object" && module.exports) module.exports = factory(require("./plot_utils.js"));
+  else root.WmbPlotStyle = factory(root.PlotUtils);
+})(typeof self !== "undefined" ? self : this, function (PU) {
   "use strict";
 
   const NAVY = "#001f5b";
@@ -28,8 +28,8 @@
     DTC:  { k: "DTC",  unit: "us/ft", color: "#111",    xmin: 140,  xmax: 40,   log: false },
     DTS:  { k: "DTS",  unit: "us/ft", color: "#7c3aed", xmin: 240,  xmax: 40,   log: false },
     PEF:  { k: "PEF",  unit: "b/e",   color: "#d97706", xmin: 0,    xmax: 10,   log: false, autoDefault: true },
-    PHIT: { k: "PHIT", unit: "v/v",   color: "#111",    xmin: 0,    xmax: 0.5,  log: false, displayOnly: true },
-    PHIE: { k: "PHIE", unit: "v/v",   color: "#1d4ed8", xmin: 0,    xmax: 0.5,  log: false, displayOnly: true },
+    PHIT: { k: "PHIT", unit: "v/v",   color: "#111",    xmin: 0,    xmax: 0.5,  log: false, displayOnly: true, increasing: true },
+    PHIE: { k: "PHIE", unit: "v/v",   color: "#1d4ed8", xmin: 0,    xmax: 0.5,  log: false, displayOnly: true, increasing: true },
     VSH:  { k: "VSH",  unit: "v/v",   color: "#8b5a2b", xmin: 0,    xmax: 1,    log: false, displayOnly: true, fillFrom: 0, fillColor: "#cd853f" },
     SW:   { k: "SW",   unit: "v/v",   color: "#1e90ff", xmin: 0,    xmax: 1,    log: false, displayOnly: true },
   };
@@ -66,6 +66,8 @@
   const AUTO_DEFAULT = new Set(["CALI", "BS", "PEF"]);
   const FORMATION_KEYS = ["FORMATION", "GROUP"];
   const TOP_LINE = NAVY;
+  const TOP_LINE_DASH = [3, 3]; // thin dashed navy for normal formation tops
+  const FORMATION_FILL_ALPHA = 0.18;
   const FORMATION_PALETTE = [
     "#c9d6e3", "#e6d5b8", "#d4e6c3", "#e4c7c7", "#d7cde8",
     "#cfe6e2", "#f0dcc0", "#d9dde6", "#e8d0c0", "#c8ddd0",
@@ -101,6 +103,16 @@
   function standardScale(name) {
     const d = curveDef(name);
     return d ? [d.xmin, d.xmax] : null;
+  }
+
+  // Porosity (and any curve with increasing: true) has 0 on the left and must never be inverted.
+  function ensureIncreasingScale(name, xmin, xmax) {
+    const d = curveDef(name);
+    if (d && d.increasing) {
+      const upper = Math.max(xmin, xmax);
+      return [0, Number.isFinite(upper) && upper > 0 ? upper : d.xmax];
+    }
+    return [xmin, xmax];
   }
 
   function isLogCurve(name) {
@@ -156,6 +168,21 @@
     return (v - xmin) / (xmax - xmin);
   }
 
+  // True when samples i and i+1 may be joined by a fill: both depths and all listed values finite
+  // (gaps are not bridged) and the depth jump is at most twice the median step.
+  function fillPairOk(depth, i, step, valueArrays, logFlags) {
+    const a = depth[i], b = depth[i + 1];
+    if (!Number.isFinite(a) || !Number.isFinite(b)) return false;
+    if (step > 0 && Math.abs(b - a) > step * 2) return false;
+    for (let k = 0; k < valueArrays.length; k++) {
+      const arr = valueArrays[k] || [], log = !!(logFlags && logFlags[k]);
+      for (const v of [arr[i], arr[i + 1]]) {
+        if (PU.isGap(v, log)) return false;
+      }
+    }
+    return true;
+  }
+
   // yellow: density porosity > neutron (RHOB left of NPHI); grey: neutron > density porosity.
   function densityNeutronFill(rhob, nphi, rhobScale, nphiScale) {
     const rs = rhobScale || [CURVES.RHOB.xmin, CURVES.RHOB.xmax];
@@ -179,26 +206,35 @@
     return FORMATION_PALETTE[hashName(name) % FORMATION_PALETTE.length];
   }
 
-  function _labelAt(i, formation, group) {
-    const raw = (formation && formation[i] != null && String(formation[i]).trim() !== "")
-      ? formation[i]
-      : (group && group[i] != null ? group[i] : null);
+  function _cleanLabel(raw) {
     if (raw == null) return null;
     const s = String(raw).trim();
     if (!s || s.toLowerCase() === "nan" || s === "None") return null;
     return s;
   }
 
-  // Intervals from FORCE FORMATION, else GROUP. Skips null runs. depth is metres, down.
-  function formationIntervals(depth, formation, group) {
+  // source: "auto" (default) is FORMATION else GROUP, for the labelled strip and tops;
+  // "formation" uses only FORMATION (fill default, no GROUP fallback); "group" uses only GROUP.
+  function _labelAt(i, formation, group, source) {
+    const src = source || "auto";
+    if (src === "group") return _cleanLabel(group && group[i]);
+    if (src === "auto") return _cleanLabel(formation && formation[i]) || _cleanLabel(group && group[i]);
+    return _cleanLabel(formation && formation[i]);
+  }
+
+  // Intervals from FORMATION (default) or GROUP. Skips null runs. depth is metres, down.
+  // The labelled left strip and tops use source "auto" (FORMATION, else GROUP).
+  // Fill bands default to "formation" only (no GROUP fallback).
+  function formationIntervals(depth, formation, group, source) {
+    if (source === "off") return [];
     const d = depth || [];
     const n = d.length;
     const out = [];
     let i = 0;
     while (i < n) {
-      const name = _labelAt(i, formation, group);
+      const name = _labelAt(i, formation, group, source);
       let j = i + 1;
-      while (j < n && _labelAt(j, formation, group) === name) j++;
+      while (j < n && _labelAt(j, formation, group, source) === name) j++;
       if (name && Number.isFinite(d[i])) {
         const last = Number.isFinite(d[j - 1]) ? d[j - 1] : d[i];
         out.push({ name: name, top: d[i], base: last, color: formationColor(name) });
@@ -206,6 +242,42 @@
       i = j;
     }
     return out;
+  }
+
+  // Translucent zone bands behind tracks (under curves, flags and tops). Clip to the given rect.
+  function fillFormationBands(ctx, intervals, x, width, yOf, plotTop, plotH, alpha) {
+    if (!ctx || !intervals || !intervals.length || width <= 0) return;
+    const a = alpha == null ? FORMATION_FILL_ALPHA : alpha;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x, plotTop, width, plotH);
+    ctx.clip();
+    ctx.globalAlpha = a;
+    for (const iv of intervals) {
+      const y1 = yOf(iv.top), y2 = yOf(iv.base);
+      if (![y1, y2].every(Number.isFinite)) continue;
+      const top = Math.min(y1, y2), bot = Math.max(y1, y2);
+      const y = Math.max(plotTop, top);
+      const h = Math.min(plotTop + plotH, bot) - y;
+      if (h <= 0) continue;
+      ctx.fillStyle = iv.color;
+      ctx.fillRect(x, y, width, Math.max(1, h));
+    }
+    ctx.restore();
+  }
+
+  // Navy, thin dashed top line. Does not draw a label.
+  function strokeTopLine(ctx, x0, x1, y) {
+    if (!ctx || !Number.isFinite(y)) return;
+    ctx.save();
+    ctx.strokeStyle = TOP_LINE;
+    ctx.lineWidth = 1;
+    ctx.setLineDash(TOP_LINE_DASH);
+    ctx.beginPath();
+    ctx.moveTo(x0, y);
+    ctx.lineTo(x1, y);
+    ctx.stroke();
+    ctx.restore();
   }
 
   function tracksFromNames(available, opts) {
@@ -259,10 +331,10 @@
 
   return {
     CURVES, ALIASES, TARGETS, AUTO_DEFAULT, FORMATION_KEYS, FORMATION_PALETTE,
-    NAVY, TOP_LINE, CROSS_YELLOW, CROSS_GREY, VSH_FILL, SHALE_FILL, GR_SHALE_CUTOFF,
+    NAVY, TOP_LINE, TOP_LINE_DASH, FORMATION_FILL_ALPHA, CROSS_YELLOW, CROSS_GREY, VSH_FILL, SHALE_FILL, GR_SHALE_CUTOFF,
     CORE_TRACKS, EXTRA_TRACKS, STANDARD_HELP,
     canonName, curveDef, standardScale, isLogCurve, isAutoDefault, useAutoScale, colorOf,
     pickPresent, depthGridStep, depthTicks, densityNeutronFill, formationColor,
-    formationIntervals, tracksFromNames, defaultDisplayNames, moreLogNames,
+    formationIntervals, fillFormationBands, strokeTopLine, ensureIncreasingScale, fillPairOk, tracksFromNames, defaultDisplayNames, moreLogNames,
   };
 });

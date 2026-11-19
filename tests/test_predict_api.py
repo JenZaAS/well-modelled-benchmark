@@ -53,6 +53,7 @@ REG = ({c.name: c for c in (TemplateLinear, NeedsSklearn, NeedsPef, RhobOnly, Sl
 @pytest.fixture(autouse=True)
 def isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("WMB_RESULTS", str(tmp_path / "results"))
+    monkeypatch.setenv("WMB_PREDICT_CACHE", str(tmp_path / "predict-cache"))
     predict_api.clear_caches()
     monkeypatch.setattr(predict_api, "_registry", lambda: REG)
     yield tmp_path / "results"
@@ -184,6 +185,92 @@ def test_well_in_train_is_excluded_from_fit(monkeypatch):
     assert seen["names"] and "SYN-01" not in seen["names"]
 
 
+@pytest.fixture
+def counting(monkeypatch):
+    calls = {"n": 0, "fit": 0}
+
+    class Counting(TemplateLinear):
+        name = "counting"
+
+        def fit(self, train_wells, target):
+            calls["fit"] += 1
+            return super().fit(train_wells, target)
+
+        def predict_task(self, task):
+            calls["n"] += 1
+            return super().predict_task(task)
+
+    monkeypatch.setattr(predict_api, "_registry", lambda: ({"counting": Counting}, []))
+    return calls
+
+
+def _predict(force=False):
+    return predict_api.predict_well("synthetic", "SYN-06", "RHOB", ["counting"], force=force)["models"][0]
+
+
+def test_prediction_cache_hit_skips_fit_and_predict_and_force_bypasses(counting):
+    first = _predict()
+    assert first["ok"] and first["cached"] is False and first["cached_at"]
+    # Simulate another viewer process without any warm fitted model.
+    predict_api.clear_caches()
+    second = _predict()
+    assert second["cached"] is True and second["cached_at"] == first["cached_at"]
+    assert counting == {"n": 1, "fit": 1}
+    assert second["p50"] == first["p50"] and second["mae"] == first["mae"]
+    forced = _predict(force=True)
+    assert forced["cached"] is False and counting == {"n": 2, "fit": 2}
+
+
+def test_prediction_cache_invalidates_on_code_or_data_change(counting, monkeypatch):
+    _predict()
+    with monkeypatch.context() as m:
+        m.setattr(predict_api.predict_cache, "fingerprint", lambda obj: "changed-code")
+        assert _predict()["cached"] is False and counting["n"] == 2
+        assert counting["fit"] == 2
+    well, train, _ = predict_api.find_well("synthetic", "SYN-06")
+    well.curves["GR"] = np.asarray(well.curves["GR"], float) + 1.0
+    assert _predict()["cached"] is False and counting["n"] == 3
+    train[0].curves["GR"] = np.asarray(train[0].curves["GR"], float) + 1.0
+    assert _predict()["cached"] is False and counting == {"n": 4, "fit": 3}
+
+
+def test_invalid_cache_entry_is_recomputed(counting):
+    first = _predict()
+    path, = predict_api.predict_cache.cache_root().rglob("*.json")
+    record = json.loads(path.read_text())
+    path.write_text(json.dumps({**record, "p50": [0.0]}))
+    result = _predict()
+    assert result["ok"] and not result["cached"] and result["p50"] == first["p50"]
+    assert _predict()["cached"] and counting["n"] == 2
+
+
+def test_result_dir_separates_tests_and_viewer_reads_both_layouts(tmp_path):
+    from wmb import predict_cache
+    a = predict_cache.result_dir(tmp_path, "m", "ds", "RHOB", "missing_curve", "t1")
+    b = predict_cache.result_dir(tmp_path, "m", "ds", "RHOB", "missing_curve", "t2")
+    classic = predict_cache.result_dir(tmp_path, "m", "ds", "RHOB", "missing_curve")
+    assert len({a, b, classic}) == 3 and a.parent == classic
+    payload = {"wells": [{"key": "W1", "well_id": "W1", "depth": [1.0]}]}
+    for d, tag in ((a, "per-test"), (classic, "classic")):
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "predictions.json").write_text(json.dumps({**payload, "contender": tag}))
+    got = viewer.load_benchmark_prediction("m", "ds", "RHOB", "missing_curve", "W1", root=tmp_path, test="t1")
+    assert got["contender"] == "per-test"
+    old = viewer.load_benchmark_prediction("m", "ds", "RHOB", "missing_curve", "W1", root=tmp_path, test="t2")
+    assert old["contender"] == "classic"
+    assert viewer.load_benchmark_prediction("m", "ds", "RHOB", "missing_curve", "W1", root=tmp_path)["contender"] == "classic"
+    b.mkdir()
+    (b / "scores.json").write_text("{}")
+    with pytest.raises(FileNotFoundError, match="for this test"):
+        viewer.load_benchmark_prediction("m", "ds", "RHOB", "missing_curve", "W1", root=tmp_path, test="t2")
+
+
+def test_runs_marked_stale_when_model_hash_differs():
+    rows = [{"contender": "a", "model_hash": "old"}, {"contender": "a", "model_hash": "new"}, {"contender": "b"}]
+    out = viewer.mark_stale_rows(rows, {"a": "new"})
+    assert [r.get("stale") for r in out] == [True, False, None]
+
+
 def test_decimation_keeps_payload_small():
     out = predict_api.predict_well("synthetic", "SYN-06", "RHOB", ["template_linear"], max_points=200)
     assert out["decimated"] and len(out["depth"]) == 200 == len(out["models"][0]["p50"]) and out["n_samples"] == 1500
@@ -264,6 +351,19 @@ def test_collector_keeps_newest_score_across_layouts(isolated):
     assert row["MAE"] == 0.1
 
 
+def test_collector_identifies_prediction_layout_for_selected_score(tmp_path):
+    classic = tmp_path / "a" / "ds" / "RHOB" / "missing_curve"
+    scoped = classic / "named"
+    scoped.mkdir(parents=True)
+    for folder, date in ((classic, "2026-03-01"), (scoped, "2026-02-01")):
+        (folder / "scores.json").write_text(json.dumps(_row("a", test="named", run_at=f"{date}T00:00:00Z")))
+    row, = viewer.collect_benchmark_rows(tmp_path)
+    assert row["test"] == "named" and row["prediction_test"] == ""
+    (classic / "scores.json").unlink()
+    row, = viewer.collect_benchmark_rows(tmp_path)
+    assert row["prediction_test"] == "named"
+
+
 # ---------- HTTP ----------
 
 class _Remote(viewer.ViewerHandler):
@@ -295,10 +395,14 @@ def _req(url, body=None, headers=None, raw=None):
 
 
 def test_http_predict_and_models(base_url, isolated):
-    status, out = _req(base_url + "/api/predict", {"dataset": "synthetic", "well": "SYN-06", "target": "RHOB", "models": ["template_linear", "needs_dep"]})
+    url = base_url + "/api/predict"
+    body = {"dataset": "synthetic", "well": "SYN-06", "target": "RHOB", "models": ["template_linear", "needs_dep"]}
+    status, out = _req(url, body)
     assert status == 200
     by = {m["name"]: m for m in out["models"]}
     assert by["template_linear"]["ok"] and by["template_linear"]["mae"] is not None and "scikit-learn" in by["needs_dep"]["error"]
+    assert _req(url, body)[1]["models"][0]["cached"] is True
+    assert _req(url, {**body, "force": True})[1]["models"][0]["cached"] is False
     status, listing = _req(base_url + "/api/predict/models?dataset=synthetic&well=SYN-06&target=RHOB&metric=MAE")
     assert status == 200 and listing["best"] is None and any(m["name"] == "template_linear" and m["eligible"] for m in listing["models"])
     assert not isolated.exists() or not list(isolated.rglob("*"))
@@ -309,6 +413,7 @@ def test_http_predict_and_models(base_url, isolated):
     ({"dataset": "synthetic", "target": "RHOB"}, None, 400),
     ({"dataset": "synthetic", "well": "SYN-06", "target": "RHOB", "models": "x"}, None, 400),
     ({"dataset": "synthetic", "well": "SYN-06", "target": "RHOB", "models": {}}, None, 400),
+    ({"dataset": "synthetic", "well": "SYN-06", "target": "RHOB", "force": "false"}, None, 400),
     ({"dataset": "synthetic", "well": "SYN-06", "target": "GR", "models": []}, None, 400),
     (None, b"not json", 400),
 ])

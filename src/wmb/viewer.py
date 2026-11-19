@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import socket
@@ -316,6 +317,9 @@ def collect_benchmark_rows(root: Path | None = None) -> list[dict[str, Any]]:
             if all(isinstance(part, str) and part for part in key[:4]) and (
                 key not in rows or benchmark_run_time(r) >= benchmark_run_time(rows[key])
             ):
+                if test:
+                    rel = p.relative_to(root).parts
+                    r["prediction_test"] = test if rel == (*key[:4], test, "scores.json") else ""
                 rows[key] = r
         except (OSError, ValueError, KeyError, TypeError):
             continue
@@ -325,21 +329,65 @@ def collect_benchmark_rows(root: Path | None = None) -> list[dict[str, Any]]:
     ))
 
 
+def mark_stale_rows(rows: list[dict[str, Any]], current: dict[str, str | None] | None = None) -> list[dict[str, Any]]:
+    """Add stale=True/False to rows that carry a model_hash; stale means the model code changed since the run.
+
+    `current` maps contender -> present fingerprint (default: computed from the registry, None when it cannot be built).
+    """
+    cache: dict[str, str | None] = dict(current) if current is not None else {}
+    api = None
+    found = None
+
+    def now(name: str) -> str | None:
+        nonlocal api, found
+        if name not in cache:
+            cache[name] = None
+            if current is None:
+                try:
+                    from wmb import predict_cache
+                    if found is None:
+                        api = _predict_api()
+                        found, _ = api._registry()
+                    if name in found:
+                        cache[name] = api._inspect_model(lambda: predict_cache.fingerprint(found[name]()))
+                except (Exception, SystemExit) as exc:
+                    logging.getLogger(__name__).warning("Could not fingerprint contender %s: %s", name, exc)
+        return cache[name]
+
+    out = []
+    for r in rows:
+        stored = r.get("model_hash")
+        cur = now(r["contender"]) if stored else None
+        out.append({**r, "stale": bool(stored and cur and cur != stored)} if stored else r)
+    return out
+
+
 _SEGMENT_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]*$")
 
 
 def load_benchmark_prediction(contender: str, dataset: str, target: str, scenario: str, well: str,
-                              root: Path | None = None) -> dict[str, Any]:
-    """One well from results/<contender>/<dataset>/<target>/<scenario>/predictions.json (FileNotFoundError if absent)."""
+                              root: Path | None = None, test: str = "") -> dict[str, Any]:
+    """One well from results/<contender>/<dataset>/<target>/<scenario>[/<test>]/predictions.json.
+
+    Looks in the per-test folder first (when `test` is given), then the older layout without it.
+    FileNotFoundError if neither exists.
+    """
     from wmb import paths
 
     parts = [contender, dataset, target, scenario]
     if not well:
         raise ValueError("well is required")
-    if any(not _SEGMENT_OK.fullmatch(p) or ".." in p for p in parts):
-        raise ValueError("contender, dataset, target and scenario must be plain names")
+    if any(not _SEGMENT_OK.fullmatch(p) or ".." in p for p in parts) or (
+            test and (not _SEGMENT_OK.fullmatch(test) or ".." in test)):
+        raise ValueError("contender, dataset, target, scenario and test must be plain names")
     root = Path(root) if root is not None else paths.results_root()
-    found = safe_under(root, "/".join([*parts, "predictions.json"]))
+    found = None
+    if test:
+        found = safe_under(root, "/".join([*parts, test, "predictions.json"]))
+        if found is None and safe_under(root, "/".join([*parts, test, "scores.json"])):
+            raise FileNotFoundError("no predictions.json for this test; re-run benchmark.run to write it")
+    if found is None:
+        found = safe_under(root, "/".join([*parts, "predictions.json"]))
     if found is None:
         raise FileNotFoundError("no predictions.json for this run; re-run benchmark.run to write it")
     data = json.loads(found.read_text(encoding="utf-8"))
@@ -584,7 +632,11 @@ class ViewerHandler(BaseHTTPRequestHandler):
             for k in ("dataset", "well", "target"):
                 if not isinstance(body.get(k), str) or not body[k]:
                     raise ValueError(f"{k} is required")
-            _send_json(self, 200, _predict_api().predict_well(body["dataset"], body["well"], body["target"], body.get("models", [])))
+            force = body.get("force", False)
+            if not isinstance(force, bool):
+                raise ValueError("force must be a boolean")
+            _send_json(self, 200, _predict_api().predict_well(body["dataset"], body["well"], body["target"], body.get("models", []),
+                                                           force=force))
         except FileNotFoundError as exc:
             _send_json(self, 404, {"error": str(exc)})
         except ValueError as exc:
@@ -622,10 +674,10 @@ class ViewerHandler(BaseHTTPRequestHandler):
             _send_json(self, 200, out)
             return
         if path == "/api/benchmark/runs":
-            _send_json(self, 200, {"rows": collect_benchmark_rows()})
+            _send_json(self, 200, {"rows": mark_stale_rows(collect_benchmark_rows())})
             return
         if path == "/api/benchmark/prediction":
-            q = {k: (query.get(k) or [""])[0] for k in ("contender", "dataset", "target", "scenario", "well")}
+            q = {k: (query.get(k) or [""])[0] for k in ("contender", "dataset", "target", "scenario", "well", "test")}
             _send_json(self, 200, load_benchmark_prediction(**q))
             return
         if path.startswith("/vendor/"):

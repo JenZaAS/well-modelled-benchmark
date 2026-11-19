@@ -78,13 +78,13 @@ target and scenario (official test wells, one gap) if there is one (`force2020 R
 
 ## Results
 
-`scores.json`, `failure.json` and `predictions.json` gain a `"test"` field (the def or generated name), and the
-printed rows show it. Paths and the other fields are unchanged:
-`results/<model>/<dataset>/<target>/<scenario>/` (plus the older `<target>/scores.json` copy for `missing_curve`).
-The scoreboard has a `test` column and keeps one row per model and test.
+`--test` writes `scores.json`, `failure.json` and `predictions.json` under
+`results/<model>/<dataset>/<target>/<scenario>/<test>/`, so named tests can share a scenario without overwriting one
+another. The legacy flags still use `results/<model>/<dataset>/<target>/<scenario>/` (plus the older
+`<target>/scores.json` copy for `missing_curve`). Both layouts carry the `test` field.
 
-Two tests that share dataset, target and scenario but differ in wells, seed or gap count write to the same folder and
-overwrite each other (the last run wins). Use different scenarios or datasets, or move the results between runs.
+The runner reuses cached predictions for an unchanged model, training set and task sequence. Use `--rerun` (or
+`--force`) to recompute predictions and record fresh fit and prediction timings.
 
 ## Testing
 

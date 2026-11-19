@@ -7,6 +7,7 @@ curves present in the well; see wmb.model_spec.
 """
 from __future__ import annotations
 
+import logging
 import math
 import re
 import threading
@@ -17,6 +18,7 @@ import numpy as np
 import pandas as pd
 
 from benchmark.registry import discover_detailed
+from wmb import predict_cache
 from wmb.contract import SCENARIO_MISSING, TARGET_CURVES, Task, task_input_columns, validate_prediction
 from wmb.curves import CORE
 from wmb.deps import friendly_module_error, missing_reason
@@ -31,6 +33,7 @@ MAX_ACTIVE_MODELS = 4
 RANK_METRICS = {"MAE": "low", "RMSE": "low", "R2": "high", "cover_90": "ideal"}
 COVER_IDEAL = 0.9
 _NAME_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]*$")
+_LOG = logging.getLogger(__name__)
 
 _lock = threading.Lock()
 _registry_lock = threading.Lock()
@@ -258,39 +261,60 @@ def _arr(v, idx, nd: int = 4):
     return [round(float(x), nd) if np.isfinite(x) else None for x in a]
 
 
-def _run_one(dataset, name, factory, well, train, in_train, target, curves, timeout_s) -> dict:
+def _run_one(dataset, name, factory, well, train, target, curves, timeout_s, thash: str, force: bool = False) -> dict:
     res: dict[str, Any] = {"name": name, "ok": False, "error": None}
     t0 = time.perf_counter()
-    key = (dataset, name, target, well.name if in_train else None)
 
     def work(cancelled):
-        with _lock:
-            fitted = _fits.pop(key, None)
-        model = fitted if fitted is not None else factory()
         miss = missing_reason(factory)
         if miss:
-            return {"error": miss}, fitted
+            return {"error": miss}, None, None
+        model = factory()
+        mhash = predict_cache.fingerprint(model)
         spec = load_model_spec(model)
         ok, reason = eligible(spec, target, curves)
         if not ok:
-            return {"error": reason}, fitted
+            return {"error": reason}, None, None
         used = inputs_used(spec, target, curves)
-        task = _task(well, target, used["required"] + used["optional"])
+        keep = used["required"] + used["optional"]
+        task = _task(well, target, keep)
+        ckey = predict_cache.cache_key(
+            model=name, model_hash=mhash, dataset=dataset, target=target, well=well.name,
+            inputs=keep, data_hash=predict_cache.data_hash_from_task(task, keep), train_hash=thash)
+        fitted = None
+        fit_key = (dataset, name, mhash, target, thash)
+        if not force:
+            cached = predict_cache.load_prediction(ckey, task)
+            if cached is not None:
+                pred, timestamp = cached
+                return {"ok": True, "_pred": pred, "inputs_used": used,
+                        "cached": True, "cached_at": timestamp}, None, None
+            with _lock:
+                fitted = _fits.pop(fit_key, None)
+            if fitted is not None:
+                model = fitted
         if not cancelled.is_set() and fitted is None:
             model.fit(train, target)
         if cancelled.is_set():
-            return {}, None
+            return {}, None, None
         pred = validate_prediction(task, model.predict_task(task))
-        return {"ok": True, "_pred": pred, "inputs_used": used}, model
+        if cancelled.is_set():
+            return {}, None, None
+        out = {"ok": True, "_pred": pred, "inputs_used": used, "cached": False, "cached_at": None}
+        try:
+            out["cached_at"] = predict_cache.save_record(predict_cache.record_from_prediction(ckey, pred, model=name))
+        except (OSError, TypeError, ValueError) as exc:
+            _LOG.warning("Could not write prediction cache for %s on %s: %s", name, well.name, exc)
+        return out, model, fit_key
 
     try:
-        result, fitted = _call_with_timeout(work, timeout_s)
+        result, fitted, fit_key = _call_with_timeout(work, timeout_s)
         res.update(result)
         if fitted is not None:
             with _lock:
                 while len(_fits) >= FIT_CACHE_SIZE:
                     _fits.pop(next(iter(_fits)))
-                _fits[key] = fitted
+                _fits[fit_key] = fitted
     except (Exception, SystemExit) as exc:
         res["error"] = friendly_module_error(exc) or f"{type(exc).__name__}: {exc}"
     res["runtime_s"] = round(time.perf_counter() - t0, 3)
@@ -303,12 +327,12 @@ def _check_target(target: str) -> None:
 
 
 def predict_well(dataset: str, well_name: str, target: str, model_names: list[str], *, timeout_s: float = DEFAULT_TIMEOUT_S,
-                 max_points: int = MAX_POINTS) -> dict:
+                 max_points: int = MAX_POINTS, force: bool = False) -> dict:
     """Predict `target` for one whole well with each named model. One model failing never fails the others."""
     _check_target(target)
     if not isinstance(model_names, list) or not all(isinstance(m, str) for m in model_names) or len(model_names) > MAX_MODELS:
         raise ValueError(f"models must be a list of at most {MAX_MODELS} names")
-    well, train, in_train = find_well(dataset, well_name)
+    well, train, _ = find_well(dataset, well_name)
     found, failures = _registry()
     broken = {f["name"]: f["error"] for f in failures}
     curves = present_curves(well, target)
@@ -316,9 +340,10 @@ def predict_well(dataset: str, well_name: str, target: str, model_names: list[st
     idx = np.arange(n) if n <= max_points else np.linspace(0, n - 1, max_points).astype(int)
     truth = np.asarray(well.curves[target], float) if target in well.curves and np.isfinite(well.curves[target]).any() else None
     models = []
+    thash = predict_cache.train_hash(train, target) if any(name in found for name in model_names) else ""
     for name in dict.fromkeys(model_names):
         if name in found:
-            r = _run_one(dataset, name, found[name], well, train, in_train, target, curves, timeout_s)
+            r = _run_one(dataset, name, found[name], well, train, target, curves, timeout_s, thash, force)
         else:
             r = {"name": name, "ok": False, "error": broken.get(name, f"unknown model '{name}'"), "runtime_s": 0.0}
         pred = r.pop("_pred", None)

@@ -154,8 +154,8 @@ test("pickBest finds template_linear on force2020 RHOB missing_curve via the wel
 });
 
 function installFetch(t, pending) {
-  t.mock.method(globalThis, "fetch", (url) => new Promise((resolve, reject) => {
-    pending.set(url, { resolve: (body) => resolve({ ok: true, json: async () => body }), reject });
+  t.mock.method(globalThis, "fetch", (url, opts) => new Promise((resolve, reject) => {
+    pending.set(url, { opts, resolve: (body) => resolve({ ok: true, json: async () => body }), reject });
   }));
   const oldWindow = globalThis.window;
   globalThis.window = { addEventListener() {} };
@@ -201,6 +201,37 @@ test("Best model is enabled from scoreboard rows even if the minimap constructor
   assert.match(pane.querySelector("#pd-best-note").innerHTML, /rank 1/);
 });
 
+test("Predict reads cache, Rerun bypasses it, and changing targets clears the badge", async (t) => {
+  const pending = new Map(), pane = fakePane();
+  installFetch(t, pending);
+  P.mount(pane, { DATA: { wells: [{name: "W", dataset: "ds", d: [1], c: {GR: [5]}}] } });
+  const el = (id) => pane.querySelector("#pd-" + id);
+  el("well-select").change({target: {value: "0"}});
+  pending.get("/api/predict/models?target=RHOB").resolve({models: []});
+  pending.get("/api/predict/models?dataset=ds&well=W&target=RHOB").resolve({models: [{name: "m", eligible: true}]});
+  pending.get("/api/benchmark/runs").resolve({rows: [row("m", {MAE: 0.1})]});
+  await new Promise(setImmediate);
+  el("best").change({target: {checked: true}});
+  const predict = el("run").click();
+  const post = pending.get("/api/predict");
+  assert.equal(JSON.parse(post.opts.body).force, false);
+  post.resolve({models: [{name: "m", ok: true, cached: true, cached_at: "2026-11-19T10:00:00Z"}]});
+  await predict;
+  assert.match(el("cache").textContent, /^cached, 2026-/);
+  const rerun = el("rerun").click();
+  const forced = pending.get("/api/predict");
+  assert.equal(JSON.parse(forced.opts.body).force, true);
+  forced.resolve({models: [{name: "m", ok: true, cached: false}]});
+  await rerun;
+  assert.equal(el("cache").textContent, "");
+  const again = el("run").click();
+  pending.get("/api/predict").resolve({models: [{name: "m", ok: true, cached: true}]});
+  await again;
+  el("target").change({target: {value: "DTC"}});
+  assert.equal(el("cache").textContent, "");
+  pending.get("/api/predict/models?dataset=ds&well=W&target=DTC").resolve({models: []});
+});
+
 const PU = require("../viewer/plot_utils.js");
 
 test("truthForPlot uses result.true, else the well log, even when every model failed", () => {
@@ -224,6 +255,13 @@ test("targetScale matches the display track: Standard DTS is 240-40 even if valu
   // Auto may still snap near the standard limits; the bug was mixing Auto on the
   // prediction track with Standard on the display track. Shared helper + mode fixes that.
   assert.ok(P.useAutoScale("CALI", null) && !P.useAutoScale("DTS", null));
+});
+
+test("Auto porosity remains anchored at zero even if measured values are all positive", () => {
+  const values = Array.from({length: 40}, (_, i) => 0.17 + i * 0.001);
+  const { xmin, xmax } = P.targetScale("LFP_PHIE", values, "auto", PU);
+  assert.equal(xmin, 0);
+  assert.ok(xmax >= values[values.length - 1]);
 });
 
 test("modelListState shows a failed predict error, including the sklearn install hint", () => {
