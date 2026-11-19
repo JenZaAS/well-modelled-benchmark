@@ -190,7 +190,7 @@ def test_runner_with_tmp_def_writes_test_field(tmp_path):
     p = write(tmp_path, "tmp_gap", good(name="tmp_gap", target="DTC", scenario={"type": "gap", "gap_length_m": 50, "n_gaps": 2, "seed": 5}))
     r = run_cli(tmp_path, "--model", "template_linear", "--test", str(p))
     assert r.returncode == 0, r.stderr
-    out = tmp_path / "res/template_linear/synthetic/DTC/gap_50"
+    out = tmp_path / "res/template_linear/synthetic/DTC/gap_50/tmp_gap"
     scores = json.loads((out / "scores.json").read_text())
     pred = json.loads((out / "predictions.json").read_text())
     assert scores["test"] == "tmp_gap" and pred["test"] == "tmp_gap" and "[tmp_gap]" in r.stdout
@@ -203,7 +203,7 @@ def test_runner_honors_gap_lengths_outside_the_dataset_spec(tmp_path, length):
     p = write(tmp_path, "custom", good(name="custom", scenario={"type": "gap", "gap_length_m": length}))
     r = run_cli(tmp_path, "--model", "template_linear", "--test", str(p), "--scenario", key)
     assert r.returncode == 0, r.stderr
-    out = tmp_path / "res" / "template_linear" / "synthetic" / "RHOB" / key
+    out = tmp_path / "res" / "template_linear" / "synthetic" / "RHOB" / key / "custom"
     pred = json.loads((out / "predictions.json").read_text())
     assert pred["wells"]
     for well in pred["wells"]:
@@ -216,8 +216,9 @@ def test_runner_shipped_synthetic_def_and_old_cli_names(tmp_path):
     r = run_cli(tmp_path, "--model", "template_linear", "--test", "synthetic_rhob_missing", "--dataset", "synthetic")
     assert r.returncode == 0, r.stderr
     base = tmp_path / "res/template_linear/synthetic/RHOB"
-    new, old = (json.loads((base / f).read_text()) for f in ("missing_curve/scores.json", "scores.json"))
-    assert new["test"] == old["test"] == "synthetic_rhob_missing"
+    new = json.loads((base / "missing_curve/synthetic_rhob_missing/scores.json").read_text())
+    assert new["test"] == "synthetic_rhob_missing"
+    assert not (base / "missing_curve/scores.json").exists() and not (base / "scores.json").exists()
     r = run_cli(tmp_path, "--model", "template_linear", "--dataset", "synthetic", "--target", "DTC", "--scenario", "gap_50")
     assert r.returncode == 0, r.stderr
     s = json.loads((tmp_path / "res/template_linear/synthetic/DTC/gap_50/scores.json").read_text())
@@ -267,7 +268,7 @@ def test_test_all_isolates_failing_defs(tmp_path, monkeypatch, capsys):
     rows = json.loads(receipt.read_text())
     by = {r["test"]: r for r in rows}
     assert "error" in by["bad"] and "error" not in by["ok"] and by["ok"]["test"] == "ok"
-    assert json.loads((out / "template_linear/force2020/RHOB/missing_curve/failure.json").read_text())["test"] == "bad"
+    assert json.loads((out / "template_linear/force2020/RHOB/missing_curve/bad/failure.json").read_text())["test"] == "bad"
 
 
 def test_scoreboard_includes_test_column(tmp_path, monkeypatch):
@@ -280,7 +281,13 @@ def test_scoreboard_includes_test_column(tmp_path, monkeypatch):
     old = tmp_path / "m/synthetic/DTC"
     old.mkdir()
     (old / "scores.json").write_text(json.dumps({**row, "target": "DTC"}))  # pre-"test" file
+    per_test = base / "mine"  # per-test layout, same result as the classic file: not double-counted
+    per_test.mkdir()
+    (per_test / "scores.json").write_text(json.dumps({**row, "test": "mine"}))
+    new = tmp_path / "m/synthetic/RHOB/gap_50/other"
+    new.mkdir(parents=True)
+    (new / "scores.json").write_text(json.dumps({**row, "scenario": "gap_50", "test": "other"}))
     monkeypatch.setenv("WMB_RESULTS", str(tmp_path))
     rows = scoreboard.collect()
-    assert [r["test"] for r in rows] == ["mine", "synthetic_dtc_missing"] or {r["test"] for r in rows} == {"mine", "synthetic_dtc_missing"}
+    assert sorted(r["test"] for r in rows) == ["mine", "other", "synthetic_dtc_missing"]
     assert "test" in scoreboard.COLS and "| test |" in scoreboard.to_markdown(rows)

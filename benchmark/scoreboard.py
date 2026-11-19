@@ -18,10 +18,10 @@ COLS = ["test", "dataset", "target", "scenario", "contender", "workstream", "MAE
 
 
 def collect() -> list[dict]:
-    """Both layouts: <model>/<dataset>/<target>/<scenario>/scores.json (preferred) and the older one without <scenario>."""
+    """All layouts: <model>/<dataset>/<target>/<scenario>/<test>/scores.json, .../<scenario>/scores.json, and the oldest without <scenario>."""
     root = paths.results_root()
     rows: dict[tuple, dict] = {}
-    for pattern in ("*/*/*/scores.json", "*/*/*/*/scores.json"):
+    for pattern in ("*/*/*/scores.json", "*/*/*/*/scores.json", "*/*/*/*/*/scores.json"):
         for p in sorted(root.glob(pattern)):
             r = json.loads(p.read_text())
             r.setdefault("scenario", "missing_curve")
