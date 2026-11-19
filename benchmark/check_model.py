@@ -20,10 +20,23 @@ from benchmark.registry import REPO, discover
 from wmb import synthetic
 from wmb.contender import Prediction
 from wmb.contract import TARGET_CURVES, Task, validate_prediction
+from wmb.model_spec import YAML_NAME, ModelSpec, load_model_spec, yaml_candidates
 
 CHECK_SPEC = {"dataset": "synthetic", "seed": 2020, "gap_lengths_m": [10]}
 
 LICENSE_NAMES = ("LICENSE", "LICENSE.md", "LICENCE", "LICENCE.md")
+
+
+def _yaml_class_mismatch(model, spec: ModelSpec) -> list[str]:
+    out = []
+    declared = set(spec.targets or {})
+    unsupported = sorted(t for t in declared if not model.supports(t))
+    if unsupported:
+        out.append(f"{spec.path.name} lists targets the class does not support: {', '.join(unsupported)}")
+    undeclared = sorted(t for t in TARGET_CURVES if model.supports(t) and t not in declared)
+    if undeclared:
+        out.append(f"the class supports {', '.join(undeclared)} but {spec.path.name} has no entry for it")
+    return out
 
 
 def workstream_folder(model) -> Path | None:
@@ -78,8 +91,22 @@ def check_contender(factory) -> tuple[str, list[str]]:
     """Run the checks; returns (summary, warnings). Raises on a contract violation."""
     warnings: list[str] = []
     model = factory()
-    if not (getattr(model, "required_inputs", None) or getattr(model, "inputs", None)):
-        warnings.append("required_inputs is empty: declare the curves your model needs (and optional_inputs)")
+    spec = load_model_spec(model)
+    if spec.errors:
+        where = spec.path.name if spec.path else YAML_NAME
+        raise ValueError(f"{where} is invalid: " + "; ".join(spec.errors))
+    warnings += [f"{spec.path.name}: {w}" for w in spec.warnings] if spec.path else []
+    if spec.source == "yaml":
+        warnings += _yaml_class_mismatch(model, spec)
+    else:
+        others = [p for p in yaml_candidates(model) if p.is_file()]
+        warnings.append(
+            f"{others[0].name} describes a different model; add a model.yaml (or {model.name}.model.yaml) for {model.name}; class metadata was used instead"
+            if others else
+            "no model.yaml: add workstreams/<workstream>/model.yaml (name, licence, targets with required/optional curves); "
+            "class metadata (targets, required_inputs, optional_inputs, licence_name) was used instead")
+        if not (getattr(model, "required_inputs", None) or getattr(model, "inputs", None)):
+            warnings.append("required_inputs is empty: declare the curves your model needs (and optional_inputs)")
     missing = missing_licence_file(model)
     if missing:
         warnings.append(missing + "; add one with the licence name, URL and a one-line summary of restrictions")

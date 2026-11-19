@@ -95,15 +95,18 @@ def load_manifest(root: str | Path) -> dict:
     return m
 
 
-def iter_manifest_wells(root: str | Path):
+def iter_manifest_wells(root: str | Path, *, manifest: dict | None = None):
     """Yield Wells for every LAS-backed well in a manifest. (CSV datasets: use read_force_csv.)"""
-    root = Path(root)
-    m = load_manifest(root)
+    root = Path(root).resolve()
+    m = load_manifest(root) if manifest is None else manifest
     ds = m["dataset"]
     for w in m["wells"]:
         cmap = {**ds.get("curve_map", {}), **w.get("curve_map", {})}
         for f in w.get("files", ds.get("files", [])):
             if f.get("format") == "las":
-                well = read_las(root / f["path"], cmap or None, dataset=ds["id"])
+                path = (root / f["path"]).resolve()
+                if not path.is_relative_to(root):
+                    raise ValueError(f"LAS path for well '{w['name']}' is outside its dataset")
+                well = read_las(path, cmap or None, dataset=ds["id"])
                 well.name, well.split = w["name"], w.get("split")
                 yield well

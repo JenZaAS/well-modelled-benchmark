@@ -89,3 +89,32 @@ def test_task_only_model_instantiates_and_passes_check():
     assert summary.startswith("OK")
     with pytest.raises(NotImplementedError, match="predict_task"):
         BaseContender.predict(TaskOnly(), None, "RHOB")
+
+
+def test_missing_model_yaml_warns_and_template_yaml_is_clean():
+    _, warnings = check_contender(TaskOnly)
+    assert any("no model.yaml" in w and "was used instead" in w for w in warnings)
+    from workstreams._template_model.contender import TemplateLinear
+
+    summary, warnings = check_contender(TemplateLinear)
+    assert summary.startswith("OK template_linear") and warnings == []
+
+
+def test_invalid_model_yaml_fails(tmp_path, monkeypatch):
+    (tmp_path / "model.yaml").write_text("name: task_only\nlicence: MIT\ntargets: {RHOB: {required: [dtc]}}\nextra: 1\n")
+    monkeypatch.setattr("wmb.model_spec.yaml_candidates", lambda model: [tmp_path / "model.yaml"])
+    with pytest.raises(ValueError, match="model.yaml is invalid.*unknown key 'extra'"):
+        check_contender(TaskOnly)
+
+
+def test_yaml_targets_the_class_does_not_support_warn(tmp_path, monkeypatch):
+    (tmp_path / "model.yaml").write_text("name: task_only\nlicence: MIT\ntargets: {RHOB: {required: [GR]}}\n")
+    monkeypatch.setattr("wmb.model_spec.yaml_candidates", lambda model: [tmp_path / "model.yaml"])
+
+    class Narrow(TaskOnly):
+        targets = ["DTC"]
+
+    _, warnings = check_contender(Narrow)
+    assert any("does not support: RHOB" in w for w in warnings)
+    assert any("no entry for it" in w for w in warnings)
+

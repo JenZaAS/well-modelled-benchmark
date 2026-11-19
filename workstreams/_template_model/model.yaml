@@ -1,0 +1,14 @@
+# Inputs of this model per target, in canonical curve names. DEPTH is always present; do not list it.
+# required: the model cannot run without them. optional: used when present in the well.
+name: template_linear
+licence: MIT
+targets:
+  RHOB:
+    required: [DTC]
+    optional: [GR, NPHI]
+  DTC:
+    required: [RHOB]
+    optional: [GR, NPHI]
+  DTS:
+    required: [DTC]
+    optional: [RHOB, GR, NPHI]

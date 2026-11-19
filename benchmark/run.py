@@ -18,6 +18,8 @@ import platform
 import sys
 import time
 import traceback
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import numpy as np
 import pandas as pd
@@ -80,11 +82,52 @@ def _write(out, name: str, payload: dict) -> None:
     (out / name).write_text(json.dumps(payload, indent=2, default=str))
 
 
+def _arr(v, nd: int = 4):
+    """Rounded list with NaN/inf as null (valid JSON); None stays None."""
+    if v is None:
+        return None
+    a = np.asarray(v, float)
+    return [round(float(x), nd) if np.isfinite(x) else None for x in a]
+
+
+def _gap_intervals(depth: np.ndarray, mask: np.ndarray) -> list[list[float]]:
+    """[top, bottom] depth of each contiguous run of predict_mask."""
+    out, start = [], None
+    for i, m in enumerate(np.asarray(mask, bool)):
+        if m and start is None:
+            start = i
+        if start is not None and (not m or i == len(mask) - 1):
+            end = i if m else i - 1
+            out.append([round(float(depth[start]), 4), round(float(depth[end]), 4)])
+            start = None
+    return out
+
+
+def prediction_payload(base: dict, key: str, tasks: list[Task], preds: list[Prediction], truth: dict) -> dict:
+    """Compact per-well arrays for the viewer's Benchmark tab (results/.../predictions.json); not part of scoring."""
+    seen: dict[str, int] = {}
+    wells = []
+    for t, p in zip(tasks, preds):
+        k = seen.get(t.well_id, 0)
+        seen[t.well_id] = k + 1
+        has_band = p.p05 is not None and p.p95 is not None
+        wells.append({
+            "key": t.well_id if k == 0 else f"{t.well_id}#{k}", "well_id": t.well_id,
+            "depth": _arr(t.depth), "true": _arr(truth[(t.well_id, t.target)]), "p50": _arr(p.p50),
+            "p05": _arr(p.p05) if has_band else None, "p95": _arr(p.p95) if has_band else None,
+            "std": None if has_band else _arr(p.std),
+            "gaps": _gap_intervals(t.depth, t.predict_mask),
+        })
+    return {"contender": base.get("contender"), "dataset": base["dataset"],
+            "target": base["target"], "scenario": key, "wells": wells}
+
+
 def _fail(row: dict, out, exc: Exception) -> dict:
     row["error"] = f"{type(exc).__name__}: {exc}"
     _write(out, "failure.json", {k: row[k] for k in ("contender", "dataset", "target", "scenario", "error")}
            | {"traceback": traceback.format_exc(limit=4)})
     (out / "scores.json").unlink(missing_ok=True)  # a failed rerun must not leave a stale scoreboard row
+    (out / "predictions.json").unlink(missing_ok=True)
     if row["scenario"] == SCENARIO_MISSING:
         (out.parent / "scores.json").unlink(missing_ok=True)
     return row
@@ -130,6 +173,18 @@ def run_scenario(model, tasks: list[Task], truth: dict, base: dict, out_root, ti
         return _fail(row, out, exc)
     (out / "failure.json").unlink(missing_ok=True)
     _write(out, "scores.json", row)
+    prediction_path = out / "predictions.json"
+    try:  # viewer-only extra; never let it fail a scored run
+        prediction_path.unlink(missing_ok=True)
+        with TemporaryDirectory(dir=out) as tmp:
+            staged = Path(tmp) / prediction_path.name
+            staged.write_text(json.dumps(
+                prediction_payload({**base, "contender": model.name}, key, tasks, preds, truth),
+                separators=(",", ":"), allow_nan=False,
+            ))
+            staged.replace(prediction_path)
+    except (OSError, ValueError, TypeError) as exc:
+        print(f"warning: predictions.json not written for {model.name}/{key}: {exc}", file=sys.stderr)
     if key == SCENARIO_MISSING:  # older layout, kept for existing readers
         _write(out.parent, "scores.json", row)
     return row

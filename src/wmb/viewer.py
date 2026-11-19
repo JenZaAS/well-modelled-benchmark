@@ -14,10 +14,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import socket
 import sys
 import threading
 import webbrowser
+from datetime import datetime, timezone
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -282,6 +284,75 @@ def safe_under(root: Path, rel: str) -> Path | None:
     return candidate if candidate.is_file() else None
 
 
+def benchmark_run_time(row: dict) -> datetime:
+    value = row.get("run_at")
+    if isinstance(value, str):
+        try:
+            stamp = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return stamp if stamp.tzinfo is not None else stamp.replace(tzinfo=timezone.utc)
+        except ValueError:
+            pass
+    return datetime.min.replace(tzinfo=timezone.utc)
+
+
+def collect_benchmark_rows(root: Path | None = None) -> list[dict[str, Any]]:
+    """Read-only twin of benchmark.scoreboard.collect(): both results layouts, unreadable files skipped."""
+    from wmb import paths
+
+    root = Path(root) if root is not None else paths.results_root()
+    rows: dict[tuple, dict] = {}
+    # rglob so an optional test/ folder (or other future layout) is still found; patterns used to be 3-4 levels.
+    for p in sorted(root.rglob("scores.json")):
+        try:
+            found = safe_under(root, str(p.relative_to(root)))
+            if found is None:
+                continue
+            r = json.loads(found.read_text(encoding="utf-8"), parse_constant=lambda _: None)
+            if not isinstance(r, dict):
+                continue
+            r.setdefault("scenario", "missing_curve")
+            test = r.get("test") if isinstance(r.get("test"), str) else ""
+            key = (r["contender"], r["dataset"], r["target"], r["scenario"], test)
+            if all(isinstance(part, str) and part for part in key[:4]) and (
+                key not in rows or benchmark_run_time(r) >= benchmark_run_time(rows[key])
+            ):
+                rows[key] = r
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+    for r in rows.values():
+        r.pop("hardware", None)
+    return sorted(rows.values(), key=lambda r: (
+        r["dataset"], r.get("test") or "", r["target"], r["scenario"],
+        r["MAE"] if isinstance(r.get("MAE"), (int, float)) else float("inf"),
+    ))
+
+
+_SEGMENT_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]*$")
+
+
+def load_benchmark_prediction(contender: str, dataset: str, target: str, scenario: str, well: str,
+                              root: Path | None = None) -> dict[str, Any]:
+    """One well from results/<contender>/<dataset>/<target>/<scenario>/predictions.json (FileNotFoundError if absent)."""
+    from wmb import paths
+
+    parts = [contender, dataset, target, scenario]
+    if not well:
+        raise ValueError("well is required")
+    if any(not _SEGMENT_OK.fullmatch(p) or ".." in p for p in parts):
+        raise ValueError("contender, dataset, target and scenario must be plain names")
+    root = Path(root) if root is not None else paths.results_root()
+    found = safe_under(root, "/".join([*parts, "predictions.json"]))
+    if found is None:
+        raise FileNotFoundError("no predictions.json for this run; re-run benchmark.run to write it")
+    data = json.loads(found.read_text(encoding="utf-8"))
+    if well == "*":
+        return {"wells": [w.get("key") or w.get("well_id") for w in data.get("wells", [])]}
+    for w in data.get("wells", []):
+        if well in (w.get("key"), w.get("well_id")):
+            return {k: data.get(k) for k in ("contender", "dataset", "target", "scenario")} | {"well": w}
+    raise FileNotFoundError(f"well {well} not in predictions.json")
+
+
 class ViewerState:
     def __init__(self) -> None:
         self.availability = discover_for_viewer()
@@ -395,6 +466,37 @@ class ViewerState:
                 "has_dts": packed.get("has_dts", False)}
 
 
+LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
+MAX_BODY_BYTES = 16_384
+BODY_TIMEOUT_S = 5
+
+
+def is_local_client(client_address) -> bool:
+    host = str(client_address[0]).split("%")[0]
+    return host in {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
+
+
+def _local_http_authority(value: str) -> tuple[str, int] | None:
+    try:
+        parsed = urlparse(value)
+        if (parsed.scheme == "http" and parsed.hostname in LOCAL_HOSTS
+                and parsed.username is None and not any((parsed.path, parsed.params, parsed.query, parsed.fragment))):
+            return parsed.hostname, parsed.port if parsed.port is not None else 80
+    except ValueError:
+        pass
+    return None
+
+
+def _predict_api():
+    """benchmark.predict_api, imported lazily (the viewer itself must start without the benchmark package on the path)."""
+    if str(REPO) not in sys.path:
+        sys.path.insert(0, str(REPO))
+    _ensure_src_on_path()
+    from benchmark import predict_api
+
+    return predict_api
+
+
 def _send(handler: BaseHTTPRequestHandler, code: int, body: bytes, content_type: str) -> None:
     handler.send_response(code)
     handler.send_header("Content-Type", content_type)
@@ -406,7 +508,7 @@ def _send(handler: BaseHTTPRequestHandler, code: int, body: bytes, content_type:
 
 
 def _send_json(handler: BaseHTTPRequestHandler, code: int, payload: Any) -> None:
-    body = json.dumps(payload, ensure_ascii=False, default=str).encode("utf-8")
+    body = json.dumps(payload, ensure_ascii=False, default=str, allow_nan=False).encode("utf-8")
     _send(handler, code, body, "application/json; charset=utf-8")
 
 
@@ -443,6 +545,55 @@ class ViewerHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             _send_json(self, 500, {"error": f"{type(exc).__name__}: {exc}"})
 
+    def _local_only(self) -> bool:
+        """Compute endpoints: loopback clients only, and no cross-site browser origins. Sends 403 and returns False otherwise."""
+        authority = _local_http_authority("http://" + self.headers.get("Host", ""))
+        origin = self.headers.get("Origin")
+        if (not is_local_client(self.client_address) or authority is None
+                or (origin is not None and _local_http_authority(origin) != authority)):
+            _send_json(self, 403, {"error": "this endpoint is only available from localhost"})
+            return False
+        return True
+
+    def do_POST(self) -> None:  # noqa: N802
+        path = unquote(urlparse(self.path).path)
+        try:
+            if path != "/api/predict":
+                _send_json(self, 404, {"error": "not found"})
+                return
+            if not self._local_only():
+                return
+            if (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
+                raise ValueError("Content-Type must be application/json")
+            length = int(self.headers.get("Content-Length") or 0)
+            if length <= 0 or length > MAX_BODY_BYTES:
+                raise ValueError("request body must be a small JSON object")
+            original_timeout = self.connection.gettimeout()
+            try:
+                self.connection.settimeout(BODY_TIMEOUT_S)
+                raw = self.rfile.read(length)
+            except TimeoutError:
+                _send_json(self, 408, {"error": "timed out reading the request body"})
+                return
+            finally:
+                self.connection.settimeout(original_timeout)
+            try:
+                body = json.loads(raw)
+            except ValueError as exc:
+                raise ValueError(f"invalid JSON: {exc}") from exc
+            if not isinstance(body, dict):
+                raise ValueError("request body must be a JSON object")
+            for k in ("dataset", "well", "target"):
+                if not isinstance(body.get(k), str) or not body[k]:
+                    raise ValueError(f"{k} is required")
+            _send_json(self, 200, _predict_api().predict_well(body["dataset"], body["well"], body["target"], body.get("models", [])))
+        except FileNotFoundError as exc:
+            _send_json(self, 404, {"error": str(exc)})
+        except ValueError as exc:
+            _send_json(self, 400, {"error": str(exc)})
+        except Exception as exc:
+            _send_json(self, 500, {"error": f"{type(exc).__name__}: {exc}"})
+
     def _route(self, path: str, query: dict[str, list[str]]) -> None:
         if path in {"/", "/wellmap.html", "/index.html"}:
             if not HTML_PATH.is_file():
@@ -454,6 +605,30 @@ class ViewerHandler(BaseHTTPRequestHandler):
             if not helper.is_file():
                 raise FileNotFoundError(f"Missing {helper}")
             _send(self, 200, helper.read_bytes(), "application/javascript; charset=utf-8")
+            return
+        if path == "/benchmark.js" or path == "/prediction.js":
+            helper = VIEWER_DIR / path.lstrip("/")
+            if not helper.is_file():
+                raise FileNotFoundError(f"Missing {helper}")
+            _send(self, 200, helper.read_bytes(), "application/javascript; charset=utf-8")
+            return
+        if path == "/api/predict/models":
+            if not self._local_only():
+                return
+            q = {k: (query.get(k) or [""])[0] for k in ("dataset", "well", "target", "metric", "rank_scenario")}
+            predict_api = _predict_api()
+            out = predict_api.list_models(q["dataset"] or None, q["well"] or None, q["target"] or "RHOB")
+            names = {m["name"] for m in out["models"] if m["eligible"]}
+            out["best"] = predict_api.best_model(collect_benchmark_rows(), q["dataset"], out["target"], q["rank_scenario"] or "missing_curve",
+                                                 q["metric"] or "MAE", names) if q["dataset"] else None
+            _send_json(self, 200, out)
+            return
+        if path == "/api/benchmark/runs":
+            _send_json(self, 200, {"rows": collect_benchmark_rows()})
+            return
+        if path == "/api/benchmark/prediction":
+            q = {k: (query.get(k) or [""])[0] for k in ("contender", "dataset", "target", "scenario", "well")}
+            _send_json(self, 200, load_benchmark_prediction(**q))
             return
         if path.startswith("/vendor/"):
             rel = path[len("/vendor/") :]
