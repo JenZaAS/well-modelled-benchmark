@@ -1,0 +1,5 @@
+# Blue-team ML study: core benchmark requirements + the app
+-r ../../requirements.txt
+streamlit>=1.49       # st.dataframe/plotly_chart width="stretch"
+plotly>=5.18
+pyarrow>=15           # predictions are stored as parquet
