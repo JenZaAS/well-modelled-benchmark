@@ -1,4 +1,11 @@
-Modified MIT License
+# Timestral-5M
+
+The [upstream inference code](https://github.com/mistralai/timestral) is Apache-2.0.
+The [checkpoint](https://huggingface.co/mistralai/Timestral-5M/blob/bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f/LICENSE)
+uses Modified MIT: retain attribution and the permission notice; separate authorization
+is required above the preceding-month company or employer revenue threshold below.
+
+## Modified MIT License
 
 Attribution notice: 2026 - Mistral AI
 

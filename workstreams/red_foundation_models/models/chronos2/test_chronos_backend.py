@@ -6,7 +6,7 @@ from unittest.mock import Mock, patch
 
 import numpy as np
 
-from workstreams.red_foundation_models.chronos_backend import load
+from .backend import load
 
 
 class ChronosContractTest(unittest.TestCase):

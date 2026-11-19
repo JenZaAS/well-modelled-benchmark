@@ -11,7 +11,7 @@ from wmb.contender import BaseContender
 from wmb.io import Well, read_force_csv, read_las
 from wmb.scoring import regression_scores
 from wmb.splits import well_split
-from .experiment import depth_interpolation, masked_case
+from ...experiment import depth_interpolation, masked_case
 
 
 @dataclass

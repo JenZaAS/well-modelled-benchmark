@@ -13,7 +13,7 @@ separate authorization from Mistral for local inference.
 
 If authorized, explicitly prefetch before running the benchmark::
 
-    export HF_HOME="${FH2026_CACHE:?}/hf"
+    export HF_HOME="$(python -c 'from wmb.paths import cache_dir; print(cache_dir() / "hf")')"
     HF_HUB_OFFLINE=0 hf download mistralai/Timestral-5M config.json model.safetensors LICENSE \
         --revision bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f
 

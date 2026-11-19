@@ -7,17 +7,27 @@ Use local inference only; never upload wells or commit data, weights, or predict
 
 ## Backbones and weights
 
+Each backbone has its own wrapper, backend, tests, and licence under
+[`models/chronos2/`](models/chronos2/) or [`models/timestral/`](models/timestral/).
+The shared depth adapter stays in `depth_model.py`; `contender.py` handles registration.
+Keep weights under the configured cache, outside the repository. Before fetching
+or loading either checkpoint, set:
+
+```sh
+export HF_HOME="$(python -c 'from wmb.paths import cache_dir; print(cache_dir() / "hf")')"
+```
+
 - **Chronos-2:** install `chronos-forecasting==2.3.2` and `transformers>=4.57.6,<5`
   in an ML environment. Pre-cache `amazon/chronos-2` via `hf download amazon/chronos-2`;
   use the same `HF_HOME` at inference. The existing laptop forward-pass check is
   `check_chronos2` in `tools/laptop_setup/fh2026_smoke_test.py`.
 - **Timestral-5M:** the [upstream inference code](https://github.com/mistralai/timestral)
-  is Apache-2.0, but the [checkpoint licence](Timestral-5M/LICENCE)
+  is Apache-2.0, but the [checkpoint licence](models/timestral/LICENSE.md)
   ([pinned upstream copy](https://huggingface.co/mistralai/Timestral-5M/blob/bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f/LICENSE))
   is **Modified MIT**, with an organization revenue restriction. Do not fetch,
   redistribute, or use those weights unless your organization has confirmed
   authorization and benchmark eligibility. The optional local adapter does not
-  bundle the weights. Its [module docstring](timestral_backend.py) gives the
+  bundle the weights. Its [module docstring](models/timestral/backend.py) gives the
   pinned install and cache commands for an authorized run.
 
 ## Run two different tasks
@@ -114,7 +124,7 @@ From the repository root, activate the authorized Timestral environment and set
 python -m pip install streamlit==1.55.0 plotly==6.5.0 lasio==0.32
 export PYTHONPATH="$PWD/src:$PWD" HF_HUB_OFFLINE=1 OMP_NUM_THREADS=2
 python -m wmb.paths --check
-python -m streamlit run workstreams/red_foundation_models/dashboard.py --server.address=127.0.0.1 --server.headless=true --browser.gatherUsageStats=false
+python -m streamlit run workstreams/red_foundation_models/models/timestral/dashboard.py --server.address=127.0.0.1 --server.headless=true --browser.gatherUsageStats=false
 ```
 
 Open the localhost URL printed by Streamlit; stop it with Ctrl+C. Do not expose

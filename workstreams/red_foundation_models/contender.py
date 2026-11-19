@@ -6,7 +6,8 @@ import os
 import numpy as np
 
 from wmb.contender import BaseContender, Prediction
-from .depth_model import DepthForecaster
+from .models.chronos2.contender import Chronos2
+from .models.timestral.contender import Timestral
 
 
 class TrainMeanFloor(BaseContender):
@@ -19,24 +20,6 @@ class TrainMeanFloor(BaseContender):
     def predict(self, well, target):
         n = len(well.depth)
         return Prediction(np.full(n, self.mu), np.full(n, self.sd))
-
-
-class Chronos2(DepthForecaster):
-    name = "red_chronos2"
-
-    @staticmethod
-    def load_backend():
-        from .chronos_backend import load
-        return load()
-
-
-class Timestral(DepthForecaster):
-    name = "red_timestral"
-
-    @staticmethod
-    def load_backend():
-        from .timestral_backend import load
-        return load()
 
 
 MODELS = {"chronos2": Chronos2, "timestral": Timestral}
