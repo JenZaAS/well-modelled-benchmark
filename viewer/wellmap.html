@@ -53,6 +53,7 @@ header .sub { color: var(--muted); font-size: 12px; }
 #plot-head #plot-close { margin-left: 0; }
 #plot-head .range { display: flex; align-items: center; gap: 4px; margin-left: auto; color: var(--muted); font-size: 12px; }
 #plot-head .range input { width: 64px; font: inherit; padding: 1px 4px; border: 1px solid var(--line); }
+#plot-head button[aria-pressed="true"] { background: #dbeafe; border-color: #1d4ed8; font-weight: 600; }
 #plot-canvas-wrap { flex: 1 1 auto; min-height: 0; position: relative; }
 #plot-canvas-wrap canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 #plot-canvas-wrap canvas.dragging { cursor: grabbing; }
@@ -121,7 +122,12 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
         <input id="zoom-min" type="text" inputmode="decimal" title="Top of the visible depth window in metres (press Enter to apply)">
         <label for="zoom-max" title="Bottom of the visible depth window in metres">–</label>
         <input id="zoom-max" type="text" inputmode="decimal" title="Bottom of the visible depth window in metres (press Enter to apply)">
-        <button type="button" id="zoom-reset" title="Reset zoom to the full depth range (or double-click the plot)">Reset</button>
+        <button type="button" id="zoom-reset" title="Reset to the padded log or lithology interval (or double-click the plot)">Reset</button>
+      </div>
+      <div class="range" id="xscale-ctl" title="Until you choose a mode for all tracks, CALI and PEF use Auto and the other tracks use Standard. Values outside the scale are clipped at the track edge.">
+        <label>X scale</label>
+        <button type="button" id="xscale-auto" aria-pressed="false" title="Auto for all tracks: full-well P1-P99 (ignoring at least one sample at each end), plus 5% padding and round limits (decades for resistivity). Uses Standard when there are too few samples.">Auto</button>
+        <button type="button" id="xscale-std" aria-pressed="false" title="Fixed scales for all tracks: GR 0-150, resistivity 0.2-200 log, RHOB 1.65-2.85, NPHI 0.45 to -0.15, DTC 140-40, DTS 240-80, CALI 6-16, PEF 0-15.">Standard</button>
       </div>
       <button type="button" id="plot-close" title="Close the log plot">Close</button>
     </div>
@@ -528,6 +534,41 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
     return d._step;
   }
 
+  // X scales: null = mixed default (auto for CALI/PEF), else "auto" / "standard" for all tracks.
+  let xMode = null;
+  const DEFAULT_AUTO = new Set(["cal", "pef"]);
+
+  function syncXScaleButtons() {
+    document.getElementById("xscale-auto").setAttribute("aria-pressed", String(xMode === "auto"));
+    document.getElementById("xscale-std").setAttribute("aria-pressed", String(xMode === "standard"));
+  }
+  function setXMode(m) { xMode = m; syncXScaleButtons(); drawPlot(); }
+  document.getElementById("xscale-auto").addEventListener("click", () => setXMode("auto"));
+  document.getElementById("xscale-std").addEventListener("click", () => setXMode("standard"));
+
+  // Ranges and clip counts use the full well, cached by curve payload and scale mode.
+  function effectiveTracks(w) {
+    if (!w._xScales || w._xScales.src !== w.c) {
+      Object.defineProperty(w, "_xScales", { value: { src: w.c, modes: new Map() }, configurable: true });
+    }
+    const { modes } = w._xScales;
+    if (modes.has(xMode)) return modes.get(xMode);
+    const tracks = TRACKS.map(t => {
+      if (!t.curves) return t;
+      const useAuto = xMode === "auto" || (xMode === null && DEFAULT_AUTO.has(t.id));
+      const series = t.curves.map(c => (w.c && w.c[c.k]) || []);
+      const first = t.curves[0];
+      const shared = useAuto && t.log ? PU.autoValueRange(series, { std: [first.xmin, first.xmax], log: true }) : null;
+      return Object.assign({}, t, { curves: t.curves.map((c, i) => {
+        const { xmin, xmax } = useAuto ? shared || PU.autoValueRange(series[i], { std: [c.xmin, c.xmax] }) : c;
+        const clipped = PU.countOutside(series[i], xmin, xmax, t.log);
+        return Object.assign({}, c, { xmin, xmax, clipped });
+      })});
+    });
+    modes.set(xMode, tracks);
+    return tracks;
+  }
+
   function drawPlot() {
     const w = state.selected;
     if (!w || !plotEl.classList.contains("open")) return;
@@ -551,14 +592,13 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
       ctx.fillText(msg, 16, 24);
       return;
     }
-    const ext = depthExtent(w);
-    if (!zoom.win || zoom.well !== w) { zoom.well = w; zoom.win = PU.resetWindow(ext); }
+    if (!zoom.win || zoom.well !== w) { zoom.well = w; zoom.win = depthExtent(w); }
     const dmin = zoom.win.min, dmax = zoom.win.max;
     const padTop = 58, padBot = 10, depthW = 52, lithW = 26, gap = 6;
     const plotTop = padTop, plotH = H - padTop - padBot;
     if (plotH <= 2) return;
     // always show the standard tracks even if empty, so missing data is visible as blank
-    const shown = TRACKS.filter(t => t.lith || t.curves.length);
+    const shown = effectiveTracks(w).filter(t => t.lith || t.curves.length);
     const nFlex = shown.filter(t => !t.lith).length;
     const innerW = W - depthW - 8 - (shown.some(t => t.lith) ? lithW + gap : 0) - gap * shown.length;
     const flexW = nFlex ? Math.max(60, innerW / nFlex) : 60;
@@ -602,16 +642,25 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
   // ----- shared vertical zoom / pan -----
   const zoom = { well: null, win: null, geom: null, drag: null };
 
-  function depthExtent(w) {
-    const d = w.d || [];
-    let lo = Infinity, hi = -Infinity;
-    for (const v of d) { if (Number.isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; } }
-    if (!(hi > lo)) { lo = Number.isFinite(lo) ? lo : 0; hi = lo + 1; }
-    return { min: lo, max: hi };
+  function seriesList(w) {
+    const list = [];
+    if (w && w.c) Object.keys(w.c).forEach(k => list.push(w.c[k]));
+    if (w && w.lith) list.push(w.lith);
+    return list;
   }
-  function minSpan() {
-    const w = state.selected;
-    return PU.minSpanFor(medianStep(w.d), depthExtent(w));
+  // Recorded depth index (may include empty header); used as the zoom/pan clamp.
+  function recordedExtent(w) {
+    const ext = PU.recordedExtent((w && w.d) || []);
+    if (ext && ext.max > ext.min) return ext;
+    if (ext) return { min: ext.min, max: ext.min + 1 };
+    return { min: 0, max: 1 };
+  }
+  // Default / Reset window: padded interval that actually has log or lithology values.
+  function depthExtent(w) {
+    return PU.defaultWindow((w && w.d) || [], seriesList(w));
+  }
+  function minSpan(w, ext) {
+    return PU.minSpanFor(medianStep(w.d), ext);
   }
   function clearZoom() {
     endDrag();
@@ -634,8 +683,9 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
   function applyRangeInputs() {
     const w = state.selected;
     if (!w || !(w.d || []).length) return;
+    const ext = recordedExtent(w);
     const win = PU.parseRange(document.getElementById("zoom-min").value, document.getElementById("zoom-max").value,
-      depthExtent(w), minSpan());
+      ext, minSpan(w, ext));
     if (win) setWindow(win);
     syncRangeInputs(true);
   }
@@ -645,7 +695,8 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
     e.preventDefault();
     const pixels = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? zoom.geom.plotH : 1);
     const factor = Math.pow(1.0015, pixels);
-    setWindow(PU.zoomAt(zoom.win, depthExtent(w), depthAtEvent(e), factor, minSpan()));
+    const ext = recordedExtent(w);
+    setWindow(PU.zoomAt(zoom.win, ext, depthAtEvent(e), factor, minSpan(w, ext)));
   }, { passive: false });
   canvas.addEventListener("pointerdown", e => {
     if (!state.selected || !zoom.win || !zoom.geom || zoom.drag || e.button !== 0) return;
@@ -658,7 +709,8 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
     const w = state.selected;
     const span = zoom.drag.win.max - zoom.drag.win.min;
     const dd = -(e.clientY - zoom.drag.y) / zoom.geom.plotH * span;
-    setWindow(PU.panBy(zoom.drag.win, depthExtent(w), dd, minSpan()));
+    const ext = recordedExtent(w);
+    setWindow(PU.panBy(zoom.drag.win, ext, dd, minSpan(w, ext)));
   });
   function endDrag(e) {
     if (!zoom.drag || (e && zoom.drag.id !== e.pointerId)) return;
@@ -685,7 +737,8 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
     ctx.font = "10px Segoe UI, system-ui, sans-serif";
     track.curves.forEach((c, i) => {
       ctx.fillStyle = c.color;
-      ctx.fillText(`${c.k} ${c.unit}`, x + 3, 2 + i * 11);
+      const clipTxt = c.clipped ? ` · ${c.clipped} clipped` : "";
+      ctx.fillText(`${c.k} ${c.unit}${clipTxt}`, x + 3, 2 + i * 11, tw - 6);
     });
     ctx.font = "9px Segoe UI, system-ui, sans-serif";
     track.curves.forEach((c, i) => {

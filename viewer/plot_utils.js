@@ -95,15 +95,143 @@
     return x + (Math.log10(v) - a) / (b - a) * w;
   }
 
-  // Header tick values for a track curve: log gets 0.2/2/20/200, linear gets min/mid/max in scale order.
+  // Header tick values for a track curve: log gets the standard 0.2/2/20/200 or the decades inside its
+  // limits; linear gets min/mid/max in scale order.
   function tickValues(curve, log) {
-    if (log) return [0.2, 2, 20, 200];
+    if (log) {
+      const lo = Math.min(curve.xmin, curve.xmax), hi = Math.max(curve.xmin, curve.xmax);
+      if (lo === 0.2 && hi === 200) return [0.2, 2, 20, 200];
+      const a = Math.ceil(Math.log10(lo)), b = Math.floor(Math.log10(hi));
+      const stride = Math.max(1, Math.ceil((b - a + 1) / 6));
+      const out = [];
+      for (let e = a; e <= b; e += stride) {
+        const tick = Math.pow(10, e);
+        if (tick >= lo && tick <= hi) out.push(tick);
+      }
+      return out.length ? out : [lo, hi];
+    }
     return [curve.xmin, (curve.xmin + curve.xmax) / 2, curve.xmax];
+  }
+
+  function finiteValues(arr, positiveOnly) {
+    const out = [];
+    for (let i = 0; i < arr.length; i++) {
+      const v = arr[i];
+      if (typeof v === "number" && Number.isFinite(v) && (!positiveOnly || v > 0)) out.push(v);
+    }
+    return out;
+  }
+
+  // Linear-interpolated percentile (p in 0..100) of an ascending array.
+  function percentile(sorted, p) {
+    if (!sorted.length) return NaN;
+    const pos = (sorted.length - 1) * p / 100;
+    const lo = Math.floor(pos), hi = Math.ceil(pos);
+    return sorted[lo] + (sorted[hi] - sorted[lo]) * (pos - lo);
+  }
+
+  // Round-number limit spacing giving roughly eight ticks over span.
+  function niceLimitStep(span) {
+    const raw = span / 8;
+    const mag = Math.pow(10, Math.floor(Math.log10(raw)));
+    const n = raw / mag;
+    return (n < 1.5 ? 1 : n < 2.25 ? 2 : n < 3.75 ? 2.5 : n < 7.5 ? 5 : 10) * mag;
+  }
+
+  function cleanNum(v) { return parseFloat(v.toPrecision(12)); }
+
+  // Median +/- k * 1.4826 * MAD, to crop far outliers that P1-P99 still includes
+  // when a large bad cluster sits well away from the median (e.g. PEF spikes of 50-300).
+  function madFence(sorted, k) {
+    const kk = k == null ? 3 : k;
+    const med = percentile(sorted, 50);
+    const dev = sorted.map((v) => Math.abs(v - med)).sort((a, b) => a - b);
+    const mad = percentile(dev, 50);
+    const scale = 1.4826 * mad;
+    if (!(scale > 0)) return null;
+    return { lo: med - kk * scale, hi: med + kk * scale };
+  }
+
+  // Robust P1/P99 of finite (log: positive) samples, intersected with a MAD fence; null when fewer than minCount.
+  function robustBounds(arr, opts) {
+    const o = opts || {};
+    const v = finiteValues(arr || [], !!o.log).sort((a, b) => a - b);
+    if (v.length < (o.minCount == null ? 10 : o.minCount)) return null;
+    let lo = percentile(v, 1), hi = percentile(v, 99);
+    // On short curves, interpolation with a single extreme can overwhelm both the padding and snap.
+    if (v.length >= 3) { lo = Math.max(lo, v[1]); hi = Math.min(hi, v[v.length - 2]); }
+    const fence = madFence(v, o.madK);
+    if (fence) {
+      const flo = Math.max(lo, fence.lo), fhi = Math.min(hi, fence.hi);
+      if (fhi > flo) { lo = flo; hi = fhi; }
+    }
+    return { lo, hi };
+  }
+
+  // Pad bounds by 5% and snap to nice limits (decades for log); returns ascending {lo, hi} or null.
+  function snapBounds(b, opts) {
+    const o = opts || {};
+    const pad = o.pad == null ? 0.05 : o.pad;
+    if (o.log) {
+      let a = Math.log10(b.lo), c = Math.log10(b.hi);
+      if (c - a < 1e-9) { a -= 0.5; c += 0.5; }
+      const p = (c - a) * pad;
+      let fa = Math.floor(a - p), fc = Math.ceil(c + p);
+      if (fc <= fa) fc = fa + 1;
+      return { lo: Math.pow(10, fa), hi: Math.pow(10, fc) };
+    }
+    let lo = b.lo, hi = b.hi;
+    if (!(hi - lo > 1e-12 * Math.max(1, Math.abs(lo)))) {
+      const h = (Math.abs(lo) || 1) * 0.1;
+      lo -= h; hi += h;
+    }
+    const p = (hi - lo) * pad;
+    lo -= p; hi += p;
+    const step = niceLimitStep(hi - lo);
+    const r = { lo: cleanNum(Math.floor(lo / step + 1e-9) * step), hi: cleanNum(Math.ceil(hi / step - 1e-9) * step) };
+    return r.hi > r.lo ? r : null;
+  }
+
+  // Automatic scale from one array or a list of arrays (overlay union, snapped once). Returns
+  // {xmin, xmax, auto} in the standard scale's direction, or the standard scale with auto=false.
+  // opts: std [xmin, xmax] (required), log, pad, minCount.
+  function autoValueRange(series, opts) {
+    const o = opts || {};
+    const std = o.std;
+    const fallback = { xmin: std[0], xmax: std[1], auto: false };
+    const list = Array.isArray(series) && series.some(Array.isArray) ? series : [series || []];
+    let lo = Infinity, hi = -Infinity;
+    for (const s of list) {
+      const b = robustBounds(s, o);
+      if (b) { lo = Math.min(lo, b.lo); hi = Math.max(hi, b.hi); }
+    }
+    if (!(lo <= hi)) return fallback;
+    const r = snapBounds({ lo, hi }, o);
+    if (!r || !Number.isFinite(r.lo) || !Number.isFinite(r.hi) || (o.log && !(r.lo > 0))) return fallback;
+    if (!o.log) {
+      const data = [];
+      for (const s of list) for (const val of finiteValues(s, false)) data.push(val);
+      const stdMin = Math.min(std[0], std[1]);
+      if (data.length && data.every((val) => val >= 0) && stdMin >= 0 && r.lo < 0) r.lo = 0;
+    }
+    if (!(r.hi > r.lo)) return fallback;
+    return std[0] > std[1] ? { xmin: r.hi, xmax: r.lo, auto: true } : { xmin: r.lo, xmax: r.hi, auto: true };
+  }
+
+  // Count of finite samples (log: also positive) outside the scale; full array, not a window.
+  function countOutside(arr, xmin, xmax, log) {
+    const lo = Math.min(xmin, xmax), hi = Math.max(xmin, xmax);
+    let n = 0;
+    for (let i = 0; i < (arr || []).length; i++) {
+      const v = arr[i];
+      if (typeof v !== "number" || !Number.isFinite(v) || (log && v <= 0)) continue;
+      if (v < lo || v > hi) n++;
+    }
+    return n;
   }
 
   // Compact tick label (avoids float noise such as 0.30000000000000004).
   function formatTick(v) {
-    if (Math.abs(v) < 1e-9) return "0";
     return String(parseFloat(v.toPrecision(4)));
   }
 
@@ -158,6 +286,60 @@
     return { min: ext.min, max: ext.max };
   }
 
+  // Min/max of finite depth samples (the recorded index), or null if none.
+  function recordedExtent(depths) {
+    let lo = Infinity, hi = -Infinity;
+    if (!depths) return null;
+    for (const d of depths) {
+      if (Number.isFinite(d)) { if (d < lo) lo = d; if (d > hi) hi = d; }
+    }
+    if (!Number.isFinite(lo)) return null;
+    return { min: lo, max: hi > lo ? hi : lo };
+  }
+
+  // Min/max depth where at least one aligned series has a finite value, or null.
+  function dataBearingExtent(depths, seriesList) {
+    if (!depths || !depths.length) return null;
+    const series = seriesList || [];
+    let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < depths.length; i++) {
+      const d = depths[i];
+      if (!Number.isFinite(d)) continue;
+      let ok = false;
+      for (const s of series) {
+        if (s && i < s.length && typeof s[i] === 'number' && Number.isFinite(s[i])) { ok = true; break; }
+      }
+      if (!ok) continue;
+      if (d < lo) lo = d;
+      if (d > hi) hi = d;
+    }
+    if (!Number.isFinite(lo)) return null;
+    return { min: lo, max: hi > lo ? hi : lo };
+  }
+
+  // Expand ext by frac of its span (at least minPad), clamped to full when given.
+  function padExtent(ext, full, frac, minPad) {
+    if (!ext) return null;
+    const f = frac == null ? 0.02 : frac;
+    const pad = Math.max(minPad == null ? 2 : minPad, (ext.max - ext.min) * f);
+    let lo = ext.min - pad, hi = ext.max + pad;
+    if (hi <= lo) hi = lo + Math.max(pad, 1);
+    if (full) {
+      if (lo < full.min) lo = full.min;
+      if (hi > full.max) hi = full.max;
+      if (hi <= lo) return { min: full.min, max: full.max > full.min ? full.max : full.min + 1 };
+    }
+    return { min: lo, max: hi };
+  }
+
+  // Default / Reset window: padded data-bearing interval, else the recorded index.
+  function defaultWindow(depths, seriesList) {
+    const full = recordedExtent(depths);
+    if (!full) return { min: 0, max: 1 };
+    const data = dataBearingExtent(depths, seriesList) || full;
+    return padExtent(data, full) || { min: full.min, max: full.max > full.min ? full.max : full.min + 1 };
+  }
+
   // Parse min/max text inputs into a clamped window; null when invalid or min >= max.
   function parseRange(minStr, maxStr, ext, minSpan) {
     if (String(minStr).trim() === "" || String(maxStr).trim() === "") return null;
@@ -170,7 +352,7 @@
 
   return {
     isGap, medianStep, visibleRange, buildSegments, decimateRun, xScale, xScaleLog,
-    tickValues, formatTick, clipRect, niceStep, minSpanFor, clampWindow, zoomAt, panBy,
-    resetWindow, parseRange,
+    tickValues, formatTick, percentile, autoValueRange, countOutside, clipRect, niceStep, minSpanFor, clampWindow, zoomAt, panBy,
+    resetWindow, parseRange, recordedExtent, dataBearingExtent, padExtent, defaultWindow,
   };
 });
