@@ -16,6 +16,7 @@ from benchmark.registry import discover  # noqa: E402
 from wmb import synthetic  # noqa: E402
 from wmb.contract import Task, validate_prediction  # noqa: E402
 from wmb.io import Well  # noqa: E402
+from wmb.model_spec import load_model_spec  # noqa: E402
 from workstreams.black_physics import contender as reg  # noqa: E402
 from workstreams.black_physics.models._shared import calibration as cal  # noqa: E402
 from workstreams.black_physics.models.castagna_mudrock.equation import mudrock_dts  # noqa: E402
@@ -64,6 +65,11 @@ def test_registry_lists_the_seven_ids_with_metadata():
         card = WS / m.card
         assert card.is_file() and name in card.read_text(encoding="utf-8")
         assert (card.parent / "LICENSE.md").is_file()
+        spec = load_model_spec(m)                                 # <name>.model.yaml agrees with the class
+        assert spec.source == "yaml" and not spec.errors and not spec.warnings, spec.errors + spec.warnings
+        assert spec.path.parent == card.parent and spec.licence == m.licence_name
+        assert list(spec.targets) == m.targets
+        assert spec.targets[target].required == m.declared_required_inputs() and spec.targets[target].optional == []
     assert (WS / "LICENSE.md").is_file()
 
 

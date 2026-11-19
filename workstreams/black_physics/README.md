@@ -29,7 +29,9 @@ abstention rules and examples.
 
 - `contender.py`: explicit registration (`CONTENDERS`); `Gardner` and `MudrockDTS` stay importable from it.
 - `models/<family>/`: `equation.py` (plain NumPy), `wrapper.py` (station wrapper), `README.md` (model card),
-  `LICENSE.md`. `models/_shared/` has slowness conversion, curve access and uncertainty calibration.
+  `LICENSE.md` and one `<id>.model.yaml` per registered ID (required inputs per target, read by the viewer and
+  `check_model`; see `docs/models.md`). `models/_shared/` has slowness conversion, curve access and
+  uncertainty calibration.
 - Each model returns NaN, not an error, wherever an input is missing or outside the equation's domain. It
   returns one Gaussian σ from equal-well-weight residuals (out-of-fold when parameters are fitted), or
   `std=None` when fewer than two wells contribute.
@@ -50,5 +52,6 @@ python -m workstreams.black_physics.validate_force --compare template_linear --c
 ## Rules for this folder
 - Only this team edits files here. Others may read and import.
 - Put personal experiments in `scratch/` (gitignored) or a notebook named `<yourname>_*.ipynb` (clear outputs before committing).
+- Implementation plans, research briefs and pilots live in `notes/`, which is gitignored by this folder's `.gitignore` and never committed.
 - No data, weights or big outputs here: data in `FH2026_DATA`, weights in the cache, results in `results/` (gitignored).
 - Need a change in `src/wmb/` or `benchmark/`? Ask in the team chat; don't edit it yourself.

@@ -8,7 +8,7 @@ different targets, as reported below.
 
 | Item | Value |
 | --- | --- |
-| Model code | branch `black-physics-baselines`, commit `9546143` (model code unchanged since) |
+| Model code | commit `5ec9e63` (model code unchanged since). Rerun after rebasing onto main `88b02d0`: identical scores |
 | Task spec | `benchmark/task_specs/force2020.yaml` + `force2020.windows.yaml` (sha256 prefix `b1c63396b28e6d0e`), cache `spec_hash` `355858f80204ff2a`, windows not rerolled |
 | Split | official: 98 training wells for `fit`; 10 leaderboard + 10 hidden wells for testing |
 | Tasks | 216 = (20 RHOB + 20 DTC + 14 DTS) × 4 scenarios (`missing_curve`, `gap_10`, `gap_50`, `gap_100`) |
@@ -180,11 +180,13 @@ straight-line reference described under "Reuse".
 
 ## Training-split DTS reference
 
-The plan's training-split pilot was rerun with the released code, using the procedure written in the plan:
-32 DTS wells sorted by name, `default_rng(2026)`, `array_split(..., 5)`, ratio and GR endpoints fitted on the other
-four folds, and scoring on the common domain of all three predictions. It reproduces the plan's table exactly:
-mudrock **17.39**, constant ratio **18.72** and GC brine/GR **15.85** µs/ft mean per-well MAE on 174,594 common
-depths. GC is better than the mudrock line in **19 of 32** wells. This is a debugging reference only, not a benchmark score.
+Before release, a pilot on the **training split only** compared the three DTS equations. `validate_force`
+reruns it with the released code using the same procedure: the 32 DTS wells sorted by name, permuted with
+`default_rng(2026)` and split with `array_split(..., 5)`. The ratio and GR endpoints are fitted on the other
+four folds, and scoring uses the common domain of all three predictions, including the mudrock floor. It
+reproduces the pilot exactly: mudrock **17.39**, constant ratio **18.72** and GC brine/GR **15.85** µs/ft mean
+per-well MAE on 174,594 common depths. GC is better than the mudrock line in **19 of 32** wells. This is a
+debugging reference only, not a benchmark score.
 
 ## Reuse: your model next to a black model on the same depths
 
@@ -215,8 +217,9 @@ under the configured data root runs through the same contract:
 python -m benchmark.run --model black_gardner_fixed --dataset my_wells --target RHOB --scenario missing_curve
 ```
 
-This route was exercised with a throwaway manifest (outside the repository) over four Volve
-`WLC_PETRO_COMPUTED_INPUT_1.LAS` files. Their curves were already in canonical units: m, µs/ft, g/cm³, v/v.
+This route was exercised with a throwaway dataset folder outside the repository. It held a manifest and
+copies of four Volve `WLC_PETRO_COMPUTED_INPUT_1.LAS` files; the loader requires LAS paths to be inside
+the dataset folder. Their curves were already in canonical units: m, µs/ft, g/cm³, v/v.
 The station's seeded well split held out one well. Gardner fixed scored MAE 0.064 g/cm³, Gardner fitted 0.064,
 density from NPHI 0.111 and the template 0.056. With one test well this checks the route only; it is not
 a validation. Volve data: Equinor and the Volve licence partners. At this revision, a dataset without a task

@@ -1,0 +1,7 @@
+# Inputs per target in canonical curve names; DEPTH is always present. See docs/models.md and README.md here.
+name: black_vpvs_ratio
+licence: MIT
+targets:
+  DTS:
+    required: [DTC]
+    optional: []

@@ -10,7 +10,8 @@
 | [`vpvs_ratio/`](vpvs_ratio/README.md) | `black_vpvs_ratio` |
 | `_shared/` | helpers only: slowness conversion, curve access, calibration, the thin wrapper base class |
 
-Each folder has `equation.py`, `wrapper.py`, a model card (`README.md`) and `LICENSE.md`.
+Each folder has `equation.py`, `wrapper.py`, a model card (`README.md`), `LICENSE.md` and one
+`<id>.model.yaml` per registered ID.
 Registration is in [`../contender.py`](../contender.py).
 
 Optional layout for this team's models. You do not have to move anything

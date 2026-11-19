@@ -171,7 +171,7 @@ def check_results(computed: dict, ids: list[str], targets: dict) -> tuple[list[s
 
 
 def training_cv(train) -> dict:
-    """Training-split DTS reference from the implementation plan (debugging only, not a benchmark score).
+    """Training-split DTS reference from the original pilot (debugging only, not a benchmark score).
 
     The DTS-bearing training wells, sorted by name, permuted with default_rng(2026) and split into 5 folds.
     Ratio and GR endpoints are fitted on the other four folds (endpoints from each fitting well's entire finite
@@ -295,7 +295,7 @@ def main(argv=None) -> int:
         print(f"- `{name}`: params {json.dumps(d['params'], default=str)}; calibration {json.dumps(d['calibration'])}")
 
     cv = report["training_cv"] = training_cv(train)
-    print(f"\n## Training-split DTS reference (plan pilot procedure)\n\n{cv['wells']} DTS wells, {cv['folds']} folds, "
+    print(f"\n## Training-split DTS reference (pilot procedure)\n\n{cv['wells']} DTS wells, {cv['folds']} folds, "
           f"{cv['rows']} common depths; black_gc_brine_gr beats black_castagna_dts in {cv['gc_beats_mudrock_wells']} "
           f"of {cv['wells']} wells")
     for k, v in cv["mean_per_well_MAE"].items():
