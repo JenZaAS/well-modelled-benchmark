@@ -1,0 +1,8 @@
+[project]
+name = "wmb-purple-tabular"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["structured-data-models==0.2.1", "pandas==2.3.3"]
+
+[tool.setuptools]
+packages = []
