@@ -8,7 +8,7 @@ different targets, as reported below.
 
 | Item | Value |
 | --- | --- |
-| Model code | commit `5ec9e63` (model code unchanged since). Rerun after rebasing onto main `88b02d0`: identical scores |
+| Model code | the commit "black: register seven physics baselines with model cards and tests" (model code unchanged since). Rerun on top of main `d834512`: identical scores; later main commits up to `0978746` changed only the licence-file check and the red workstream |
 | Task spec | `benchmark/task_specs/force2020.yaml` + `force2020.windows.yaml` (sha256 prefix `b1c63396b28e6d0e`), cache `spec_hash` `355858f80204ff2a`, windows not rerolled |
 | Split | official: 98 training wells for `fit`; 10 leaderboard + 10 hidden wells for testing |
 | Tasks | 216 = (20 RHOB + 20 DTC + 14 DTS) × 4 scenarios (`missing_curve`, `gap_10`, `gap_50`, `gap_100`) |
@@ -200,7 +200,8 @@ python -m workstreams.black_physics.validate_force --compare template_linear
 ```
 
 Replace `template_linear` with your registered ID. The second command scored the 14 DTS windows of 50 m:
-GC 13.97 µs/ft, template 19.03 µs/ft. `benchmark.run --model` needs a registered name. `check_model` also
+GC 13.97 µs/ft, template 19.03 µs/ft. The shipped test definition `--test dts_gap50` (see `docs/tests.md`)
+selects the same windows and gives the same scores. `benchmark.run --model` needs a registered name. `check_model` also
 accepts `module:Class`. The third command adds error on common support, fill fraction and per-well MAE for
 your model next to all seven black models and the interpolation reference.
 

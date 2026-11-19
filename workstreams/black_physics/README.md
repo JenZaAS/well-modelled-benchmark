@@ -46,6 +46,7 @@ Run it:
 python -m benchmark.check_model black_gc_brine_gr
 python -m benchmark.run --dataset synthetic --model black_gardner,black_gc_brine_gr --target all --scenario all
 python -m benchmark.run --dataset force2020 --model black_gc_brine_gr,template_linear --target DTS --scenario gap_50
+python -m benchmark.run --model black_gc_brine_gr,black_castagna_dts --test dts_gap50     # same windows via a test definition
 python -m workstreams.black_physics.validate_force --compare template_linear --check-results
 ```
 
