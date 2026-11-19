@@ -115,7 +115,22 @@ interpreted labels may not be independently available. All model runs were
 overconfident relative to nominal 68% one-sigma coverage. This is one target
 and one mask seed; it is not evidence about whole-curve recovery or official test performance.
 
-## Local Timestral dashboard
+## Consolidated benchmark results
+
+Use the repository's shared viewer (`python -m wmb.viewer --launch`) for
+cross-workstream results. Run each backbone in its installed environment with
+`WMB_RED_MODELS=timestral` or `WMB_RED_MODELS=chronos2`, using
+`python -m benchmark.run --model red_timestral --test rhob_gap50,dts_gap50,rhob_missing,dtc_missing,dts_missing`
+(replace the model name for Chronos-2). These shipped FORCE definitions use the
+shared runner, inputs policy, splits and metrics. It writes scores and per-well
+prediction tracks under `results/`, where the shared viewer reads them without
+requiring either ML stack. Live inference in the viewer separately requires
+the selected backbone's runtime, cache and opt-in registration in its process.
+
+The red validation experiments and corrections are development-only results:
+do not mix them into official cross-workstream comparisons.
+
+## Experimental local Timestral dashboard
 
 From the repository root, activate the authorized Timestral environment and set
 `HF_HOME` to the same external cache used to download the checkpoint. On macOS/Linux:
