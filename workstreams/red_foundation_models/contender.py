@@ -8,6 +8,7 @@ import numpy as np
 from wmb.contender import BaseContender, Prediction
 from .models.chronos2.contender import Chronos2
 from .models.timestral.contender import Timestral
+from .models.timesfm25.contender import TimesFM25
 
 
 class TrainMeanFloor(BaseContender):
@@ -22,7 +23,7 @@ class TrainMeanFloor(BaseContender):
         return Prediction(np.full(n, self.mu), np.full(n, self.sd))
 
 
-MODELS = {"chronos2": Chronos2, "timestral": Timestral}
+MODELS = {"chronos2": Chronos2, "timestral": Timestral, "timesfm25": TimesFM25}
 # The shared runner executes *every* registered model by default, even on core-only laptops.
 CONTENDERS = [TrainMeanFloor, *(MODELS[key.strip()] for key in
               os.getenv("WMB_RED_MODELS", "").split(",") if key.strip())]

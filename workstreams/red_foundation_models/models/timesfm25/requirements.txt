@@ -1,0 +1,4 @@
+timesfm[torch]==2.0.2
+# CPU dependencies for XReg (the upstream xreg extra requests CUDA JAX).
+jax[cpu]==0.6.2
+scikit-learn==1.6.1

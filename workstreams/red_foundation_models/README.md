@@ -1,6 +1,7 @@
 # Red team: foundation models for missing well logs
 
-`red_chronos2` (Amazon Chronos-2) and `red_timestral` (Mistral Timestral) use the
+`red_chronos2` (Amazon Chronos-2), `red_timestral` (Mistral Timestral), and
+`red_timesfm25` (Google TimesFM 2.5 with XReg) use the
 same depth-window adapter. `red_floor_train_mean` remains a no-model baseline.
 Run from the repository root with the project installed (`pip install -e .`).
 Use local inference only; never upload wells or commit data, weights, or predictions.
@@ -8,10 +9,10 @@ Use local inference only; never upload wells or commit data, weights, or predict
 ## Backbones and weights
 
 Each backbone has its own wrapper, backend, tests, and licence under
-[`models/chronos2/`](models/chronos2/) or [`models/timestral/`](models/timestral/).
+[`models/`](models/).
 The shared depth adapter stays in `depth_model.py`; `contender.py` handles registration.
 Keep weights under the configured cache, outside the repository. Before fetching
-or loading either checkpoint, set:
+or loading a checkpoint, set:
 
 ```sh
 export HF_HOME="$(python -c 'from wmb.paths import cache_dir; print(cache_dir() / "hf")')"
@@ -21,6 +22,7 @@ export HF_HOME="$(python -c 'from wmb.paths import cache_dir; print(cache_dir() 
   in an ML environment. Pre-cache `amazon/chronos-2` via `hf download amazon/chronos-2`;
   use the same `HF_HOME` at inference. The existing laptop forward-pass check is
   `check_chronos2` in `tools/laptop_setup/fh2026_smoke_test.py`.
+- **TimesFM 2.5:** see the [selection rationale and offline setup](models/timesfm25/README.md).
 - **Timestral-5M:** the [upstream inference code](https://github.com/mistralai/timestral)
   is Apache-2.0, but the [checkpoint licence](models/timestral/LICENSE.md)
   ([pinned upstream copy](https://huggingface.co/mistralai/Timestral-5M/blob/bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f/LICENSE))
@@ -43,7 +45,7 @@ export HF_HOME="$(python -c 'from wmb.paths import cache_dir; print(cache_dir() 
    ```
 
 2. **Entire curve missing:** use the unchanged shared benchmark. Opt in only
-   to installed backbones so core-only runs do not need either ML stack.
+   to installed backbones so core-only runs do not need any ML stack.
 
    ```sh
    WMB_RED_MODELS=timestral python -m benchmark.run --dataset force2020 --target RHOB --contenders red_timestral
@@ -82,7 +84,7 @@ Paths come from `wmb.paths` and the untracked `data_paths.local.yaml`.
   `wells_with_facies`, scored `n` and `masked_samples` before comparing MAE.
   For `--scenario whole`, compare `--shots 1` and `--shots 4`; `--shots 0`
   intentionally abstains when no target context exists. For bounded gaps with
-  visible flanks no demonstrations are needed. Neither model updates weights.
+  visible flanks no demonstrations are needed. None of the models update weights.
   For a fine-tuning experiment, partition the training wells into fit and
   validation wells before cutting windows. Train on simulated depth gaps in
   fit wells, select window length/checkpoint on validation wells, and evaluate
@@ -99,7 +101,8 @@ visible target flanks and is scored on the same samples as the model.
 python -m workstreams.red_foundation_models.experiment --model chronos2 --dataset force2020 --target RHOB --scenario gap --split validation --shots 0 --seed 0
 ```
 
-For Timestral, replace `--model chronos2` with `--model timestral` in its authorized local environment.
+For Timestral or TimesFM, use `--model timestral` (in an authorized environment)
+or `--model timesfm25` respectively.
 Frozen checkpoints, no weight updates; 20 validation wells, 12,001 masked
 RHOB samples, all scored. Errors are pooled over samples, in g/cm³.
 
@@ -109,6 +112,11 @@ RHOB samples, all scored. Errors are pooled over samples, in g/cm³.
 | Chronos-2, continuous logs | 0.0479 | 0.0920 | 41.0% |
 | Chronos-2, logs + interpreted facies | 0.0500 | 0.0901 | 46.2% |
 | Timestral-5M, continuous logs | 0.0474 | 0.0702 | 37.4% |
+| TimesFM 2.5 + XReg, continuous logs | 0.0620 | 0.1043 | 24.6% |
+
+TimesFM reduced MAE versus interpolation but not RMSE, and was less accurate
+than either existing backbone. Its narrow intervals missed many hidden values.
+These pooled gap scores do not isolate performance specifically at thin beds.
 
 Keep facies off by default: RMSE improved slightly but MAE worsened, and
 interpreted labels may not be independently available. All model runs were
@@ -119,12 +127,12 @@ and one mask seed; it is not evidence about whole-curve recovery or official tes
 
 Use the repository's shared viewer (`python -m wmb.viewer --launch`) for
 cross-workstream results. Run each backbone in its installed environment with
-`WMB_RED_MODELS=timestral` or `WMB_RED_MODELS=chronos2`, using
+`WMB_RED_MODELS` set to `timestral`, `chronos2`, or `timesfm25`, using
 `python -m benchmark.run --model red_timestral --test rhob_gap50,dts_gap50,rhob_missing,dtc_missing,dts_missing`
-(replace the model name for Chronos-2). These shipped FORCE definitions use the
+(replace the model name for other backbones). These shipped FORCE definitions use the
 shared runner, inputs policy, splits and metrics. It writes scores and per-well
 prediction tracks under `results/`, where the shared viewer reads them without
-requiring either ML stack. Live inference in the viewer separately requires
+requiring any ML stack. Live inference in the viewer separately requires
 the selected backbone's runtime, cache and opt-in registration in its process.
 
 The red validation experiments and corrections are development-only results:

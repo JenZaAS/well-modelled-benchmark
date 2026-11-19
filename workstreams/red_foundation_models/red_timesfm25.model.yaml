@@ -1,0 +1,12 @@
+name: red_timesfm25
+licence: Apache-2.0
+targets:
+  RHOB:
+    required: []
+    optional: [GR, RDEP, RMED, CALI, NPHI, PEF, DTC, DTS]
+  DTC:
+    required: []
+    optional: [GR, RDEP, RMED, CALI, RHOB, NPHI, PEF, DTS]
+  DTS:
+    required: []
+    optional: [GR, RDEP, RMED, CALI, RHOB, NPHI, PEF, DTC]

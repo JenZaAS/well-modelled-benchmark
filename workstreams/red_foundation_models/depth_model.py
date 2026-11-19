@@ -1,4 +1,4 @@
-"""Use the same masked-depth forecasting task for both frozen backbones."""
+"""Use the same masked-depth forecasting task for all frozen backbones."""
 from __future__ import annotations
 
 import numpy as np
