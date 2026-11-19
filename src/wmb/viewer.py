@@ -367,9 +367,10 @@ _SEGMENT_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]*$")
 
 def load_benchmark_prediction(contender: str, dataset: str, target: str, scenario: str, well: str,
                               root: Path | None = None, test: str = "") -> dict[str, Any]:
-    """One well from results/<contender>/<dataset>/<target>/<scenario>[/<test>]/predictions.json.
+    """One well from results/<contender>/<dataset>/<target>/<scenario>[/<test>]/predictions.json or predictions.npz.
 
-    Looks in the per-test folder first (when `test` is given), then the older layout without it.
+    Looks in the per-test folder first (when `test` is given), then the older layout without it. In a folder with
+    both formats the newer file wins; both return the same JSON (see wmb.prediction_files).
     FileNotFoundError if neither exists.
     """
     from wmb import paths
@@ -381,15 +382,24 @@ def load_benchmark_prediction(contender: str, dataset: str, target: str, scenari
             test and (not _SEGMENT_OK.fullmatch(test) or ".." in test)):
         raise ValueError("contender, dataset, target, scenario and test must be plain names")
     root = Path(root) if root is not None else paths.results_root()
+
+    def prediction_file(folder: list[str]) -> Path | None:
+        found = [f for f in (safe_under(root, "/".join([*folder, n])) for n in ("predictions.json", "predictions.npz")) if f]
+        return max(found, key=lambda f: f.stat().st_mtime) if found else None
+
     found = None
     if test:
-        found = safe_under(root, "/".join([*parts, test, "predictions.json"]))
+        found = prediction_file([*parts, test])
         if found is None and safe_under(root, "/".join([*parts, test, "scores.json"])):
-            raise FileNotFoundError("no predictions.json for this test; re-run benchmark.run to write it")
+            raise FileNotFoundError("no predictions.json or predictions.npz for this test; re-run benchmark.run to write it")
     if found is None:
-        found = safe_under(root, "/".join([*parts, "predictions.json"]))
+        found = prediction_file(parts)
     if found is None:
-        raise FileNotFoundError("no predictions.json for this run; re-run benchmark.run to write it")
+        raise FileNotFoundError("no predictions.json or predictions.npz for this run; re-run benchmark.run to write it")
+    if found.suffix == ".npz":  # numpy only when needed: the viewer itself runs without it
+        from wmb import prediction_files
+
+        return prediction_files.read_npz_well(found, well)
     data = json.loads(found.read_text(encoding="utf-8"))
     if well == "*":
         return {"wells": [w.get("key") or w.get("well_id") for w in data.get("wells", [])]}
