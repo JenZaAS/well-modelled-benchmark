@@ -1,4 +1,4 @@
-"""black_timestral_target_only: red_timestral with empty covariate dictionaries (target-only control).
+"""red_timestral_target_only: red_timestral with empty covariate dictionaries (target-only control).
 
 Context (256), rollout (blocks of 32 using predicted medians), deeper-flank reversal and inverse-distance blend
 are exactly red's `DepthForecaster`; only the covariates passed to the backend are removed. This isolates how
@@ -7,8 +7,8 @@ cached weights (licence: LICENSE.md); importing this module imports neither torc
 """
 from __future__ import annotations
 
-from workstreams.red_foundation_models.models.timestral.backend import load
-from workstreams.red_foundation_models.models.timestral.contender import Timestral
+from ..timestral.backend import load
+from ..timestral.contender import Timestral
 
 
 def _target_only_backend():
@@ -21,8 +21,9 @@ def _target_only_backend():
 
 
 class TimestralTargetOnly(Timestral):
-    name = "black_timestral_target_only"
-    workstream = "black_physics"
+    name = "red_timestral_target_only"
+    row_id = "black_timestral_target_only"   # id inside the Granite experiment's artifacts
+    workstream = "red_foundation_models"
     inputs: list[str] = []
     optional_inputs: list[str] = []
     load_backend = staticmethod(_target_only_backend)

@@ -239,7 +239,7 @@ def test_calibrated_bands_are_nested_and_cover_on_the_calibration_set():
 
 
 def test_station_wrapper_output_shapes_validate():
-    from workstreams.black_physics.models.granite.wrapper import TTMR3Frozen
+    from workstreams.red_foundation_models.models.granite.contender import TTMR3Frozen
 
     w = well(3000)
     m = TTMR3Frozen()
@@ -375,3 +375,16 @@ def test_recalibration_survives_one_extreme_logit():
     assert np.isfinite([r.a, r.b]).all() and abs(r.a) < 5 and 0 < r.b < 5
     p = r.apply(z)
     assert abs(p.mean() - y.mean()) < 0.1          # calibration-in-the-large holds on its own fitting set
+
+
+def test_moved_rows_keep_their_experiment_ids_and_old_station_ids_resolve():
+    from wmb.aliases import canonical_model, legacy_model_names
+    from workstreams.black_physics.granite import config as C
+    from workstreams.red_foundation_models.models.granite.contender import FT, GRANITE
+    from workstreams.red_foundation_models.models.timestral_target_only.contender import TimestralTargetOnly
+
+    experiment_ids = set(C.VARIANT_IDS.values()) | {"black_ttm_r3_ft", "black_tspulse_ft"}
+    for cls in (*GRANITE, *FT, TimestralTargetOnly):
+        assert cls.name.startswith("red_") and cls.workstream == "red_foundation_models"
+        assert canonical_model(cls.row_id) == cls.name and cls.row_id in legacy_model_names(cls.name)
+    assert {c.row_id for c in (*GRANITE, *FT)} == experiment_ids

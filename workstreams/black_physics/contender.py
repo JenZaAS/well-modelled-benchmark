@@ -15,11 +15,10 @@ models/<family>/ with its equation, a thin station wrapper, a model card (README
 
 `Gardner` and `MudrockDTS` stay importable from this module for existing callers.
 
-Opt-in rows (WMB_BLACK_GRANITE=1; the Granite rows need torch + granite-tsfm, see granite/README.md):
-black_ttm_r3_frozen, black_ttm_r3_tuned, black_tspulse_frozen, black_tspulse_tuned, black_ttm_r3_ft,
-black_tspulse_ft (target-only gap reconstruction), black_linear_gap (interpolation reference) and black_gardner_flank_resid (Gardner + flank
-residual). WMB_BLACK_TIMESTRAL=1 adds black_timestral_target_only (red's Timestral adapter without covariates;
-needs the Timestral environment and cached weights). Default runs import neither torch nor timestral.
+Opt-in rows of the Granite density-gap experiment (WMB_BLACK_GRANITE=1, NumPy only): black_linear_gap
+(interpolation reference) and black_gardner_flank_resid (Gardner + flank residual). The experiment's
+foundation-model rows (red_ttm_r3_*, red_tspulse_*, red_timestral_target_only) are registered by the red
+workstream (WMB_RED_MODELS=granite,timestral_target_only); the experiment itself stays in granite/.
 """
 from __future__ import annotations
 
@@ -35,12 +34,8 @@ from workstreams.black_physics.models.wyllie.wrapper import WyllieNPHI
 CONTENDERS = [Gardner, MudrockDTS, GardnerFixed, GreenbergCastagnaBrineGR, WyllieNPHI, DensityNPHI, VpVsRatio]
 
 if os.getenv("WMB_BLACK_GRANITE", "").strip() not in ("", "0"):
-    # The wrapper module imports no torch at import time; the backbone loads in fit().
-    from workstreams.black_physics.models.granite.wrapper import EXTRA, FT, GRANITE
-    CONTENDERS += [*GRANITE, *FT, *EXTRA]
-if os.getenv("WMB_BLACK_TIMESTRAL", "").strip() not in ("", "0"):
-    from workstreams.black_physics.models.timestral_target_only.wrapper import TimestralTargetOnly
-    CONTENDERS.append(TimestralTargetOnly)
+    from workstreams.black_physics.models.granite.wrapper import EXTRA
+    CONTENDERS += [*EXTRA]
 
 __all__ = ["CONTENDERS", "DensityNPHI", "Gardner", "GardnerFixed", "GreenbergCastagnaBrineGR", "MudrockDTS",
            "VpVsRatio", "WyllieNPHI"]

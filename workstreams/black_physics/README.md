@@ -32,11 +32,13 @@ its environments and results):
 
 | ID | Target ← inputs | Switch | Model card |
 | --- | --- | --- | --- |
-| `black_ttm_r3_frozen`, `black_ttm_r3_tuned` | RHOB ← RHOB flanks only | `WMB_BLACK_GRANITE=1` | [Granite gap rows](models/granite/README.md) |
-| `black_tspulse_frozen`, `black_tspulse_tuned` | RHOB ← RHOB flanks only | `WMB_BLACK_GRANITE=1` | [Granite gap rows](models/granite/README.md) |
-| `black_linear_gap` | RHOB, DTC, DTS ← own flanks | `WMB_BLACK_GRANITE=1` | [Granite gap rows](models/granite/README.md) |
-| `black_gardner_flank_resid` | RHOB ← DTC + RHOB flanks | `WMB_BLACK_GRANITE=1` | [Granite gap rows](models/granite/README.md) |
-| `black_timestral_target_only` | RHOB ← RHOB flanks only | `WMB_BLACK_TIMESTRAL=1` | [licence note](models/timestral_target_only/LICENSE.md) |
+| `black_linear_gap` | RHOB, DTC, DTS ← own flanks | `WMB_BLACK_GRANITE=1` | [Granite-experiment baselines](models/granite/README.md) |
+| `black_gardner_flank_resid` | RHOB ← DTC + RHOB flanks | `WMB_BLACK_GRANITE=1` | [Granite-experiment baselines](models/granite/README.md) |
+
+The experiment's foundation-model rows moved to the red workstream as `red_ttm_r3_*`, `red_tspulse_*` and
+`red_timestral_target_only` (`WMB_RED_MODELS=granite,timestral_target_only`; model card in
+[red_foundation_models/models/granite](../red_foundation_models/models/granite/README.md)). Their old `black_*`
+ids are aliases, so earlier results still display.
 
 - `contender.py`: explicit registration (`CONTENDERS`); `Gardner` and `MudrockDTS` stay importable from it.
 - `models/<family>/`: `equation.py` (plain NumPy), `wrapper.py` (station wrapper), `README.md` (model card),

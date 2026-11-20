@@ -75,8 +75,22 @@ def station_scores(name: str) -> dict | None:
     from wmb.paths import results_root
     from wmb.predict_cache import result_dir
 
-    p = result_dir(results_root(), name, C.DATASET, C.TARGET, "gap_50", C.TEST_NAME) / "scores.json"
-    return _load(p) if p.is_file() else None
+    from wmb.aliases import canonical_model
+
+    for n in dict.fromkeys([canonical_model(name), name]):     # station id (red_* for the moved rows), then old id
+        p = result_dir(results_root(), n, C.DATASET, C.TARGET, "gap_50", C.TEST_NAME) / "scores.json"
+        if p.is_file():
+            return _load(p)
+    return None
+
+
+def label(name: str) -> str:
+    """Display label for an experiment id or a station id (red_* ids of the moved rows map back via wmb.aliases)."""
+    from wmb.aliases import legacy_model_names
+
+    if name in LABEL:
+        return LABEL[name]
+    return next((LABEL[o] for o in legacy_model_names(name) if o in LABEL), name)
 
 
 class Inputs:
@@ -785,7 +799,7 @@ def fig_decision_by_model(I: Inputs, out: Path) -> Path | None:
         ax.set_title(title, loc="left", fontsize=10)
         ax.set_xlabel("Share of gaps")
         ax.grid(axis="y", visible=False)
-    axes[0].set_yticks(y, [LABEL.get(m, m) for m in models])
+    axes[0].set_yticks(y, [label(m) for m in models])
     plt.setp(axes[1].get_yticklabels(), visible=False)
     plt.setp(axes[2].get_yticklabels(), visible=False)
     axes[0].legend(loc="upper left", bbox_to_anchor=(0.0, -0.2), ncol=3, fontsize=8, frameon=False)
@@ -1011,7 +1025,7 @@ def md_tables(I, table, boot, dec, res, method, aggregate_only: bool) -> str:
             t, d, au = s["test"], s["D"], s["auc"]
             lg = s.get("logs_cal", {})
             lt, ld = lg.get("test", {}), lg.get("D", {})
-            L.append(f"| {LABEL.get(m, m)} | {s['mean_well_mae']['test']:.4f} | {s['pass_rate']['test']:.2f} | "
+            L.append(f"| {label(m)} | {s['mean_well_mae']['test']:.4f} | {s['pass_rate']['test']:.2f} | "
                      f"{t['accepted']} / {t['review']} / {t['false_accepts']} | {_f(t['brier'], 3)} "
                      f"({_f(s['brier_test']['prevalence'], 3)}) | {s['pass_rate']['D']:.2f} | "
                      f"{d['accepted']}/{d['n_gaps']} ({d['false_accepts']}) | "
@@ -1032,7 +1046,7 @@ def md_tables(I, table, boot, dec, res, method, aggregate_only: bool) -> str:
             L.append("**Per-gap routing (negative result).** For each gap, take the fill of the model whose own rule "
                      "is most confident (no truth used). Mean per-well MAE: " + "; ".join(
                          f"{g} routed {ro[g]['routed']:.4f} vs best single model {ro[g]['best_single'][1]:.4f} "
-                         f"({LABEL.get(ro[g]['best_single'][0], ro[g]['best_single'][0])})" for g in ("D", "test")) +
+                         f"({label(ro[g]['best_single'][0])})" for g in ("D", "test")) +
                      ". Routing is worse on both. Each rule answers *is this gap easy for me?*, not *am I better than "
                      "the others here?*; the probabilities are not comparable across models.")
             L.append("")
@@ -1107,12 +1121,12 @@ def build() -> dict:
               "headline_decision": method, "rows": table, "bootstrap": boot, "decisions": dec, "resources": res,
               "unavailable": I.unavailable, "hashes": H, "thirty_seconds": text,
               "replay": ["python -m workstreams.black_physics.granite all",
-                         "WMB_BLACK_GRANITE=1 python -m benchmark.run --model black_ttm_r3_frozen,black_ttm_r3_tuned,"
-                         "black_tspulse_frozen,black_tspulse_tuned,black_linear_gap,black_gardner_flank_resid,"
-                         "black_gardner_fixed --test rhob_gap50 --rerun",
+                         "WMB_RED_MODELS=granite WMB_BLACK_GRANITE=1 python -m benchmark.run --model red_ttm_r3_frozen,"
+                         "red_ttm_r3_tuned,red_ttm_r3_ft,red_tspulse_frozen,red_tspulse_tuned,red_tspulse_ft,"
+                         "black_linear_gap,black_gardner_flank_resid,black_gardner_fixed --test rhob_gap50 --rerun",
                          "python -m workstreams.black_physics.granite final",
-                         "<timestral-python>: WMB_RED_MODELS=timestral WMB_BLACK_TIMESTRAL=1 python -m benchmark.run "
-                         "--model red_timestral,black_timestral_target_only --test rhob_gap50 --rerun",
+                         "<timestral-python>: WMB_RED_MODELS=timestral,timestral_target_only python -m benchmark.run "
+                         "--model red_timestral,red_timestral_target_only --test rhob_gap50 --rerun",
                          "<timestral-python>: python -m workstreams.black_physics.granite timestral",
                          "python -m workstreams.black_physics.granite finetune",
                          "python -m workstreams.black_physics.granite finetune_score",

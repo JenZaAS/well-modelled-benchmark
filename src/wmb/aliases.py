@@ -9,6 +9,14 @@ from __future__ import annotations
 MODEL_ALIASES = {
     "white_ttm": "red_ttm",
     "white_moment": "red_moment",
+    # Granite density-gap foundation-model rows, moved from black_physics to red_foundation_models
+    "black_ttm_r3_frozen": "red_ttm_r3_frozen",
+    "black_ttm_r3_tuned": "red_ttm_r3_tuned",
+    "black_ttm_r3_ft": "red_ttm_r3_ft",
+    "black_tspulse_frozen": "red_tspulse_frozen",
+    "black_tspulse_tuned": "red_tspulse_tuned",
+    "black_tspulse_ft": "red_tspulse_ft",
+    "black_timestral_target_only": "red_timestral_target_only",
 }
 WORKSTREAM_ALIASES = {
     "white_finetuned_tsfm": "red_foundation_models",

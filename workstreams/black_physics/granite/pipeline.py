@@ -514,6 +514,7 @@ def final() -> dict:
     from benchmark import test_def as td
     from workstreams.black_physics.models.gardner.wrapper import GardnerFixed
     from workstreams.black_physics.models.granite import wrapper as W
+    from workstreams.red_foundation_models.models.granite.contender import GRANITE
 
     cfg = C.CONFIG
     tr, te = official()
@@ -528,8 +529,9 @@ def final() -> dict:
     rows: dict[str, list] = {}
     timing: dict[str, dict] = {}
     pieces_by: dict = {}
-    for cls in W.GRANITE:
+    for cls in GRANITE:
         m = cls()
+        rid = m.row_id          # rows keep the experiment's ids (station ids are red_*)
         t0 = time.perf_counter()
         m.fit(tr, C.TARGET)
         fit_s = time.perf_counter() - t0
@@ -539,15 +541,15 @@ def final() -> dict:
         t0 = time.perf_counter()
         ps, pcs = m.predict_with_pieces(tasks)
         warm = time.perf_counter() - t0
-        preds[m.name] = {"p50": [p.p50 for p in ps], "p05": [p.p05 for p in ps], "p95": [p.p95 for p in ps],
+        preds[rid] = {"p50": [p.p50 for p in ps], "p05": [p.p05 for p in ps], "p95": [p.p95 for p in ps],
                          "p25": [p.quantiles[0.25] for p in ps], "p75": [p.quantiles[0.75] for p in ps],
                          "raw_lo": [_piece_arr(t, pc, "raw_lo") for t, pc in zip(tasks, pcs)],
                          "raw_hi": [_piece_arr(t, pc, "raw_hi") for t, pc in zip(tasks, pcs)]}
-        rows[m.name] = gap_rows(tasks, preds[m.name]["p50"], pcs, wells)
-        timing[m.name] = {"fit_s": round(fit_s, 3), "first_inference_s": round(first, 3), "warm_inference_s": round(warm, 3),
+        rows[rid] = gap_rows(tasks, preds[rid]["p50"], pcs, wells)
+        timing[rid] = {"fit_s": round(fit_s, 3), "first_inference_s": round(first, 3), "warm_inference_s": round(warm, 3),
                           "provenance": m.provenance}
-        pieces_by[m.name] = pcs
-        log(f"final {m.name}: {summary(rows[m.name])['pooled_MAE']:.5f} pooled MAE, warm {warm:.3f} s")
+        pieces_by[rid] = pcs
+        log(f"final {rid}: {summary(rows[rid])['pooled_MAE']:.5f} pooled MAE, warm {warm:.3f} s")
         del m
     others = {"black_linear_gap": W.LinearGap(), "black_gardner_fixed": GardnerFixed(),
               "black_gardner_flank_resid": W.GardnerFlankResidual()}
@@ -621,7 +623,7 @@ def timestral() -> dict:
 
     from benchmark import test_def as td
     from wmb.scoring import gaussian_interval
-    from workstreams.black_physics.models.timestral_target_only.wrapper import TimestralTargetOnly
+    from workstreams.red_foundation_models.models.timestral_target_only.contender import TimestralTargetOnly
     from workstreams.red_foundation_models.models.timestral.contender import Timestral
 
     tr, te = official()
@@ -634,6 +636,7 @@ def timestral() -> dict:
     keyed, rows, timing = {}, {}, {}
     for cls in (Timestral, TimestralTargetOnly):
         m = cls()
+        rid = getattr(m, "row_id", m.name)
         t0 = time.perf_counter()
         m.fit(tr, C.TARGET)
         fit_s = time.perf_counter() - t0
@@ -646,7 +649,7 @@ def timestral() -> dict:
         for lev, (lo_k, hi_k) in ((0.90, ("p05", "p95")), (0.50, ("p25", "p75"))):
             lo, hi = zip(*[gaussian_interval(p.mean, p.std, lev) for p in ps])
             d[lo_k], d[hi_k] = [np.asarray(x, float) for x in lo], [np.asarray(x, float) for x in hi]
-        rows[m.name] = gap_rows(tasks, d["p50"], [[] for _ in tasks], wells)
+        rows[rid] = gap_rows(tasks, d["p50"], [[] for _ in tasks], wells)
         # logs the test offered across the gap (red uses them as covariates; the control ignores them)
         cov = {}
         for t in tasks:
@@ -654,13 +657,13 @@ def timestral() -> dict:
                 if c not in ("DEPTH", C.TARGET) and bool(t.inputs[c].to_numpy(float)[t.predict_mask].size) \
                         and np.isfinite(t.inputs[c].to_numpy(float)[t.predict_mask]).any():
                     cov[c] = cov.get(c, 0) + 1
-        timing[m.name] = {"fit_s": round(fit_s, 3), "inference_s": round(inf_s, 3), "device": "cpu",
-                          "covariate_gaps": dict(sorted(cov.items())) if m.name == "red_timestral" else {}}
+        timing[rid] = {"fit_s": round(fit_s, 3), "inference_s": round(inf_s, 3), "device": "cpu",
+                          "covariate_gaps": dict(sorted(cov.items())) if rid == "red_timestral" else {}}
         for i, t in enumerate(tasks):
             for k, v in d.items():
-                keyed[f"{m.name}|{t.meta['gap_id']}|{k}"] = v[i][t.predict_mask]
-        log(f"timestral {m.name}: {summary(rows[m.name])['pooled_MAE']:.5f} pooled MAE, "
-            f"{mean_well_mae(rows[m.name]):.5f} mean well MAE, fit {fit_s:.1f} s, inference {inf_s:.1f} s")
+                keyed[f"{rid}|{t.meta['gap_id']}|{k}"] = v[i][t.predict_mask]
+        log(f"timestral {rid}: {summary(rows[rid])['pooled_MAE']:.5f} pooled MAE, "
+            f"{mean_well_mae(rows[rid]):.5f} mean well MAE, fit {fit_s:.1f} s, inference {inf_s:.1f} s")
         del m
     np.savez_compressed(path("final", "timestral_predictions.npz"), **keyed)
     vers = {}

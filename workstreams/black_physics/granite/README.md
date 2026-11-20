@@ -160,12 +160,12 @@ From the repository root, with the Granite environment's Python (see *Environmen
 ```
 python -m workstreams.black_physics.granite fetch        # pinned TTM-R3 and TSPulse snapshots into the HF cache
 python -m workstreams.black_physics.granite all          # prepare, train, select, calibrate, decide (+ freeze)
-WMB_BLACK_GRANITE=1 python -m benchmark.check_test rhob_gap50
-WMB_BLACK_GRANITE=1 python -m benchmark.check_model black_ttm_r3_tuned        # likewise for the other seven IDs
-WMB_BLACK_GRANITE=1 python -m benchmark.run --model black_ttm_r3_frozen,black_ttm_r3_tuned,black_ttm_r3_ft,black_tspulse_frozen,black_tspulse_tuned,black_tspulse_ft,black_linear_gap,black_gardner_flank_resid,black_gardner_fixed --test rhob_gap50 --rerun
+python -m benchmark.check_test rhob_gap50
+WMB_RED_MODELS=granite python -m benchmark.check_model red_ttm_r3_tuned        # likewise for the other five red IDs
+WMB_RED_MODELS=granite WMB_BLACK_GRANITE=1 python -m benchmark.run --model red_ttm_r3_frozen,red_ttm_r3_tuned,red_ttm_r3_ft,red_tspulse_frozen,red_tspulse_tuned,red_tspulse_ft,black_linear_gap,black_gardner_flank_resid,black_gardner_fixed --test rhob_gap50 --rerun
 python -m workstreams.black_physics.granite final        # sealed test gaps once: keyed predictions + decision sidecar
 # Timestral environment (see Environments), HF_HOME=<cache_dir>/hf, HF_HUB_OFFLINE=1:
-WMB_RED_MODELS=timestral WMB_BLACK_TIMESTRAL=1 <timestral-python> -m benchmark.run --model red_timestral,black_timestral_target_only --test rhob_gap50 --rerun
+WMB_RED_MODELS=timestral,timestral_target_only <timestral-python> -m benchmark.run --model red_timestral,red_timestral_target_only --test rhob_gap50 --rerun
 <timestral-python> -m workstreams.black_physics.granite timestral   # both Timestral rows on the same keyed gaps
 python -m workstreams.black_physics.granite finetune       # stronger fine-tune sweep (extension, ~1 h GPU)
 python -m workstreams.black_physics.granite finetune_score # its D bands, B/D rows, test rows and manifest_ft.json
@@ -176,13 +176,28 @@ python -m pytest -q workstreams/black_physics/tests/test_granite.py             
 python -m pytest -q workstreams/black_physics/tests/test_granite_torch.py         # real networks (Granite env)
 ```
 
+**Where the rows live.** The foundation-model rows are registered by the red workstream
+([red_foundation_models/models/granite](../../red_foundation_models/models/granite/README.md)). The physics
+baselines are registered here in black.
+
+| Station ID | ID inside this experiment's artifacts | Opt-in |
+|---|---|---|
+| `red_ttm_r3_frozen`, `red_ttm_r3_tuned`, `red_ttm_r3_ft` | `black_ttm_r3_frozen`, `black_ttm_r3_tuned`, `black_ttm_r3_ft` | `WMB_RED_MODELS=granite` |
+| `red_tspulse_frozen`, `red_tspulse_tuned`, `red_tspulse_ft` | `black_tspulse_frozen`, `black_tspulse_tuned`, `black_tspulse_ft` | `WMB_RED_MODELS=granite` |
+| `red_timestral_target_only` | `black_timestral_target_only` | `WMB_RED_MODELS=timestral_target_only` |
+| `black_linear_gap`, `black_gardner_flank_resid` | same | `WMB_BLACK_GRANITE=1` |
+
+The old station IDs are aliases (`src/wmb/aliases.py`), so results written before the move display under the
+new ones. The old flags `WMB_BLACK_GRANITE` and `WMB_BLACK_TIMESTRAL` also still enable the red rows. Tables in
+[RESULTS.md](RESULTS.md) use the experiment's IDs.
+
 **In the viewer.** All eleven rows of this experiment are station contenders. The two fine-tuned rows
-(`black_ttm_r3_ft`, `black_tspulse_ft`) load their checkpoint and D bands through `manifest_ft.json`, which also
+(`red_ttm_r3_ft`, `red_tspulse_ft`) load their checkpoint and D bands through `manifest_ft.json`, which also
 checks each checkpoint's SHA-256. After the `benchmark.run` lines above, `python -m wmb.viewer --launch` shows
 them under the `rhob_gap50` test, with filled curves and bands, from any environment.
 - Live prediction inside the viewer runs the model in the viewer's own process. For that, launch it from the
-  Granite environment with `WMB_BLACK_GRANITE=1`, or from the Timestral one with
-  `WMB_RED_MODELS=timestral WMB_BLACK_TIMESTRAL=1`.
+  Granite environment with `WMB_RED_MODELS=granite WMB_BLACK_GRANITE=1`, or from the Timestral one with
+  `WMB_RED_MODELS=timestral,timestral_target_only`.
 - Without those flags the rows are still shown, but cannot be re-run from the viewer.
 
 Each stage can be run on its own: `prepare`, `train [--arm ttm|tspulse]`, `select`, `calibrate`, `decide`,
@@ -309,7 +324,8 @@ The 30-second text is at the top of [RESULTS.md](RESULTS.md); `report` regenerat
 | [artifacts.py](artifacts.py) | Manifest identity, stale-artifact checks, variant loading for the station wrappers |
 | [pipeline.py](pipeline.py), [report.py](report.py) | Stages and the step-8 report |
 | [finetune.py](finetune.py) | Stronger fine-tune extension: broader unfreezing, more A gaps, blended two-sided TTM loss, schedule, sweep, scoring |
-| [../models/granite/](../models/granite/README.md) | Station wrappers, model YAMLs, licences |
+| [../../red_foundation_models/models/granite/](../../red_foundation_models/models/granite/README.md), [../../red_foundation_models/models/timestral_target_only/](../../red_foundation_models/models/timestral_target_only/contender.py) | Station wrappers of the foundation-model rows (red); YAMLs at the red workstream root |
+| [../models/granite/](../models/granite/README.md) | Station wrappers of the two physics baselines (black) |
 | [../tests/test_granite.py](../tests/test_granite.py), [../tests/test_granite_torch.py](../tests/test_granite_torch.py) | Split disjointness and reproducibility; non-overlapping measured gaps; segment breaks; flank reversal and distance weights; short flanks, fallback and abstain; TSPulse window and user mask; label-perturbation invariance; state text; nested bands and coverage; output shapes; Gardner residual and missing DTC; decision metrics and ties; tuned checkpoint changes only the head |
 
 ## Environments
