@@ -1,0 +1,37 @@
+# NLOG Netherlands logs — mapping for alignment and loading.
+# Raw and aligned files stay outside git. Schema: see datasets/_template/mapping.yaml.
+
+dataset:
+  id: nlog_dts
+  name: NLOG Netherlands well logs (FH2026 set)
+  folder: NLOG
+  official_demo: false
+  source:
+    url: "https://www.nlog.nl/"
+    disclaimer_url: "https://www.nlog.nl/en/disclaimer"
+  licence:
+    name: "NLOG disclaimer (not a Creative Commons licence). Users may copy, download, disclose, distribute, process or edit the information, provided NLOG.NL is quoted as the source. The Dutch-language disclaimer prevails if the translation differs."
+    credit: "Source: NLOG.NL"
+    citation: >-
+      NLOG (Geological Survey of the Netherlands). Digital well logs from
+      https://www.nlog.nl. Selection of shear-sonic wells was guided by
+      Hunfeld, L.B., Foeken, J.P.T. and van Kempen, B.M.M. (20 December 2021),
+      Geomechanical parameters derived from compressional and shear sonic logs
+      for main geothermal targets in The Netherlands,
+      https://www.nlog.nl/sites/default/files/2021-12/data_selection_and_methods.pdf.
+    notes: "Quote NLOG.NL as the source. This is not a CC licence."
+
+alignment:
+  alias_set: NLOG-DTS
+  extra_curves: [BS, RSHA]
+  depth_reference: MD
+
+quirks:
+  - "Depth units are mixed (feet and metres) across files. Convert every file to metres MD before merging."
+  - "Standard curves for one well are often split across several LAS files and Schlumberger .aN frames."
+  - "Deep resistivity appears under many names (LLD, HLLD, ILD, AT90, AF90, …). Prefer the deepest-reading curve."
+  - "Q13-12 sonic is labelled and valued in us/m; convert to us/ft."
+  - "Never map DTST (Stoneley) as DTS. Prefer DTSM / DTS / DTRS."
+  - "RD with unit IN is not resistivity (seen on Q13-A-02)."
+  - "Many wells are deviated (published TD MD and TD TVD differ). Tests still use MD. Record any source TVD or inclination in the manifest; do not compute TVD."
+  - "There is no single official bulk archive or checksum set; files were collected per borehole from the public NLOG site."

@@ -26,7 +26,7 @@ DATASETS: dict[str, tuple[str, ...]] = {
     "force2020": ("FORCE2020", "force2020"),
     "sodir_factpages": ("Sodir-FactPages", "sodir_factpages"),
     "nlog_dts": ("NLOG-DTS", "NLOG", "nlog"),
-    "kansas_kgs_dts": ("Kansas-KGS-DTS", "kansas_kgs_dts"),
+    "kansas_kgs_dts": ("Kansas-KGS-DTS", "Kansas-KGS", "kansas_kgs_dts"),
     "volve": ("Volve", "volve"),
 }
 

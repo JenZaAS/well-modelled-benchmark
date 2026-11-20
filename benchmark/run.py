@@ -35,6 +35,19 @@ from wmb.contender import Prediction
 from wmb.contract import GAP_LENGTHS_M, SCENARIO_MISSING, TARGET_CURVES, Task, validate_prediction
 from wmb.curves import CORE
 
+# Tests for these datasets run only when an aligned folder with wells.json is present.
+OPTIONAL_DATASETS = frozenset({"nlog_dts", "kansas_kgs_dts"})
+
+
+def dataset_manifest_present(name: str) -> bool:
+    """True when the local folder exists and has a wells.json (aligned or other manifest data)."""
+    try:
+        root = paths.get_dataset_path(name)
+    except (paths.DataPathsError, SystemExit, FileNotFoundError, OSError):
+        return False
+    return (root / "wells.json").is_file()
+
+
 GAP_KEYS = [f"gap_{int(g)}" for g in GAP_LENGTHS_M]
 SCENARIO_CHOICES = [SCENARIO_MISSING, "gap", *GAP_KEYS, "all"]
 
@@ -325,13 +338,16 @@ def _write_runs(out_root, rows: list[dict], tag: str) -> None:
     pd.DataFrame([{k: v for k, v in r.items() if k != "hardware"} for r in rows]).to_csv(runs / f"{stem}.csv", index=False)
 
 
-def run_tests(defs: list[td.TestDef], found: dict, names: list[str], cache, out_root, force: bool = False) -> list[dict]:
+def run_tests(defs: list[td.TestDef], found: dict, names: list[str], cache, out_root, force: bool = False, skip_missing: bool = False) -> list[dict]:
     """Run each test def for every named model (fresh fit per def). A def that cannot run yields error rows."""
     loaded: dict = {}
     rows = []
     for d in defs:
         key = d.scenario_key
         print(f"test={d.name} dataset={d.dataset} target={d.target} scenario={key} wells={d.wells_split}")
+        if skip_missing and d.dataset in OPTIONAL_DATASETS and not dataset_manifest_present(d.dataset):
+            print(f"  skipped (optional dataset {d.dataset} is not present locally; see docs/data-alignment.md)")
+            continue
         try:
             ds_key = (d.dataset, td.effective_seed(d))
             if ds_key not in loaded:
@@ -400,7 +416,7 @@ def main(argv=None) -> int:
         found = discover()
         names = list(found) if a.contenders == "all" else a.contenders.split(",")
         out_root = paths.results_root()
-        rows = run_tests(defs, found, names, a.cache, out_root, force=a.rerun)
+        rows = run_tests(defs, found, names, a.cache, out_root, force=a.rerun, skip_missing=(a.test == "all"))
         if rows:
             _write_runs(out_root, rows, next(iter({d.dataset for d in defs})) if len({d.dataset for d in defs}) == 1 else "tests")
         print(f"scores written under {out_root}")

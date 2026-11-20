@@ -1,0 +1,26 @@
+version: 1
+name: nlog_dts_missing
+description: >
+  Predict shear sonic (DTS) on aligned NLOG wells with the curve hidden
+  throughout the well. Optional: runs only when the aligned NLOG folder is
+  present locally (see docs/data-alignment.md). Tests use measured depth.
+dataset: nlog_dts
+target: DTS
+scenario:
+  type: missing_curve
+wells:
+  split: test
+  names: []
+inputs_policy: model
+metrics:
+  - MAE
+  - RMSE
+  - R2
+  - cover_90
+  - cover_50
+  - interval_width_90
+  - has_uncertainty
+  - load_s
+  - fit_s
+  - predict_s
+  - samples_per_s

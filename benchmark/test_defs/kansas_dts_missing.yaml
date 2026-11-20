@@ -1,0 +1,27 @@
+version: 1
+name: kansas_dts_missing
+description: >
+  Predict shear sonic (DTS) on aligned Kansas Geological Survey DTS wells with
+  the curve hidden throughout the well. Optional: runs only when the aligned
+  Kansas-KGS folder is present locally (see docs/data-alignment.md). Tests use
+  measured depth.
+dataset: kansas_kgs_dts
+target: DTS
+scenario:
+  type: missing_curve
+wells:
+  split: test
+  names: []
+inputs_policy: model
+metrics:
+  - MAE
+  - RMSE
+  - R2
+  - cover_90
+  - cover_50
+  - interval_width_90
+  - has_uncertainty
+  - load_s
+  - fit_s
+  - predict_s
+  - samples_per_s

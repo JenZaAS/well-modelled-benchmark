@@ -13,6 +13,8 @@ gitignored file at the repo root: `data_paths.local.yaml`.
 2. Set `data_root` to the shared team data folder. One subfolder per dataset, e.g.
    `FORCE2020/`, `Sodir-FactPages/`, `NLOG-DTS/`, `Kansas-KGS-DTS/`, `Volve/`,
    each with a README (source, licence, credit) and, where ready, a `wells.json` manifest.
+   For NLOG and Kansas, point at the *aligned* copy (standard names, metres MD,
+   one LAS per well; see [docs/data-alignment.md](../docs/data-alignment.md)).
 3. Run `python -m wmb.paths --check` and confirm the datasets you have are found.
 4. **Never commit** `data_paths.local.yaml`.
 

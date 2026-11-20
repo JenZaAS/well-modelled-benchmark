@@ -5,6 +5,7 @@
 - [tests.md](tests.md): YAML test definitions (`python -m benchmark.new_test`)
 - [metrics.md](metrics.md): how we score
 - [data-licences.md](data-licences.md): licences and credit lines
+- [data-alignment.md](data-alignment.md): bring a new dataset onto the FORCE names/units/MD standard (for people and coding agents)
 - [../THIRD_PARTY.md](../THIRD_PARTY.md): index of third-party model and dataset licences
 - [models.md](models.md): the contenders
 - [moving-models.md](moving-models.md): optional per-model folders; you move your own code when ready

@@ -127,7 +127,7 @@ def test_new_test_and_check_test(tmp_path, capsys, monkeypatch):
     assert new_test.main(["--check", "my_test"], defs_dir=tmp_path) == 0
     assert "unknown target" in capsys.readouterr().err
     assert sorted(p.name for p in td.DEFS_DIR.glob("*.yaml")) == sorted(
-        [f"{n}.yaml" for n in [*SHIPPED, "synthetic_rhob_missing"]] + ["_template.yaml"])
+        [f"{n}.yaml" for n in [*SHIPPED, "synthetic_rhob_missing", "nlog_dts_missing", "kansas_dts_missing"]] + ["_template.yaml"])
 
 
 def test_new_test_exit_status_is_schema_only(tmp_path, monkeypatch, capsys):

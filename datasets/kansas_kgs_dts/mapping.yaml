@@ -1,0 +1,30 @@
+# Kansas Geological Survey DTS wells — mapping for alignment and loading.
+# Raw and aligned files stay outside git. Schema: see datasets/_template/mapping.yaml.
+
+dataset:
+  id: kansas_kgs_dts
+  name: Kansas Geological Survey LAS library (FH2026 DTS subset)
+  folder: Kansas-KGS
+  official_demo: false
+  source:
+    url: "https://www.kgs.ku.edu/PRS/Scans/Log_Summary/index.html"
+    terms_url: "https://www.kgs.ku.edu/General/copyright.html"
+  licence:
+    name: "KGS terms of use (not a Creative Commons licence). Free use and distribution with the exact required citation. Keep the copyright notice intact. Do not use the KGS name in advertising without written permission. Data are provided as is, without warranty."
+    credit: "The source of this material is the Kansas Geological Survey website at http://www.kgs.ku.edu/. All Rights Reserved."
+    citation: "The source of this material is the Kansas Geological Survey website at http://www.kgs.ku.edu/. All Rights Reserved."
+    notes: "Use the verbatim citation, including the words All Rights Reserved. Never put the raw LAS files in the public MIT repo."
+
+alignment:
+  alias_set: Kansas-KGS-DTS
+  extra_curves: [BS, RSHA]
+  depth_reference: MD
+
+quirks:
+  - "Source depths are in feet (a few high-resolution index channels use unit .1IN and must not be treated as ft or m). Convert well depth to metres MD."
+  - "Prefer AF90 / AT90 / RT90 over AF60 / AT60 for RDEP."
+  - "DCAL is often a real density-tool caliper on Kansas files (hole-size values); still check the description and the median, because DCAL is differential caliper in many other files."
+  - "NPHI may be a fraction or percent; PU is not a reliable scale on its own. Record sandstone / limestone / dolomite matrix when the mnemonic gives it (NPHS, CNLS, NPHD)."
+  - "Never map DTST (Stoneley) as DTS."
+  - "A few wells include a source TVD or inclination curve. Record it; do not compute TVD. Tests use MD."
+  - "This pack is the DTS-present subset, not the full KGS library."

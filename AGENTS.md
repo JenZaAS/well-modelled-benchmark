@@ -18,3 +18,7 @@ To score models on a new (dataset, target, scenario, wells) combination, add a Y
 one-off script: `python -m benchmark.new_test my_test`, edit `benchmark/test_defs/my_test.yaml`, check it with
 `python -m benchmark.check_test my_test`, run it with `python -m benchmark.run --model X --test my_test`
 (or `--test all`). Guide: [docs/tests.md](docs/tests.md).
+
+To align a new public log dataset to the FORCE names, units and metres-MD
+standard, follow [docs/data-alignment.md](docs/data-alignment.md) and run
+`python -m wmb.align`. Never commit the data.

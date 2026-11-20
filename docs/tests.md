@@ -55,7 +55,10 @@ three a warning. Without data (for example no `data_paths.local.yaml`), it print
 
 `--test all` runs every valid def in name order and re-fits for each. Both `--test all` and `--list-tests` warn and skip
 invalid files; `check_test all` reports them as errors. A valid def whose data cannot load gives a row with `error`
-and a `failure.json`; the other tests still run. With `--test`, `--dataset`, `--target` and `--scenario` are optional;
+and a `failure.json`; the other tests still run. Optional datasets (`nlog_dts`,
+`kansas_kgs_dts`) are **skipped** under `--test all` when the aligned folder is
+not present; an explicit `--test nlog_dts_missing` still fails if the data is missing.
+See [data-alignment.md](data-alignment.md). With `--test`, `--dataset`, `--target` and `--scenario` are optional;
 if given they must agree with the def (for example `--scenario gap_12.5`). Files whose names start with `_` and
 `TEMPLATE` are examples and never run; `all` is reserved for the CLI.
 
