@@ -1,0 +1,39 @@
+[
+  {
+    "git_commit": "afdf95c",
+    "git_commit_full": "afdf95c8fd6b394ef433f33ed507e5e2345cf298",
+    "contender": "blue_ml_linear",
+    "test": "rhob_missing",
+    "workstream": "blue_boosted_trees",
+    "dataset": "force2020",
+    "target": "RHOB",
+    "n_train_wells": 98,
+    "n_test_wells": 20,
+    "hardware": {
+      "machine": "AMD64",
+      "system": "Windows",
+      "processor": "Intel64 Family 6 Model 142 Stepping 12, GenuineIntel",
+      "python_version": "3.12.6",
+      "cpu_count": 4
+    },
+    "machine": "Intel64 Family 6 Model 142 Stepping 12, GenuineIntel / Windows",
+    "run_at": "2026-11-20T10:05:02+0100",
+    "scenario": "missing_curve",
+    "n_tasks": 20,
+    "load_s": 0.0,
+    "model_hash": "7ef7590ceac2c5426c7b4ff673fd7450",
+    "cached_tasks": 0,
+    "n": 232695,
+    "has_uncertainty": false,
+    "MAE": 0.0941073096004503,
+    "RMSE": 0.1261780233253199,
+    "R2": 0.7092178678597743,
+    "predict_s_batch": 0.291,
+    "fit_s": 1.5629,
+    "predict_s": 0.3146,
+    "predict_s_per_well": 0.015732,
+    "predict_s_per_1000": 0.001214,
+    "samples_per_s": 823752.7,
+    "n_samples": 259183
+  }
+]

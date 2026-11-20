@@ -13,6 +13,9 @@ To add a model, start with **[Build your model](build-your-model.md)**:
 | Density from neutron (`black_density_nphi`) | black | MIT (original code) | Only NPHI | RHOB from NPHI (volumetric mixing) |
 | Constant Vp/Vs ratio (`black_vpvs_ratio`) | black | MIT (original code) | Only DTC | DTS from DTC; control model |
 | XGBoost / LightGBM (`blue_gbt`) | blue | Apache-2.0 / MIT | Yes | one depth sample = one row |
+| XGBoost gradient boosting (`blue_ml_gbt`, `blue_ml_gbt_trend`) | blue | MIT (original code); XGBoost Apache-2.0 | Yes | one depth sample = one row, point predictions; `_trend` adds 10 m above/below features; stratigraphy variants only in the blue app |
+| Multilinear regression (`blue_ml_linear`, `blue_ml_linear_trend`) | blue | MIT (original code); scikit-learn BSD-3-Clause | Yes | clipped, standardised inputs, point predictions |
+| Random forest (`blue_ml_rf`) | blue | MIT (original code); scikit-learn BSD-3-Clause | Yes | point predictions; slow to fit (about 100 s per log) |
 | Chronos-2 (Amazon, `red_chronos2`) | red | Apache-2.0 | Yes (covariates) | 120M; quantile output |
 | TimesFM 2.5 + XReg (`red_timesfm25`) | red | Apache-2.0 | Yes (covariates) | quantile output |
 | Timestral-5M (`red_timestral`) | red | Modified MIT weights; Apache-2.0 inference code | Yes (covariates) | licence restricts use by larger companies; see its `LICENSE.md` |

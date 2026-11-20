@@ -1,0 +1,15 @@
+# Inputs of this model per target. DEPTH is always present; do not list it.
+# Nothing is required: XGBoost handles missing inputs natively. These are the curves the model uses (FEATURES in
+# contender.py); RMED is not one of them.
+name: blue_gbt
+licence: MIT
+targets:
+  RHOB:
+    required: []
+    optional: [GR, RDEP, NPHI, DTC, PEF, CALI, DTS]
+  DTC:
+    required: []
+    optional: [GR, RDEP, NPHI, RHOB, PEF, CALI, DTS]
+  DTS:
+    required: []
+    optional: [GR, RDEP, NPHI, DTC, RHOB, PEF, CALI]

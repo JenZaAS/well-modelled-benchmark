@@ -33,6 +33,7 @@ Each workstream folder has a `LICENSE.md`. Contender classes also set
 | `template_linear` (baseline) | `_template_model` | MIT | none (original repo code) |
 | `black_gardner`, `black_gardner_fixed`, `black_castagna_dts`, `black_gc_brine_gr`, `black_wyllie_nphi`, `black_density_nphi`, `black_vpvs_ratio` (physics baselines) | `black_physics` | MIT | none for this folder's code; equations are published methods credited in each `models/<family>/README.md` |
 | `blue_gbt` folder code | `blue_boosted_trees` | MIT | none for this folder's code |
+| `blue_ml_gbt`, `blue_ml_gbt_trend`, `blue_ml_linear`, `blue_ml_linear_trend`, `blue_ml_rf` | `blue_boosted_trees` | MIT | none for this code; each `models/<name>/LICENSE.md` lists its libraries (XGBoost Apache-2.0, scikit-learn BSD-3-Clause) |
 | XGBoost (optional dependency) | blue | Apache-2.0 | see [XGBoost LICENSE](https://github.com/dmlc/xgboost/blob/master/LICENSE) |
 | LightGBM (optional dependency) | blue | MIT | see [LightGBM LICENSE](https://github.com/microsoft/LightGBM/blob/master/LICENSE) |
 | scikit-learn (optional dependency) | blue | BSD-3-Clause | see [scikit-learn COPYING](https://github.com/scikit-learn/scikit-learn/blob/main/COPYING) |

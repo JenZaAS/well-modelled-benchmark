@@ -1,0 +1,15 @@
+# Inputs of this model per target. DEPTH is always present; do not list it.
+# Nothing is required: missing inputs are handled natively (NaN). Fewer than about 5 input logs at a depth
+# predict poorly (see the blue README).
+name: blue_ml_rf
+licence: MIT
+targets:
+  RHOB:
+    required: []
+    optional: [GR, RDEP, RMED, CALI, NPHI, PEF, DTC, DTS]
+  DTC:
+    required: []
+    optional: [GR, RDEP, RMED, CALI, RHOB, NPHI, PEF, DTS]
+  DTS:
+    required: []
+    optional: [GR, RDEP, RMED, CALI, RHOB, NPHI, PEF, DTC]
