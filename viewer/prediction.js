@@ -91,6 +91,7 @@
     let status = "unavailable";
     if (m.error) status = "error";
     else if (/does not support/.test(reason)) status = "unsupported";
+    else if (/^opt-in/.test(reason)) status = "optin";
     else if (/missing required/.test(reason)) status = "missing";
     else if (/^needs /.test(reason)) status = "error";
     else if (/select a well/.test(reason)) status = "pending";
@@ -259,6 +260,44 @@
     return eligibilityState(m);
   }
 
+  // Sections of the model list, in display order. Every model lands in exactly one; unknown states go last.
+  const MODEL_GROUPS = [
+    { key: "ok", statuses: ["ok"], label: (t) => `Ready for ${t}` },
+    { key: "pending", statuses: ["pending"], label: () => "Select a well to check" },
+    { key: "missing", statuses: ["missing"], label: () => "Missing inputs in this well" },
+    { key: "optin", statuses: ["optin"], label: () => "Opt-in: set flag, restart viewer" },
+    { key: "unsupported", statuses: ["unsupported"], label: (t) => `Other targets (not ${t})` },
+    { key: "error", statuses: ["error", "unavailable"], label: () => "Unavailable" },
+  ];
+
+  // [{key, label, items: [{m, s}]}] for the non-empty sections; s is modelListState(m, result).
+  function groupModels(models, result, target) {
+    const items = (models || []).map((m) => ({ m, s: modelListState(m, result) }));
+    const last = MODEL_GROUPS[MODEL_GROUPS.length - 1];
+    const home = (s) => MODEL_GROUPS.find((g) => g.statuses.includes(s.status)) || last;
+    return MODEL_GROUPS.map((g) => ({ key: g.key, label: g.label(target || ""), items: items.filter((x) => home(x.s) === g) }))
+      .filter((g) => g.items.length);
+  }
+
+  // Second line of a model row; the section heading already says why a model is off, so only the detail is shown.
+  function modelNote(m, s) {
+    if (s.enabled || s.status === "pending") return usedInputsText(m.inputs_used || m.inputs);
+    if (s.status === "optin") return m.opt_in || s.text;
+    if (s.status === "unsupported") return "";
+    return s.text;
+  }
+
+  // Widths that fill the plot area: display tracks grow from 100 to 160 px, the prediction track takes the rest
+  // (260 to 900 px). Below the minimum the plot keeps 100/260 and scrolls sideways.
+  const TRACK_W = [100, 160], PRED_W = [260, 900];
+  function plotWidths(avail, nTracks) {
+    const n = Math.max(0, Math.floor(nTracks) || 0), room = Math.max(0, num(avail) || 0);
+    const grow = Math.max(1, room / (n * TRACK_W[0] + PRED_W[0]));
+    const tw = Math.min(TRACK_W[1], TRACK_W[0] * grow);
+    const pw = Math.min(PRED_W[1], Math.max(PRED_W[0], room - n * tw));
+    return { TW: Math.floor(tw), PW: Math.floor(pw) };
+  }
+
   // ---------- browser UI ----------
 
   function esc(s) {
@@ -287,10 +326,11 @@
     const st = { well: null, target: "RHOB", models: [], manual: new Set(), useBest: false, metric: "MAE", scenario: "missing_curve",
       rows: [], extra: new Set(), logs: null, result: null, curves: [], notes: [], token: 0, wellToken: 0, busy: false,
       modelsReady: false, modelsLoading: true, modelError: "", logError: "", rowsError: "", dropped: [],
-      xMode: null, fillSource: "formation", datasets: new Set(), splits: new Set(), hasTargetOn: true, hasLog: "" };
+      xMode: null, fillSource: "formation", datasets: new Set(), splits: new Set(), hasTargetOn: true, hasLog: "", folded: new Set() };
     const dsChoices = WF ? WF.datasetChoices(wells) : [];
     const splitOpts = WF ? WF.splitChoices(wells) : [];
     pane.innerHTML = `<div class="pd">
+      <div class="pd-left">
       <div class="pd-side">
         <div class="pd-mini"><div id="pd-map"></div><div id="pd-well" class="pd-label">No well selected</div></div>
         <div class="pd-filters" id="pd-filters">
@@ -304,7 +344,11 @@
         </div>
         <label>Well <select id="pd-well-select"></select></label>
         <label>Target <select id="pd-target">${TARGETS.map((t) => `<option>${t}</option>`).join("")}</select></label>
-        <h3>Models</h3>
+        <h3>More logs <span class="na">(display only)</span></h3>
+        <div id="pd-more" class="pd-more"></div>
+      </div>
+      <div class="pd-modelcol">
+        <h3>Models <span id="pd-models-count" class="na"></span></h3>
         <div id="pd-models" class="pd-models"></div>
         <div class="pd-best">
           <label><input type="checkbox" id="pd-best"> Best model</label>
@@ -312,11 +356,12 @@
           <label>Scenario <select id="pd-scenario"></select></label>
           <div id="pd-best-note" class="na"></div>
         </div>
-        <button id="pd-run" type="button">Predict (use cache)</button>
-        <button id="pd-rerun" type="button" title="Recompute and replace the cached prediction">Rerun</button>
-        <span id="pd-cache" class="na"></span>
-        <h3>More logs <span class="na">(display only)</span></h3>
-        <div id="pd-more" class="pd-more"></div>
+        <div class="pd-actions">
+          <button id="pd-run" type="button">Predict (use cache)</button>
+          <button id="pd-rerun" type="button" title="Recompute and replace the cached prediction">Rerun</button>
+          <span id="pd-cache" class="na"></span>
+        </div>
+      </div>
       </div>
       <div class="pd-main">
         <div class="pd-head">
@@ -489,14 +534,25 @@
 
     // ----- panels -----
     function renderModels() {
-      $("pd-models").innerHTML = st.models.length ? st.models.map((m) => {
-        const s = modelListState(m, st.result);
-        const used = s.enabled ? usedInputsText(m.inputs_used || m.inputs) : "";
-        const note = s.enabled ? `<span class="na">${esc(used)}</span>` : `<span class="why ${s.status}">${esc(s.text)}</span>`;
-        return `<label class="pd-model${s.enabled ? "" : " off"}"><input type="checkbox" data-model="${esc(m.name)}"${s.enabled ? "" : " disabled"}${st.manual.has(m.name) ? " checked" : ""}> ${esc(m.name)}<br>${note}</label>`;
+      const groups = groupModels(st.models, st.result, st.target);
+      const ready = groups.find((g) => g.key === "ok");
+      $("pd-models-count").textContent = st.models.length ? `${ready ? ready.items.length : 0} of ${st.models.length} ready` : "";
+      $("pd-models").innerHTML = st.models.length ? groups.map((g) => {
+        const rows = g.items.map(({ m, s }) => {
+          const note = modelNote(m, s);
+          const noteHtml = note ? `<span class="${s.enabled ? "na" : "why " + s.status}">${esc(note)}</span>` : "";
+          return `<label class="pd-model${s.enabled ? "" : " off"}" title="${esc(s.enabled ? note : s.text)}">` +
+            `<input type="checkbox" data-model="${esc(m.name)}"${s.enabled ? "" : " disabled"}${st.manual.has(m.name) ? " checked" : ""}>` +
+            `<span class="pd-mtext"><span class="pd-mname">${esc(m.name)}</span>${noteHtml}</span></label>`;
+        }).join("");
+        return `<details class="pd-group" data-group="${g.key}"${st.folded.has(g.key) ? "" : " open"}>` +
+          `<summary>${esc(g.label)} <span class="na">${g.items.length}</span></summary>${rows}</details>`;
       }).join("") : `<span class="na">${st.modelsLoading ? "Checking models…" : st.modelError ? "Model list unavailable." : "No models registered."}</span>`;
       for (const el of pane.querySelectorAll("input[data-model]")) {
         el.addEventListener("change", () => { el.checked ? st.manual.add(el.dataset.model) : st.manual.delete(el.dataset.model); renderBest(); });
+      }
+      for (const el of pane.querySelectorAll("details[data-group]")) {
+        el.addEventListener("toggle", () => { el.open ? st.folded.delete(el.dataset.group) : st.folded.add(el.dataset.group); });
       }
     }
 
@@ -654,9 +710,11 @@
       const disp = st.logs ? displayTracks(displayCurves(availableCurves(), Array.from(st.extra))) : [];
       const tops = (PS && st.logs) ? PS.formationIntervals(st.logs.d, st.logs.formation, st.logs.group) : [];
       const fills = (PS && st.logs && st.fillSource !== "off") ? PS.formationIntervals(st.logs.d, st.logs.formation, st.logs.group, st.fillSource) : [];
-      const TW = 100, PW = 260, L0 = 58, B = 8, STRIP = tops.length ? 18 : 0;
+      const L0 = 58, B = 8, STRIP = tops.length ? 18 : 0, GAP = 10, RIGHT = 16;
+      const left = L0 + (STRIP ? STRIP + 4 : 0);
+      const { TW, PW } = plotWidths(box.width - left - GAP - RIGHT, disp.length);
       const T = Math.max(36, trackHeaderHeight(disp));
-      const width = Math.max(box.width, L0 + STRIP + disp.length * TW + (r || st.well ? PW : 0) + 16);
+      const width = Math.max(box.width, left + disp.length * TW + (r || st.well ? GAP + PW : 0) + RIGHT);
       const dpr = window.devicePixelRatio || 1;
       cv.style.width = width + "px"; cv.style.height = box.height + "px";
       cv.width = Math.max(1, Math.floor(width * dpr)); cv.height = Math.max(1, Math.floor(box.height * dpr));
@@ -742,7 +800,7 @@
       }
       const tracksLeft = x;
       if (fills.length && disp.length) {
-        PS.fillFormationBands(ctx2, fills, tracksLeft, disp.length * TW + 10 + PW, Y, T, ph, PS.FORMATION_FILL_ALPHA);
+        PS.fillFormationBands(ctx2, fills, tracksLeft, disp.length * TW + GAP + PW, Y, T, ph, PS.FORMATION_FILL_ALPHA);
       }
       for (const t of disp) {
         frame(x, TW, t.curves.length ? "" : (t.title || t.id));
@@ -803,7 +861,7 @@
       // prediction track — always, when the well has the target; same x-scale as the target display track.
       // (A previous auto-range on predictions alone produced e.g. DTS 260-120 vs the display track's standard 240-40,
       // so the black true line did not line up and could look like a lone grey trace.)
-      x += 10;
+      x += GAP;
       frame(x, PW, "");
       const truth = truthForPlot(r, st.logs, st.target);
       const targetSeries = (st.logs && st.logs.c && st.logs.c[st.target]) || (truth && truth.values) || [];
@@ -843,8 +901,8 @@
           for (let j = seg.length - 1; j >= 0; j--) ctx2.lineTo(X(band.hi[seg[j]]), Y(r.depth[seg[j]]));
           ctx2.closePath(); ctx2.fill();
         }
-        ctx2.globalAlpha = 1;
       }
+      ctx2.globalAlpha = 1;   // after every band: inside the loop it left later bands opaque and, with none, a grey truth line
       if (truth) line(truth.depth, truth.values, X, "#111", 1.2);
       for (const { m, i } of okModels) line(r.depth, m.p50, X, modelColor(i), 1.2);
       ctx2.restore();
@@ -870,7 +928,7 @@
 
   return {
     TARGETS, DEFAULT_DISPLAY, RANK_METRICS, RUN_HINT, DEFAULT_AUTO, defaultDisplayCurves, moreLogs, displayCurves, displayTracks,
-    eligibilityState, usedInputsText, datasetIds, sameDataset, rankModels, pickBest, rankScenarios, bestText, mergeSelection, bandOf, scoreText, modelColor,
+    eligibilityState, usedInputsText, groupModels, modelNote, plotWidths, datasetIds, sameDataset, rankModels, pickBest, rankScenarios, bestText, mergeSelection, bandOf, scoreText, modelColor,
     wellHasCurve, filterWells, useAutoScale, targetScale, trackHeaderRows, trackHeaderHeight, truthForPlot, modelListState, mount,
   };
 });

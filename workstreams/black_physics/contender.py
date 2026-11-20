@@ -26,6 +26,7 @@ import os
 
 from workstreams.black_physics.models.castagna_mudrock.wrapper import MudrockDTS
 from workstreams.black_physics.models.gardner.wrapper import Gardner, GardnerFixed
+from workstreams.black_physics.models.granite.wrapper import EXTRA as GRANITE_EXTRA
 from workstreams.black_physics.models.greenberg_castagna.wrapper import GreenbergCastagnaBrineGR
 from workstreams.black_physics.models.volumetric_density.wrapper import DensityNPHI
 from workstreams.black_physics.models.vpvs_ratio.wrapper import VpVsRatio
@@ -33,9 +34,11 @@ from workstreams.black_physics.models.wyllie.wrapper import WyllieNPHI
 
 CONTENDERS = [Gardner, MudrockDTS, GardnerFixed, GreenbergCastagnaBrineGR, WyllieNPHI, DensityNPHI, VpVsRatio]
 
-if os.getenv("WMB_BLACK_GRANITE", "").strip() not in ("", "0"):
-    from workstreams.black_physics.models.granite.wrapper import EXTRA
-    CONTENDERS += [*EXTRA]
+GRANITE_ON = os.getenv("WMB_BLACK_GRANITE", "").strip() not in ("", "0")
+if GRANITE_ON:
+    CONTENDERS += [*GRANITE_EXTRA]
+# The rows left out above, with the flag that registers them; the viewer's Prediction tab lists them as opt-in.
+OPT_IN = {} if GRANITE_ON else {cls: "WMB_BLACK_GRANITE=1" for cls in GRANITE_EXTRA}
 
-__all__ = ["CONTENDERS", "DensityNPHI", "Gardner", "GardnerFixed", "GreenbergCastagnaBrineGR", "MudrockDTS",
+__all__ = ["CONTENDERS", "OPT_IN", "DensityNPHI", "Gardner", "GardnerFixed", "GreenbergCastagnaBrineGR", "MudrockDTS",
            "VpVsRatio", "WyllieNPHI"]

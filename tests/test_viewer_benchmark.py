@@ -157,6 +157,35 @@ def test_registry_resolves_legacy_names_without_listing_them(monkeypatch, caplog
         importlib.reload(red)
 
 
+def test_opt_in_models_are_declared_with_the_flag_that_registers_them(monkeypatch):
+    import importlib
+    from benchmark.registry import discover, discover_opt_in
+    import workstreams.black_physics.contender as black
+    import workstreams.red_foundation_models.contender as red
+    try:
+        with monkeypatch.context() as env:
+            for var in ("WMB_RED_MODELS", "WMB_WHITE_MODELS", "WMB_BLACK_GRANITE", "WMB_BLACK_TIMESTRAL"):
+                env.setenv(var, "")
+            importlib.reload(red)
+            importlib.reload(black)
+            opt = {o["name"]: o["enable"] for o in discover_opt_in()}
+            assert opt["red_chronos2"] == "WMB_RED_MODELS=chronos2"
+            assert opt["red_ttm_r3_frozen"] == "WMB_RED_MODELS=granite"
+            assert opt["black_linear_gap"] == opt["black_gardner_flank_resid"] == "WMB_BLACK_GRANITE=1"
+            assert not set(opt) & set(discover())
+
+            env.setenv("WMB_RED_MODELS", "chronos2")
+            env.setenv("WMB_BLACK_GRANITE", "1")
+            importlib.reload(red)
+            importlib.reload(black)
+            opt, found = {o["name"] for o in discover_opt_in()}, discover()
+            assert {"red_chronos2", "black_linear_gap", "red_ttm_r3_frozen"} <= set(found)   # the legacy flag enables granite
+            assert not opt & set(found) and "red_timesfm25" in opt
+    finally:
+        importlib.reload(red)
+        importlib.reload(black)
+
+
 def test_runs_return_valid_json_for_undefined_r2_and_sort_perfect_mae_first(results, base_url):
     _write(results, "m1", "ds", "RHOB", "missing_curve")
     _write(results, "m2", "ds", "RHOB", "missing_curve", mae=0, r2=float("nan"))

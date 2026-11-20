@@ -1,6 +1,7 @@
 """Find contenders: every workstreams/<name>/contender.py that defines CONTENDERS
 (a list of classes or factories). Adding a model = adding it to your own file;
-the benchmark code doesn't need to change."""
+the benchmark code doesn't need to change. A contender.py may also define OPT_IN
+({factory: "WMB_FLAG=value"}) for models it registers only when a flag is set."""
 from __future__ import annotations
 
 import importlib
@@ -33,12 +34,15 @@ class Registry(dict):
         return self[key] if key in self else default
 
 
+def _contender_modules() -> list[tuple[str, str]]:
+    """(workstream, module name) for every workstreams/<name>/contender.py."""
+    return [(f.parent.name, f"workstreams.{f.parent.name}.contender") for f in sorted((REPO / "workstreams").glob("*/contender.py"))]
+
+
 def discover_detailed(verbose: bool = False, *, call=lambda fn: fn()) -> tuple[dict, list[dict]]:
     """(found, failures): failures are [{"name", "workstream", "error"}] for workstreams or contenders that could not load."""
     found, failures = Registry(), []
-    for f in sorted((REPO / "workstreams").glob("*/contender.py")):
-        ws = f.parent.name
-        mod_name = f"workstreams.{ws}.contender"
+    for ws, mod_name in _contender_modules():
         try:
             mod = call(lambda mod_name=mod_name: importlib.import_module(mod_name))
         except (Exception, SystemExit) as exc:  # one broken workstream must not stop the others
@@ -57,6 +61,24 @@ def discover_detailed(verbose: bool = False, *, call=lambda fn: fn()) -> tuple[d
             if verbose:
                 print(f"  {c.name:28s} workstream={c.workstream}")
     return found, failures
+
+
+def discover_opt_in(*, call=lambda fn: fn()) -> list[dict]:
+    """Models a workstream leaves unregistered until a flag is set: [{"name", "workstream", "enable", "factory"}].
+
+    A contender.py declares them as ``OPT_IN = {factory: "WMB_FLAG=value", ...}``. They are never run from here; the
+    viewer's Prediction tab lists them, disabled, with the flag that registers them. Workstreams that fail to import
+    are skipped (discover_detailed already reports them)."""
+    out: list[dict] = []
+    for ws, mod_name in _contender_modules():
+        try:
+            mod = call(lambda mod_name=mod_name: importlib.import_module(mod_name))
+        except (Exception, SystemExit):
+            continue
+        for factory, enable in (getattr(mod, "OPT_IN", None) or {}).items():
+            name = getattr(factory, "name", None) or getattr(factory, "__name__", ws)
+            out.append({"name": str(name), "workstream": ws, "enable": str(enable), "factory": factory})
+    return out
 
 
 def discover(verbose: bool = False) -> dict:

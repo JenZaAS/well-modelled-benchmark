@@ -17,7 +17,7 @@ from typing import Any, Callable
 import numpy as np
 import pandas as pd
 
-from benchmark.registry import discover_detailed
+from benchmark.registry import discover_detailed, discover_opt_in
 from wmb import predict_cache
 from wmb.contract import SCENARIO_MISSING, TARGET_CURVES, Task, task_input_columns, validate_prediction
 from wmb.curves import CORE
@@ -41,6 +41,7 @@ _model_slots = threading.BoundedSemaphore(MAX_ACTIVE_MODELS)
 _datasets: dict[str, tuple[list, list]] = {}
 _fits: dict[tuple, Any] = {}
 _registry_cache: list[tuple[dict, list[dict]]] = []
+_opt_in_cache: list[list[dict]] = []
 
 
 def clear_caches() -> None:
@@ -49,6 +50,7 @@ def clear_caches() -> None:
         _fits.clear()
     with _registry_lock:
         _registry_cache.clear()
+        _opt_in_cache.clear()
 
 
 def _registry() -> tuple[dict, list[dict]]:
@@ -56,6 +58,13 @@ def _registry() -> tuple[dict, list[dict]]:
         if not _registry_cache:
             _registry_cache.append(discover_detailed(call=_inspect_model))
         return _registry_cache[0]
+
+
+def _opt_in() -> list[dict]:
+    with _registry_lock:
+        if not _opt_in_cache:
+            _opt_in_cache.append(discover_opt_in(call=_inspect_model))
+        return _opt_in_cache[0]
 
 
 def _load_dataset(dataset: str) -> tuple[list, list]:
@@ -116,7 +125,8 @@ def _build_model_spec(factory):
 # ---------- listing ----------
 
 def list_models(dataset: str | None, well_name: str | None, target: str) -> dict:
-    """Every registered model with eligibility for this well and target (import failures included, as ineligible)."""
+    """Every registered model with eligibility for this well and target (import failures included, as ineligible),
+    then each workstream's OPT_IN models (never eligible: the reason names the flag that registers them)."""
     _check_target(target)
     found, failures = _registry()
     curves: list[str] | None = None
@@ -150,10 +160,35 @@ def list_models(dataset: str | None, well_name: str | None, target: str) -> dict
             if ok:
                 entry["inputs_used"] = inputs_used(spec, target, curves)
         out.append({**entry, "eligible": ok, "reason": reason})
+    listed = {e["name"] for e in out}
+    for o in _opt_in():
+        entry = _opt_in_entry(o, target)
+        if entry["name"] not in listed and entry["name"] not in found:
+            out.append(entry)
+            listed.add(entry["name"])
     for f in failures:
         out.append({"name": f["name"], "workstream": f["workstream"], "eligible": False, "error": True,
                     "reason": f["error"], "inputs": {"required": [], "optional": []}})
     return {"dataset": dataset, "well": well_name, "target": target, "curves": curves or [], "models": out}
+
+
+def _opt_in_entry(o: dict, target: str) -> dict:
+    """A model its workstream registers only behind a flag: listed, never eligible; the reason names the flag."""
+    entry: dict[str, Any] = {"name": o["name"], "workstream": o["workstream"], "eligible": False, "opt_in": o["enable"],
+                             "inputs": {"required": [], "optional": []}}
+    try:
+        model, spec = _inspect_model(lambda: _build_model_spec(o["factory"]))
+    except (Exception, SystemExit) as exc:
+        return {**entry, "error": True,
+                "reason": friendly_module_error(exc) or f"could not be built: {type(exc).__name__}: {exc}"}
+    t = spec.for_target(target)
+    entry.update(name=str(getattr(model, "name", None) or o["name"]), licence=spec.licence or getattr(model, "licence_name", None),
+                 spec_source=spec.source)
+    if t:
+        entry["inputs"] = {"required": t.required, "optional": t.optional}
+    entry["reason"] = (f"opt-in: set {o['enable']} and restart the viewer" if spec.supports(target)
+                       else f"does not support target {target}")
+    return entry
 
 
 # ---------- ranking ----------
