@@ -134,6 +134,47 @@
     return front;
   }
 
+  // ---------- red-to-green colour scale (scatter colour dimension) ----------
+
+  function piecewise(v, stops) {
+    if (v <= stops[0][0]) return stops[0][1];
+    for (let k = 1; k < stops.length; k++) {
+      const [x0, t0] = stops[k - 1], [x1, t1] = stops[k];
+      if (v <= x1) return t0 + ((v - x0) / (x1 - x0)) * (t1 - t0);
+    }
+    return stops[stops.length - 1][1];
+  }
+
+  // Goodness 0 (worst) .. 1 (best) of one measure, consistent with the good / ok / poor boundaries:
+  // the good boundary maps to 0.75, the ok boundary to 0.4 and twice the ok boundary (or beyond) to 0.
+  // dim: "acc" | "width" (relative to best, the lowest value shown) | "dev" (|cover_90 - 0.90|) | "speed" (s per well).
+  function goodness(dim, value, best) {
+    if (num(value) == null) return null;
+    const ladder = (good, ok) => [[0, 1], [good, 0.75], [ok, 0.4], [2 * ok, 0]];
+    if (dim === "dev") return piecewise(value, ladder(THRESHOLDS.calibration.good, THRESHOLDS.calibration.ok));
+    if (dim === "speed") {
+      const lg = (t) => Math.log10(Math.max(t, 1e-12));
+      const s = THRESHOLDS.speed;
+      return piecewise(lg(value), [[lg(s.realTime / 10), 1], [lg(s.realTime), 0.75], [lg(s.batch), 0.4], [lg(s.batch * 10), 0]]);
+    }
+    const t = dim === "acc" ? THRESHOLDS.accuracy : dim === "width" ? THRESHOLDS.sharpness : null;
+    if (!t || num(best) == null || best <= 0) return null;
+    return piecewise(Math.max(0, value / best - 1), ladder(t.good, t.ok));
+  }
+
+  const RAMP = [[0, "#C03A32"], [0.5, "#E0A21B"], [1, "#2E9A5E"]];
+  function rgb(hex) { return [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16)); }
+
+  // Hex colour for a goodness 0..1: red (worse) -> amber -> green (better). null -> grey.
+  function goodnessColor(t) {
+    if (num(t) == null) return COLORS.muted.fg;
+    const v = Math.min(1, Math.max(0, t));
+    const k = v <= RAMP[1][0] ? 1 : 2;
+    const [t0, c0] = RAMP[k - 1], [t1, c1] = RAMP[k];
+    const f = (v - t0) / (t1 - t0), a = rgb(c0), b = rgb(c1);
+    return "#" + a.map((x, i) => Math.round(x + f * (b[i] - x)).toString(16).padStart(2, "0")).join("");
+  }
+
   // ---------- scoring a view ----------
 
   // items: [{id, acc, width, dev, speed}] (acc/width lower better; dev = distance from 90% coverage). Adds classes and ranks.
@@ -207,6 +248,6 @@
     SPEED_AXIS, SPEED_ZONES, PROPERTIES, PROPERTY_NAMES, UNITS, ALL_UNIT,
     unitOf, classifyAccuracy, classifyCalibration, classifySharpness, speedZone, speedZoneName,
     calibrationWord, calibrationWordAll, calScaleFrac, calClosenessFrac, speedFrac, formatSeconds,
-    paretoFront, scoreItems, aggregateAll,
+    paretoFront, scoreItems, aggregateAll, goodness, goodnessColor,
   };
 });

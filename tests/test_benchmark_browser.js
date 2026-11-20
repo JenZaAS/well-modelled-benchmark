@@ -36,6 +36,12 @@ test("benchmark highlights, family selection, and model detail navigation", { sk
   await name.press("Enter");
   await page.getByRole("heading", { name: "tabUM v1.1" }).waitFor();
   assert.equal(await page.locator("#bm-detail li").count(), 3);
+  const diagram = page.getByRole("img", { name: "tabUM v1.1: prediction workflow" });
+  await diagram.waitFor();
+  await page.setViewportSize({ width: 375, height: 812 });
+  const bounds = await diagram.boundingBox();
+  assert.ok(bounds && bounds.width > 0 && bounds.x >= 0 && bounds.x + bounds.width <= 375);
+  await page.setViewportSize({ width: 1280, height: 800 });
   assert.ok(page.url().endsWith("#benchmark/model/purple_tabum_v11"));
   await page.goBack();
   await family.waitFor();

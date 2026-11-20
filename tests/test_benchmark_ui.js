@@ -15,6 +15,19 @@ test("benchmark depth zoom anchors at pointer and scroll reaches both ends", () 
 
 const IDS = ["viewer", "benchmark"];
 
+test("documented model pages illustrate their mechanism below the cards; aliases share figures", () => {
+  const detail = (id) => B.modelDetailHtml(id, "summary-rhob");
+  for (const [id, label] of [["blue_ml_rf", "Mean"], ["blue_gbt", "Correction"], ["red_timesfm25", "Ridge fit"],
+    ["purple_tabum_v11", "Quantiles"], ["black_gardner_fixed", "0.31"], ["red_ttm_r3_ft", "Blend"]]) {
+    const html = detail(id);
+    assert.match(html, /<\/ol><figure .*?<svg .*?role="img"/);
+    assert.ok(html.split("<svg")[1].includes(label), id);
+    assert.match(html, /<figcaption[^>]*>[^<]+<\/figcaption>/);
+  }
+  assert.equal(detail("black_tspulse_ft").split("<figure")[1], detail("red_tspulse_ft").split("<figure")[1]);
+  assert.doesNotMatch(detail("unknown"), /<figure/);
+});
+
 test("model routes keep raw IDs and render safe, useful detail pages", () => {
   for (const id of ["purple_tabum_v11", 'custom/<model> & "variant"']) {
     assert.equal(B.parseModelHash(B.modelHash(id)), id);

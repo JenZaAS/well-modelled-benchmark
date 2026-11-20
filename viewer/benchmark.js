@@ -421,7 +421,7 @@
   // Display metadata only: result lookup, ranks and colors always use the original contender ID.
   const modelProfiles = new Map();
   function profile(id, name, family, input, method, output) {
-    modelProfiles.set(id, { name, family, input, method, output });
+    modelProfiles.set(id, { id, name, family, input, method, output });
   }
   const tsFamily = "Time-series foundation", tableFamily = "Tabular foundation";
   profile(Q.BASELINE_MODEL, "Linear template", "Baseline", "Available logs", "Fit a linear relationship", "Target estimate");
@@ -474,6 +474,66 @@
   function modelLink(id, label = modelName(id)) {
     return `<a class="bm-model-link" href="${esc(modelHash(id))}">${esc(label)}</a>`;
   }
+  // Original schematic drawings, not sampled predictions. Profiles shared by aliases carry the canonical ID.
+  function modelFigure(p) {
+    const line = (d, extra = "") => `<path d="${d}" ${extra}/>`;
+    const dot = (x, y, r = 4) => `<circle cx="${x}" cy="${y}" r="${r}"/>`;
+    const text = (x, y, s) => `<text x="${x}" y="${y}">${esc(s)}</text>`;
+    const tree = (x, y) => `<g transform="translate(${x} ${y})">` + line("M0 0L-12 13M0 0L12 13M-12 13l-6 10m6 -10l6 10") + dot(0,0) + dot(-12,13,3) + dot(12,13,3) + "</g>";
+    const track = (x, y) => `<g transform="translate(${x} ${y})">${line("M0 0l8 -4 5 7 8 -14 6 8 8 -3 8 5 7 -8")}</g>`;
+    const flow = (x, y) => `<g transform="translate(${x} ${y})">${line("M0 0h25m-6 -5 6 5 -6 5")}</g>`;
+    let drawing, caption, heading = "Model architecture";
+    if (p.family === "Random forest") {
+      drawing = line("M48 53H75L115 18M75 53h40M75 53l40 35M155 20l64 33m-64 0h64m-64 34 64 -34") +
+        [10,43,76].map(y => tree(135,y)).join("") + text(35,76,"Row") + text(242,58,"Mean") + flow(267,53) + text(319,58,"ŷ");
+      caption = "Each tree predicts from the same depth row. The forest averages their predictions.";
+    } else if (p.family === "GBT") {
+      drawing = [65,170,275].map((x,i) => tree(x,18) + text(x,64,i ? "Correction" : "First tree")).join("") +
+        flow(105,32) + flow(210,32) + line("M65 72v10h210V72m-105 10v10") + text(170,108,"Sum of tree contributions");
+      caption = `${p.name} adds trees in sequence. Each new tree corrects the current ensemble rather than voting independently.`;
+    } else if (p.family === "Linear regression" || p.id === Q.BASELINE_MODEL) {
+      drawing = [24,55,86].map((y,i) => text(46,y+4,["Log 1","Log 2","…"][i]) + line(`M75 ${y}L165 55`) + dot(75,y)).join("") +
+        text(185,60,"Σ") + flow(202,55) + text(280,60,"Estimate") + text(173,104,"Weighted sum + intercept");
+      caption = `${p.name} weights the available features and adds their contributions to a single prediction.`;
+    } else if (p.family === tableFamily) {
+      heading = "Prediction workflow";
+      drawing = line("M28 17h60v38H28z M48 17v38m20 -38v38M28 30h60m-60 12h60M28 68h60v12H28zM48 68v12m20 -12v12") +
+        text(58,103,"Depth rows") + line("M92 36l34 18m-34 20 34 -20") + text(174,59,p.name) + flow(221,54) +
+        line("M252 54q27 -4 64 -27M252 54q27 3 64 0M252 54q27 7 64 27") + text(286,103,"Quantiles");
+      caption = "Labeled context rows (grid) and an unlabeled query row condition the pretrained regressor. The three branches represent P05, P50 and P95, not internal layers.";
+    } else if (p.id === "red_timesfm25") {
+      heading = "Prediction workflow";
+      drawing = track(12,48) + flow(68,48) + text(143,52,"Ridge fit") + line("M176 47h64l27 10M145 58v16h40") +
+        text(222,79,"TimesFM") + line("M255 74l12 -14") + text(280,62,"+") + flow(293,58) + text(335,62,"ŷ") + text(172,103,"Forecast the residual");
+      caption = "Ridge regression estimates the covariate contribution. TimesFM forecasts the remaining signal; the two contributions are added.";
+    } else if (p.family === tsFamily || p.id === "black_linear_gap") {
+      heading = "Prediction workflow";
+      const gap = /tspulse|ttm_r3|moment|linear_gap/.test(p.id);
+      const blend = p.id.includes("ttm_r3");
+      drawing = track(24,56) + line("M74 54H238", 'stroke-dasharray="3 5"') +
+        (gap ? track(238,54) : "") + line(gap ? (p.id === "black_linear_gap" ? "M74 47L238 54" : "M74 47q30 16 54 -4t56 2 54 9") : "M74 47q36 -14 75 4t74 -4 70 3", 'class="bm-estimate"') +
+        text(52,96,"Observed") + text(158,96,gap ? "Hidden interval" : "Forecast") + (gap ? text(269,96,"Observed") : "") +
+        (blend ? flow(95,22) + line("M214 22h-25l6 -5m-6 5 6 5") + text(157,27,"Blend") :
+          /moment|tspulse/.test(p.id) ? line("M90 24h134v12H90z M112 24v12m22 -12v12m22 -12v12m22 -12v12m22 -12v12", 'stroke-dasharray="4 2"') + text(157,17,"Masked window") :
+          p.id === "black_linear_gap" ? "" : text(175,24,p.method.includes("mixer") ? "Mixer forecast" : p.name));
+      caption = `${p.name}: ${p.method}. The orange trace illustrates the prediction along depth; it is not measured data.`;
+    } else if (p.id === "red_floor_train_mean") {
+      drawing = [34,67,48,75,31,57].map((y,i) => dot(34+i*13,y)).join("") + flow(128,52) + line("M175 52h125", 'class="bm-estimate"') + text(70,98,"Training targets") + text(237,98,"Same value at every depth");
+      caption = "The horizontal line is the mean of the training targets, reused at every query depth.";
+    } else if (p.family === "Physics") {
+      const terms = {
+        black_gardner: "a · Vpᵇ", black_gardner_fixed: "0.31 · Vp⁰·²⁵", black_gardner_flank_resid: "Gardner + residual",
+        black_castagna_dts: "Vp → Vs", black_gc_brine_gr: "Brine mixture", black_wyllie_nphi: "Time average",
+        black_density_nphi: "Density mixture", black_vpvs_ratio: "Vp / ratio",
+      };
+      drawing = track(22,52) + flow(80,52) + line("M112 30h135v44H112z") + text(180,57,terms[p.id]) + flow(254,52) + track(287,52) +
+        text(58,99,p.input.replace("and adjacent RHOB", "+ RHOB")) + text(309,99,p.output);
+      caption = `${p.method}. The log traces are schematic; the center shows the physical transformation.`;
+    } else return "";
+    return `<figure class="bm-figure"><h3>${heading}</h3><svg viewBox="0 0 360 118" role="img" aria-labelledby="bm-fig-title" aria-describedby="bm-fig-caption">` +
+      `<title id="bm-fig-title">${esc(p.name)}: ${heading.toLowerCase()}</title>${drawing}</svg>` +
+      `<figcaption id="bm-fig-caption">${esc(caption)}</figcaption></figure>`;
+  }
   function modelDetailHtml(id, backView) {
     const profile = modelProfile(id);
     const stages = [["Input", profile.input], ["Method", profile.method], ["Output", profile.output]];
@@ -481,7 +541,7 @@
       `<h2 tabindex="-1" id="bm-detail-title">${esc(profile.name)}</h2>` +
       `<p>${esc(profile.family)} · <code>${esc(id)}</code></p>` +
       (profile.method ? `<h3>How it predicts</h3><ol class="bm-architecture">${stages.map(([label, text]) =>
-        `<li><strong>${label}</strong><span>${esc(text)}</span></li>`).join("")}</ol>` :
+        `<li><strong>${label}</strong><span>${esc(text)}</span></li>`).join("")}</ol>${modelFigure(profile)}` :
         '<p>Architecture details are not documented for this model.</p>');
   }
   // Delegate to the persistent view host: chart marks and rows are replaced on every filter change.
@@ -648,89 +708,168 @@
     return "mixed";
   }
 
-  // Accuracy (y) vs sharpness (x); both lower is better, so the better corner is bottom-left.
+  // Plottable scatter dimensions; every one is lower-is-better, so the better corner is always bottom-left.
+  const SCATTER_DIMS = {
+    acc: { label: "Accuracy (MAE)", axis: "MAE", short: "MAE", note: "MAE", value: (p) => num(p.acc) },
+    width: { label: "Sharpness (90% band width)", axis: "Uncertainty width of the 90% band", short: "width", note: "Width", value: (p) => num(p.width) },
+    dev: { label: "Calibration (90% band)", axis: "90% band coverage distance from 90%", short: "calibration off by", note: "Calibration", value: (p) => (num(p.dev) == null ? null : p.dev * 100) },
+    speed: { label: "Speed (time per well)", axis: "Time per well", short: "time", note: "Time", value: (p) => num(p.speed) },
+  };
+  const SCATTER_DEFAULTS = { x: "width", y: "acc", color: "dev" };
+
+  function scatterConfig(ctx) {
+    const c = Object.assign({}, SCATTER_DEFAULTS, (ctx && ctx.scatter) || {});
+    if (!SCATTER_DIMS[c.x]) c.x = SCATTER_DEFAULTS.x;
+    if (!SCATTER_DIMS[c.y]) c.y = SCATTER_DEFAULTS.y;
+    if (c.color !== "none" && !SCATTER_DIMS[c.color]) c.color = SCATTER_DEFAULTS.color;
+    return c;
+  }
+
+  function scatterUnit(dim, ctx) {
+    if (dim === "dev") return "pt";
+    if (dim === "speed") return "s";
+    return ctx.all ? "\u00D7 baseline" : Q.unitOf(ctx.prop);
+  }
+
+  function scatterValueText(dim, p, ctx) {
+    const v = SCATTER_DIMS[dim].value(p);
+    if (v == null) return "\u2013";
+    if (dim === "speed") return Q.formatSeconds(v) + "/well";
+    if (dim === "dev") return `${Math.round(v)} pt${!ctx.all && num(p.cover) != null ? ` (coverage ${(p.cover * 100).toFixed(0)}%)` : ""}`;
+    const u = scatterUnit(dim, ctx);
+    return tickText(v) + (u ? ` ${u}` : "");
+  }
+
+  // Red (worse) .. green (better) fill per point for the colour dimension; best = lowest value shown for acc / width.
+  function scatterColors(pts, dim) {
+    if (!SCATTER_DIMS[dim]) return new Map();
+    const vals = pts.map((p) => num(p[dim])).filter((v) => v != null);
+    const best = vals.length ? Math.min.apply(null, vals) : null;
+    return new Map(pts.map((p) => [p.id, Q.goodnessColor(Q.goodness(dim, num(p[dim]), best))]));
+  }
+
+  function scatterControls(cfg) {
+    const opts = (keys, sel) => keys.map((k) => `<option value="${k}"${k === sel ? " selected" : ""}>${esc(k === "none" ? "None (model colour, ring = calibration)" : SCATTER_DIMS[k].label)}</option>`).join("");
+    const dims = Object.keys(SCATTER_DIMS);
+    return `<div class="bm-scatter-ctl">` +
+      `<label>X axis <select data-scatter="x">${opts(dims, cfg.x)}</select></label>` +
+      `<label>Y axis <select data-scatter="y">${opts(dims, cfg.y)}</select></label>` +
+      `<label>Colour <select data-scatter="color">${opts(dims.concat(["none"]), cfg.color)}</select></label></div>`;
+  }
+
+  // Configurable trade-off scatter (default: accuracy (y) vs sharpness (x), coloured by calibration).
   function scatterSvg(items, ctx) {
-    const pts = items.filter((i) => i.acc != null && i.width != null);
-    if (!pts.length) return '<p class="na">No models with both accuracy and interval width.</p>';
+    const cfg = scatterConfig(ctx);
+    const dx = SCATTER_DIMS[cfg.x], dy = SCATTER_DIMS[cfg.y];
+    const pts = items.filter((i) => dx.value(i) != null && dy.value(i) != null);
+    if (!pts.length) return `<p class="na">No models with both ${esc(dx.short)} and ${esc(dy.short)}.</p>`;
     const W = 850, H = 260, m = { l: 62, r: 22, t: 18, b: 39 };
-    const ext = scatterExtent(pts, !!ctx.all);
-    const widths = pts.map((p) => p.width), errors = pts.map((p) => p.acc);
+    const xs = pts.map((p) => dx.value(p)), ys = pts.map((p) => dy.value(p));
+    // Quadrants around the Linear baseline only make sense when both axes are relative to it.
+    const relative = !!ctx.all && ["acc", "width"].includes(cfg.x) && ["acc", "width"].includes(cfg.y) && cfg.x !== cfg.y;
+    const ext = scatterExtent(pts.map((p) => ({ width: dx.value(p), acc: dy.value(p) })), relative);
     // In relative mode a single extreme axis must not stretch the other axis too.
-    const split = ctx.all && [widths, errors].some((vs) => Q.comparisonScale(vs).knee != null);
-    const xScale = Q.comparisonScale(widths, split ? Math.max(2, ...widths.map((v) => v * 1.05)) : ext.xmax);
-    const yScale = Q.comparisonScale(errors, split ? Math.max(2, ...errors.map((v) => v * 1.05)) : ext.ymax);
+    const split = relative && [xs, ys].some((vs) => Q.comparisonScale(vs).knee != null);
+    const xScale = Q.comparisonScale(xs, split ? Math.max(2, ...xs.map((v) => v * 1.05)) : ext.xmax);
+    const yScale = Q.comparisonScale(ys, split ? Math.max(2, ...ys.map((v) => v * 1.05)) : ext.ymax);
     const xmax = xScale.max, ymax = yScale.max;
     const sx = (v) => m.l + xScale.fraction(v) * (W - m.l - m.r);
     const sy = (v) => H - m.b - yScale.fraction(v) * (H - m.t - m.b);
     const ticks = (s, n) => s.knee == null ? niceTicks(s.max, n)
       : [...Array.from({ length: n + 1 }, (_, i) => s.knee * (i / n)), s.max];
-    const unit = ctx.all ? "\u00D7 baseline" : Q.unitOf(ctx.prop);
-    const measure = (label) => unit ? `${label} (${unit})` : label;
+    const measure = (dim) => { const u = scatterUnit(dim, ctx); return u ? `${SCATTER_DIMS[dim].axis} (${u})` : SCATTER_DIMS[dim].axis; };
     const grid = ticks(xScale, 5).map((v) => `<line x1="${sx(v).toFixed(1)}" y1="${m.t}" x2="${sx(v).toFixed(1)}" y2="${H - m.b}" stroke="#eceeed"/>` +
       `<text x="${sx(v).toFixed(1)}" y="${H - m.b + 15}" text-anchor="middle" font-size="10" fill="#5c5c5c">${tickText(v)}</text>`).join("") +
       ticks(yScale, 4).map((v) => `<line x1="${m.l}" y1="${sy(v).toFixed(1)}" x2="${W - m.r}" y2="${sy(v).toFixed(1)}" stroke="#eceeed"/>` +
         `<text x="${m.l - 8}" y="${(sy(v) + 3).toFixed(1)}" text-anchor="end" font-size="10" fill="#5c5c5c">${tickText(v)}</text>`).join("");
     const g = Q.COLORS.good, r = Q.COLORS.poor;
     const x0 = sx(0), x1 = sx(1), x2 = sx(xmax), y0 = sy(0), y1 = sy(1), y2 = sy(ymax);
-    const quadrants = ctx.all ? (
+    const accX = cfg.x === "acc";
+    const quadrants = relative ? (
       `<rect x="${x0.toFixed(1)}" y="${y1.toFixed(1)}" width="${(x1 - x0).toFixed(1)}" height="${(y0 - y1).toFixed(1)}" fill="${g.fg}" opacity=".16"/>` +
       `<rect x="${x1.toFixed(1)}" y="${y2.toFixed(1)}" width="${(x2 - x1).toFixed(1)}" height="${(y1 - y2).toFixed(1)}" fill="${r.fg}" opacity=".12"/>` +
       `<rect x="${x0.toFixed(1)}" y="${y2.toFixed(1)}" width="${(x1 - x0).toFixed(1)}" height="${(y1 - y2).toFixed(1)}" fill="#c4a35a" opacity=".10"/>` +
       `<rect x="${x1.toFixed(1)}" y="${y1.toFixed(1)}" width="${(x2 - x1).toFixed(1)}" height="${(y0 - y1).toFixed(1)}" fill="#c4a35a" opacity=".10"/>` +
       `<text x="${((x0 + x1) / 2).toFixed(1)}" y="${((y0 + y1) / 2 - 4).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="${g.fg}">better: more accurate and sharper</text>` +
       `<text x="${((x1 + x2) / 2).toFixed(1)}" y="${((y1 + y2) / 2 - 4).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="${r.fg}">worse: less accurate and wider bands</text>` +
-      `<text x="${((x0 + x1) / 2).toFixed(1)}" y="${((y1 + y2) / 2 - 4).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#7a6230">sharper bands, but less accurate</text>` +
-      `<text x="${((x1 + x2) / 2).toFixed(1)}" y="${((y0 + y1) / 2 + 4).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#7a6230">more accurate, but wider bands</text>`
+      `<text x="${((x0 + x1) / 2).toFixed(1)}" y="${((y1 + y2) / 2 - 4).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#7a6230">${accX ? "more accurate, but wider bands" : "sharper bands, but less accurate"}</text>` +
+      `<text x="${((x1 + x2) / 2).toFixed(1)}" y="${((y0 + y1) / 2 + 4).toFixed(1)}" text-anchor="middle" font-size="10" font-weight="700" fill="#7a6230">${accX ? "sharper bands, but less accurate" : "more accurate, but wider bands"}</text>`
     ) : "";
-    const base = ctx.all
+    const base = relative
       ? `<line x1="${x1.toFixed(1)}" y1="${m.t}" x2="${x1.toFixed(1)}" y2="${H - m.b}" stroke="#8a8f94" stroke-width="1"/>` +
         `<line x1="${m.l}" y1="${y1.toFixed(1)}" x2="${W - m.r}" y2="${y1.toFixed(1)}" stroke="#8a8f94" stroke-width="1"/>`
       : "";
-    const front = Q.paretoFront(pts.filter((p) => !p.partial).map((p) => ({ x: p.width, y: p.acc })));
+    const front = Q.paretoFront(pts.filter((p) => !p.partial).map((p) => ({ x: dx.value(p), y: dy.value(p) })));
     const frontLine = front.length > 1
       ? `<polyline points="${front.map((p) => `${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(" ")}" fill="none" stroke="#4a5560" stroke-width="1.5" stroke-dasharray="6 4"/>` : "";
+    const fills = scatterColors(pts, cfg.color);
+    const dimsTip = (p) => `MAE ${p.acc == null ? "\u2013" : tickText(p.acc)}, width ${p.width == null ? "\u2013" : tickText(p.width)}; ` +
+      `calibration ${p.dev == null ? "no score" : `off by ${scatterValueText("dev", p, ctx)}`}; time ${p.speed == null ? "\u2013" : `${Q.formatSeconds(p.speed)}/well`}`;
     const marks = pts.map((p) => {
-      const x = sx(p.width), y = sy(p.acc), c = ctx.colorOf(p.id);
+      const x = sx(dx.value(p)), y = sy(dy.value(p)), c = ctx.colorOf(p.id);
       const name = itemName(p), label = name.length > 23 ? name.slice(0, 22) + "\u2026" : name;
-      const isLinear = ctx.all && (p.id === Q.BASELINE_MODEL || p.id === "template_linear");
+      const isLinear = relative && (p.id === Q.BASELINE_MODEL || p.id === "template_linear");
       if (isLinear) {
         const right = x + 12 + label.length * 6 < W - m.r;
         return `<a ${modelMark(p.id)} href="${esc(modelHash(p.id))}"><title>${esc(name)}: Linear reference (1.0)</title>` +
           `<circle cx="${x}" cy="${y}" r="3.5" fill="#8B929A" stroke="#fff" stroke-width="1"/>` +
           `<text x="${x + (right ? 10 : -10)}" y="${y + 3}" text-anchor="${right ? "start" : "end"}" font-size="10" font-weight="600" fill="#6b6f76">${esc(label)}</text></a>`;
       }
-      const calOk = p.calClass === "good" || p.calClass === "ok";
-      const ring = calOk
-        ? `<circle cx="${x}" cy="${y}" r="14" fill="${g.fg}" opacity=".18"/><circle cx="${x}" cy="${y}" r="10.5" fill="none" stroke="${c}" stroke-width="2.5"/>`
-        : `<circle cx="${x}" cy="${y}" r="10.5" fill="none" stroke="${p.calClass ? r.fg : "#8B929A"}" stroke-width="2" stroke-dasharray="3 2.5"/>`;
+      let mark;
+      if (cfg.color === "none") {
+        const calOk = p.calClass === "good" || p.calClass === "ok";
+        const ring = calOk
+          ? `<circle cx="${x}" cy="${y}" r="14" fill="${g.fg}" opacity=".18"/><circle cx="${x}" cy="${y}" r="10.5" fill="none" stroke="${c}" stroke-width="2.5"/>`
+          : `<circle cx="${x}" cy="${y}" r="10.5" fill="none" stroke="${p.calClass ? r.fg : "#8B929A"}" stroke-width="2" stroke-dasharray="3 2.5"/>`;
+        mark = `${ring}<circle cx="${x}" cy="${y}" r="6.5" fill="${c}" stroke="#fff" stroke-width="1.5"/>`;
+      } else {
+        mark = `<circle cx="${x}" cy="${y}" r="10.5" fill="none" stroke="${c}" stroke-width="2.5"/>` +
+          `<circle cx="${x}" cy="${y}" r="8" fill="${fills.get(p.id)}" stroke="#fff" stroke-width="1.5"/>`;
+      }
       const right = x + 17 + label.length * 7 < W - m.r;
-      return `<a ${modelMark(p.id)} href="${esc(modelHash(p.id))}"><title>${esc(name)}: MAE ${tickText(p.acc)}, width ${tickText(p.width)}; ${p.calClass ? `calibration ${p.calClass}` : "no calibration score"}</title>${ring}` +
-        `<circle cx="${x}" cy="${y}" r="6.5" fill="${c}" stroke="#fff" stroke-width="1.5"/>` +
+      return `<a ${modelMark(p.id)} href="${esc(modelHash(p.id))}"><title>${esc(name)}: ${esc(dimsTip(p))}</title>${mark}` +
         `<text x="${x + (right ? 17 : -17)}" y="${y + 4}" text-anchor="${right ? "start" : "end"}" font-size="12" font-weight="700" fill="#1A1E23">${esc(label)}</text></a>`;
     }).join("");
     const bx = m.l + 8, by = H - m.b - 28;
-    const better = ctx.all ? "" : (`<g><rect x="${bx}" y="${by}" width="63" height="18" rx="9" fill="${g.fg}"/>` +
+    const better = relative ? "" : (`<g><rect x="${bx}" y="${by}" width="63" height="18" rx="9" fill="${g.fg}"/>` +
       `<text x="${bx + 31.5}" y="${by + 13}" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">\u2199 Better</text></g>`);
-    const xt = `${measure("Uncertainty width of the 90% band")} \u2014 lower is better \u2190`;
-    const yt = `${measure("MAE")} \u2014 lower is better \u2193`;
-    const wash = ctx.all ? "" : (
+    const xt = `${measure(cfg.x)} \u2014 lower is better \u2190`;
+    const yt = `${measure(cfg.y)} \u2014 lower is better \u2193`;
+    const wash = relative ? "" : (
       `<defs><radialGradient id="bm-better" cx="0" cy="1" r="0.85"><stop offset="0" stop-color="${g.fg}" stop-opacity=".25"/><stop offset="1" stop-color="${g.fg}" stop-opacity="0"/></radialGradient></defs>` +
       `<rect x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="url(#bm-better)"/>`
     );
-    return `<svg class="bm-scatter" viewBox="0 0 ${W} ${H}" role="img" aria-label="Accuracy versus sharpness">` +
+    const aria = `${SCATTER_DIMS[cfg.y].label} versus ${SCATTER_DIMS[cfg.x].label}` + (cfg.color !== "none" ? `, coloured by ${SCATTER_DIMS[cfg.color].label}` : "");
+    return `<svg class="bm-scatter" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(aria)}">` +
       `<rect x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="#fafbfa" stroke="#d5d5d3"/>` +
       `${wash}${quadrants}${grid}${base}${frontLine}${better}${marks}` +
       `<text x="${(m.l + (W - m.l - m.r) / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="11" fill="#333">${esc(xt)}</text>` +
       `<text transform="translate(14 ${(m.t + (H - m.t - m.b) / 2).toFixed(1)}) rotate(-90)" text-anchor="middle" font-size="11" fill="#333">${esc(yt)}</text></svg>` +
-      scaleNote(xScale, "Width (horizontal)") + scaleNote(yScale, "MAE (vertical)");
+      scaleNote(xScale, `${dx.note} (horizontal)`) + scaleNote(yScale, `${dy.note} (vertical)`);
   }
 
-  function scatterLegend() {
+  function colorBar(dim) {
+    const stops = [0, 0.25, 0.5, 0.75, 1].map((t) => `${Q.goodnessColor(t)} ${t * 100}%`).join(", ");
+    const ends = { dev: ["\u2265 16 pt off", "on 90%"], speed: ["\u2265 5 s", "\u2264 5 ms"],
+      acc: ["\u2265 60% worse than best", "best"], width: ["\u2265 90% wider than best", "narrowest"] }[dim];
+    return `<span class="bm-cbar-wrap"><b>Fill = ${esc(SCATTER_DIMS[dim].label)}</b>` +
+      `<i class="bm-cbar" style="background:linear-gradient(90deg, ${stops})"></i>` +
+      `<span class="bm-cbar-ends"><small>${esc(ends[0])} (worse)</small><small>${esc(ends[1])} (better)</small></span></span>`;
+  }
+
+  function scatterLegend(ctx) {
+    const cfg = scatterConfig(ctx);
     const g = Q.COLORS.good.fg, r = Q.COLORS.poor.fg;
+    const pareto = '<span><svg width="30" height="22"><line x1="2" y1="11" x2="28" y2="11" stroke="#4a5560" stroke-width="1.5" stroke-dasharray="6 4"/></svg>Pareto front of the two plotted axes</span>';
+    if (cfg.color !== "none") {
+      return '<div class="bm-leg">' + colorBar(cfg.color) +
+        `<span><svg width="30" height="22"><circle cx="15" cy="11" r="8" fill="none" stroke="#2F6FAE" stroke-width="2"/><circle cx="15" cy="11" r="5.5" fill="${Q.goodnessColor(0.9)}" stroke="#fff"/></svg>Ring = model colour</span>` +
+        pareto + "</div>";
+    }
     return '<div class="bm-leg">' +
       `<span><svg width="30" height="22"><circle cx="15" cy="11" r="10" fill="${g}" opacity=".18"/><circle cx="15" cy="11" r="7" fill="none" stroke="#2F6FAE" stroke-width="2"/><circle cx="15" cy="11" r="3.5" fill="#2F6FAE"/></svg>Solid ring + green halo = calibration good or ok</span>` +
       `<span><svg width="30" height="22"><circle cx="15" cy="11" r="7" fill="none" stroke="${r}" stroke-width="2" stroke-dasharray="3 2.5"/><circle cx="15" cy="11" r="3.5" fill="#6b6f76"/></svg>Dashed ring = calibration off (red) or missing (grey)</span>` +
-      '<span><svg width="30" height="22"><line x1="2" y1="11" x2="28" y2="11" stroke="#4a5560" stroke-width="1.5" stroke-dasharray="6 4"/></svg>Raw accuracy\u2013width Pareto front (ignores calibration)</span></div>';
+      pareto + "</div>";
   }
 
   // Models scored in other runs of the same dataset (on this property, or any for "ALL") but not in this run.
@@ -753,15 +892,19 @@
     const missingHtml = missing.length ? `<div class="na bm-missing">Not scored in this test: ${missing.map((id) => `<span ${modelMark(id)}>${modelLink(id)}</span>`).join(", ")}</div>` : "";
     if (!items.length) return `<p class="na">${ctx.family ? NO_FAMILY_RESULTS : "No scores for this property."}</p>` + missingHtml;
     ctx = { ...ctx, cohort };
-    const title = ctx.all ? "All properties \u2014 accuracy vs sharpness (relative to Linear)" : `${ctx.prop} \u2014 accuracy vs sharpness`;
+    const cfg = scatterConfig(ctx);
+    const vs = `${SCATTER_DIMS[cfg.y].label.split(" (")[0].toLowerCase()} vs ${SCATTER_DIMS[cfg.x].label.split(" (")[0].toLowerCase()}`;
+    const title = ctx.all ? `All properties \u2014 ${vs}` + (["acc", "width"].includes(cfg.x) && ["acc", "width"].includes(cfg.y) ? " (relative to Linear)" : "") : `${ctx.prop} \u2014 ${vs}`;
+    const hint = cfg.color === "none" ? "bottom-left is best \u00B7 ring = calibration"
+      : `bottom-left is best \u00B7 fill = ${SCATTER_DIMS[cfg.color].label.split(" (")[0].toLowerCase()} (green better, red worse)`;
     const models = items.map((i) => `<div class="bm-nm" ${modelMark(i.id)}>${dot(ctx.colorOf(i.id))}${modelLink(i.id, itemName(i))}${familyBadge(i.id)}</div>`).join("") +
       missingHtml;
     const nScatter = items.filter((i) => i.acc != null && i.width != null).length;
     const caption = "";
     return `<div class="bm-cards">${cardAccuracy(items, ctx)}${cardCalibration(items, ctx)}${cardSharpness(items, ctx)}${cardSpeed(items, ctx)}</div>` +
-      `<div class="bm-tradeoff"><section class="bm-card bm-scatter-card"><h3>${esc(title)}</h3><span class="na">bottom-left is best \u00B7 ring = calibration</span>` +
-      `${scatterSvg(items, ctx)}${caption}</section><aside class="bm-card"><h4>Models</h4><div class="bm-models">${models}</div>` +
-      `<h4>Key</h4>${scatterLegend()}</aside></div>`;
+      `<div class="bm-tradeoff"><section class="bm-card bm-scatter-card"><h3>${esc(title)}</h3><span class="na">${esc(hint)}</span>` +
+      `${scatterControls(cfg)}${scatterSvg(items, ctx)}${caption}</section><aside class="bm-card"><h4>Models</h4><div class="bm-models">${models}</div>` +
+      `<h4>Key</h4>${scatterLegend(ctx)}</aside></div>`;
   }
 
   function byPropertyCell(it, prop, scales) {
@@ -863,7 +1006,7 @@
       return null;
     }
     const runs = groupRuns(rows);
-    const st = { sel: runs[0], family: "", mode: "summary", prop: null, model: "", target: "", well: "", scale: "auto", fillSource: "formation", data: null, token: 0 };
+    const st = { sel: runs[0], family: "", mode: "summary", prop: null, model: "", target: "", well: "", scale: "auto", fillSource: "formation", scatter: Object.assign({}, SCATTER_DEFAULTS), data: null, token: 0 };
     pane.innerHTML = `<section class="bm bm-detail" id="bm-detail" hidden></section><div class="bm" id="bm-overview">
       <div class="bm-top">
         <div>
@@ -993,9 +1136,19 @@
       if (st.mode === "byproperty") { host.innerHTML = byPropertyHtml(st.sel, colorOf, st.family); return; }
       const all = st.prop === "ALL";
       const items = propertyItems(st.sel, st.prop);
-      host.innerHTML = summaryHtml(items, { family: st.family, prop: st.prop, all, colorOf, hwKnown: !!header.hardware,
+      host.innerHTML = summaryHtml(items, { family: st.family, prop: st.prop, all, colorOf, scatter: st.scatter, hwKnown: !!header.hardware,
         missing: notScoredModels(st.sel, runs, st.prop) });
     }
+
+    // Scatter dimension pickers; choosing the other axis's dimension swaps the two axes.
+    $("bm-view").addEventListener("change", (e) => {
+      const key = e.target && e.target.dataset ? e.target.dataset.scatter : null;
+      if (!key) return;
+      const v = e.target.value, other = key === "x" ? "y" : key === "y" ? "x" : null;
+      if (other && st.scatter[other] === v) st.scatter[other] = st.scatter[key];
+      st.scatter[key] = v;
+      renderView(renderHeader());
+    });
 
     $("bm-family").addEventListener("change", (e) => {
       st.family = e.target.value;
@@ -1465,6 +1618,6 @@
     parseTabHash, tabHash, parseBenchmarkView, benchmarkHash, viewState, viewId, defaultProperty, BENCHMARK_VIEWS,
     createTabs, METRICS, sharpnessOf, filterRows, barFraction, bandArrays, gapIntervals, contextTracks, wheelWindow, uniq, mount,
     groupRuns, runTitle, datasetLabel, scenarioLabel, runHeader, formatRunTime, hardwareLabel, propertyItems, notScoredModels, modelFamily,
-    summaryHtml, byPropertyHtml, scatterSvg, scatterExtent, scatterQuadrant, modelHash, parseModelHash, modelDetailHtml,
+    summaryHtml, byPropertyHtml, scatterSvg, scatterExtent, scatterQuadrant, scatterConfig, scatterColors, SCATTER_DIMS, modelHash, parseModelHash, modelDetailHtml,
   };
 });
