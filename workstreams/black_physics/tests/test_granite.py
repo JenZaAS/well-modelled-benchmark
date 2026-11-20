@@ -383,13 +383,14 @@ def test_moved_rows_keep_their_experiment_ids_and_old_station_ids_resolve():
     from workstreams.red_foundation_models.models.granite.contender import FT, GRANITE
     from workstreams.red_foundation_models.models.timestral_target_only.contender import TimestralTargetOnly
 
-    experiment_ids = set(C.VARIANT_IDS.values()) | {"black_ttm_r3_ft", "black_tspulse_ft"}
+    experiment_ids = set(C.VARIANT_IDS.values()) | {"black_ttm_r3_ft", "black_tspulse_ft", "black_ttm_r3_twosided"}
     for cls in (*GRANITE, *FT, TimestralTargetOnly):
         assert cls.name.startswith("red_") and cls.workstream == "red_foundation_models"
-        assert canonical_model(cls.row_id) == cls.name and cls.row_id in legacy_model_names(cls.name)
+        if cls.row_id != "black_ttm_r3_twosided":        # added after the move: it never had a black station id
+            assert canonical_model(cls.row_id) == cls.name and cls.row_id in legacy_model_names(cls.name)
     assert {c.row_id for c in (*GRANITE, *FT)} == experiment_ids
     # the small fine-tune is *_quicktune and the stronger one *_finetune; every earlier station id still resolves
     for old, new in (("black_ttm_r3_tuned", "red_ttm_r3_quicktune"), ("red_ttm_r3_tuned", "red_ttm_r3_quicktune"),
                      ("black_tspulse_ft", "red_tspulse_finetune"), ("red_tspulse_ft", "red_tspulse_finetune")):
         assert canonical_model(old) == new
-    assert {c.name for c in FT} == {"red_ttm_r3_finetune", "red_tspulse_finetune"}
+    assert {c.name for c in FT} == {"red_ttm_r3_finetune", "red_tspulse_finetune", "red_ttm_r3_twosided"}

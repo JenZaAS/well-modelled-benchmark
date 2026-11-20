@@ -4,6 +4,8 @@
                                                    blended by distance; TSPulse R1: masked reconstruction)
     red_ttm_r3_quicktune, red_tspulse_quicktune    the brief's small fine-tune (output heads, a few seconds)
     red_ttm_r3_finetune, red_tspulse_finetune      the stronger fine-tune (granite/finetune.py)
+    red_ttm_r3_twosided                            TTM-R3 with a learned bridge between its two forecasts
+                                                   (granite/two_sided.py)
 
 Target-only: the rows read only `Task.target_observed` (RHOB with the hidden interval removed) and return
 full-depth arrays that are NaN outside `Task.predict_mask`. Whole-curve tasks have no RHOB context: they abstain.
@@ -133,5 +135,25 @@ class TSPulseFineTune(_GraniteFT):
     name, arm = "red_tspulse_finetune", "tspulse"
 
 
+class TTMR3TwoSided(_GraniteGap):
+    """TTM-R3 lite whose two directional forecasts are joined by a learned bridge instead of a fixed blend.
+
+    The bridge sees both forecasts and the measured density on both sides of the gap (granite/two_sided.py);
+    one-sided gaps keep their single direction. Checkpoint and D bands come from manifest_twosided.json.
+    """
+    row_id = "black_ttm_r3_twosided"
+    name, arm, tuned = "red_ttm_r3_twosided", "ttm", True
+
+    def fit(self, train_wells, target):
+        from workstreams.black_physics.granite import two_sided as TS
+
+        if not self.supports(target):
+            raise ValueError(f"{self.name} predicts RHOB, not {target}")
+        self.reconstructor, self.calibrator, self.provenance = TS.load_variant(train_wells, self.device)
+        self.backend = self.reconstructor.backend
+
+
 GRANITE = [TTMR3Frozen, TTMR3QuickTune, TSPulseFrozen, TSPulseQuickTune]
-FT = [TTMR3FineTune, TSPulseFineTune]          # separate list: the experiment's `final` stage iterates GRANITE only
+# Fine-tuned rows, registered with GRANITE under WMB_RED_MODELS=granite. The experiment's `final` stage iterates
+# GRANITE only.
+FT = [TTMR3FineTune, TSPulseFineTune, TTMR3TwoSided]

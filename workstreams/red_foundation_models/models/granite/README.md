@@ -14,6 +14,7 @@ workstream: [black_physics/granite/README.md](../../../black_physics/granite/REA
 | `red_tspulse_quicktune` | the brief's small fine-tune (*quick-tune*): only the time-domain reconstruction head (200 parameters) trained (MAE), 125 updates; changed almost nothing | RHOB flanks |
 | `red_ttm_r3_finetune` | TTM-R3 after the stronger fine-tune ([finetune.py](../../../black_physics/granite/finetune.py)): prediction heads retrained on 13,824 A gaps with the blended two-sided loss; the part trained and the learning rate were picked on B | RHOB flanks |
 | `red_tspulse_finetune` | TSPulse after the stronger fine-tune: the whole model (1.07 M weights) retrained on 13,824 A gaps; picked on B | RHOB flanks |
+| `red_ttm_r3_twosided` | TTM-R3 with a learned bridge between its two directional forecasts, trained with its prediction heads ([two_sided.py](../../../black_physics/granite/two_sided.py)). **Negative result:** no better than pretrained TTM on the D and test wells ([TWO_SIDED.md](../../../black_physics/granite/TWO_SIDED.md)) | RHOB flanks |
 
 **Units.** RHOB in g/cm³; depth in metres. The experiment's physics baselines (`black_linear_gap`,
 `black_gardner_flank_resid`) stay in the black workstream.
