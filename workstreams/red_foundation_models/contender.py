@@ -14,7 +14,7 @@ from .models.moment.contender import Moment
 from .models.timestral.contender import Timestral
 from .models.timestral_target_only.contender import TimestralTargetOnly
 from .models.timesfm25.contender import TimesFM25
-from .models.ttm.contender import TTM
+from .models.ttm.contender import CombinedPilotDTS, FrozenR2DTS, TTM
 
 
 class TrainMeanFloor(BaseContender):
@@ -30,6 +30,7 @@ class TrainMeanFloor(BaseContender):
 
 
 MODELS = {"chronos2": Chronos2, "timestral": Timestral, "timesfm25": TimesFM25, "ttm": TTM, "moment": Moment,
+          "ttm_r2_dts_pilot": (CombinedPilotDTS, FrozenR2DTS),
           # Granite 50 m density-gap rows (Granite environment; artifacts from workstreams/black_physics/granite)
           "granite": (*GRANITE, *GRANITE_FT),
           "timestral_target_only": TimestralTargetOnly}

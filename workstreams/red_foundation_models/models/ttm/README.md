@@ -34,6 +34,19 @@ python -m workstreams.red_foundation_models.models.ttm.finetune_ttm --target RHO
 `red_ttm` prefers a probabilistic checkpoint when present, then a point fine-tune, otherwise zero-shot.
 Checkpoints written by earlier runs keep their `white_meta.json` metadata file name.
 
+## Published DTS pilot (TTM r2)
+
+The paired FORCE scores are under `results/{red_ttm_r2_dts_pilot_combined,red_ttm_r2_frozen}/force2020/DTS/`, one `scores.json` per named test. Reading aggregate metrics needs neither checkpoint. Per-depth predictions and trained weights are not included with these scores.
+
+To repeat inference, obtain the combined pilot's `model.safetensors` and `config.json` from the run owner via approved team storage, **not git**. Point `WMB_TTM_DTS_PILOT` at their directory, or install them under `weights/ttm-pilots/20261120-102336/combined/` in this workstream. Both files are checked against the scored artifact; a single-well or freshly retrained model is not a substitute. The frozen control downloads the pinned IBM snapshot on first use and needs no team artifact.
+
+From the repository root with the TTM dependencies and FORCE data configured:
+
+```sh
+WMB_RED_MODELS=ttm_r2_dts_pilot PYTHONPATH=src python -m benchmark.run \
+  --model red_ttm_r2_dts_pilot_combined,red_ttm_r2_frozen --test dts_gap50,dts_missing --rerun
+```
+
 Install `granite-tsfm>=0.3.12` without downgrading `torch` or `transformers`
 (see [requirements.txt](requirements.txt)). The brief for a further fine-tuning experiment is in
 [FINETUNE_PROMPT.md](FINETUNE_PROMPT.md).
@@ -45,6 +58,6 @@ Measured on the shared Linux box, 2026-11-19, Europe/Oslo (CET, UTC+1), FORCE `r
 (20 test wells, 6600 samples):
 
 | Variant | MAE | R² | cover90 | interval_width_90 | s/well |
-|---|---|---|---|---|---|
+| --- | --- | --- | --- | --- | --- |
 | Zero-shot (Gaussian band) | 0.0508 | 0.867 | 0.63 | n/a | 0.062 |
 | Quantile fine-tune + CQR (67.73 s CPU train, 78+20 train/calib wells) | 0.0466 | 0.878 | 0.93 | 0.243 | 0.062 |
