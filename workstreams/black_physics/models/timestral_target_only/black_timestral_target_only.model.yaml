@@ -1,0 +1,8 @@
+# red_timestral's depth adapter with every covariate removed (target-only control).
+# Same context (256), rollout (blocks of 32), flank reversal and inverse-distance blend as red_timestral.
+name: black_timestral_target_only
+licence: Modified MIT (weights); Apache-2.0 (inference code)
+targets:
+  RHOB:
+    required: []
+    optional: []
