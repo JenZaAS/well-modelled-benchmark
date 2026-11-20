@@ -178,6 +178,8 @@ test("summary lists models scored in other runs of the dataset but missing here"
   assert.match(html, /Not scored in this test: red_timesfm25/);
   assert.equal(B.modelFamily("red_floor_train_mean"), "floor");
   assert.equal(B.modelFamily("white_ttm"), "foundation");
+  assert.equal(B.modelFamily("red_ttm"), "foundation");
+  assert.equal(B.modelFamily("red_moment"), "foundation");
   assert.equal(B.modelFamily("black_castagna"), "physics");
 });
 

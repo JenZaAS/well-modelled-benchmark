@@ -27,6 +27,8 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import parse_qs, unquote, urlparse
 
+from wmb.aliases import canonical_model, canonical_row, legacy_model_names
+
 # Repo root: src/wmb/viewer.py -> parents[2]
 REPO = Path(__file__).resolve().parents[2]
 VIEWER_DIR = REPO / "viewer"
@@ -296,6 +298,11 @@ def benchmark_run_time(row: dict) -> datetime:
     return datetime.min.replace(tzinfo=timezone.utc)
 
 
+def benchmark_run_order(row: dict) -> tuple[datetime, bool]:
+    """Prefer newer results, with the canonical folder winning ties after a rename."""
+    return benchmark_run_time(row), not row.get("legacy_contender")
+
+
 def collect_benchmark_rows(root: Path | None = None) -> list[dict[str, Any]]:
     """Read-only twin of benchmark.scoreboard.collect(): both results layouts, unreadable files skipped."""
     from wmb import paths
@@ -313,13 +320,15 @@ def collect_benchmark_rows(root: Path | None = None) -> list[dict[str, Any]]:
                 continue
             r.setdefault("scenario", "missing_curve")
             test = r.get("test") if isinstance(r.get("test"), str) else ""
+            stored = (r["contender"], r["dataset"], r["target"], r["scenario"], test)
+            r = canonical_row(r)
             key = (r["contender"], r["dataset"], r["target"], r["scenario"], test)
             if all(isinstance(part, str) and part for part in key[:4]) and (
-                key not in rows or benchmark_run_time(r) >= benchmark_run_time(rows[key])
+                key not in rows or benchmark_run_order(r) >= benchmark_run_order(rows[key])
             ):
                 if test:
                     rel = p.relative_to(root).parts
-                    r["prediction_test"] = test if rel == (*key[:4], test, "scores.json") else ""
+                    r["prediction_test"] = test if rel == (*stored[:4], test, "scores.json") else ""
                 rows[key] = r
         except (OSError, ValueError, KeyError, TypeError):
             continue
@@ -360,7 +369,8 @@ def mark_stale_rows(rows: list[dict[str, Any]], current: dict[str, str | None] |
     out = []
     for r in rows:
         stored = r.get("model_hash")
-        cur = now(r["contender"]) if stored else None
+        # Rows from a legacy id predate the move; the code location change alone is not staleness.
+        cur = now(r["contender"]) if stored and not r.get("legacy_contender") else None
         out.append({**r, "stale": bool(stored and cur and cur != stored)} if stored else r)
     return out
 
@@ -372,25 +382,33 @@ def load_benchmark_prediction(contender: str, dataset: str, target: str, scenari
                               root: Path | None = None, test: str = "") -> dict[str, Any]:
     """One well from results/<contender>/<dataset>/<target>/<scenario>[/<test>]/predictions.json.
 
-    Looks in the per-test folder first (when `test` is given), then the older layout without it.
+    Looks in per-test folders first (when `test` is given), then the older layout without it.
+    Within each layout, the requested id takes precedence over its aliases.
     FileNotFoundError if neither exists.
     """
     from wmb import paths
 
-    parts = [contender, dataset, target, scenario]
+    segments = [dataset, target, scenario]
     if not well:
         raise ValueError("well is required")
-    if any(not _SEGMENT_OK.fullmatch(p) or ".." in p for p in parts) or (
+    if any(not _SEGMENT_OK.fullmatch(p) or ".." in p for p in [contender, *segments]) or (
             test and (not _SEGMENT_OK.fullmatch(test) or ".." in test)):
         raise ValueError("contender, dataset, target, scenario and test must be plain names")
     root = Path(root) if root is not None else paths.results_root()
     found = None
-    if test:
-        found = safe_under(root, "/".join([*parts, test, "predictions.json"]))
-        if found is None and safe_under(root, "/".join([*parts, test, "scores.json"])):
-            raise FileNotFoundError("no predictions.json for this test; re-run benchmark.run to write it")
-    if found is None:
-        found = safe_under(root, "/".join([*parts, "predictions.json"]))
+    model = canonical_model(contender)
+    names = dict.fromkeys([contender, model, *legacy_model_names(model)])
+    for suffix in ([test], []) if test else ([],):
+        for name in names:
+            parts = [name, *segments, *suffix]
+            found = safe_under(root, "/".join([*parts, "predictions.json"]))
+            if found is not None:
+                break
+            if safe_under(root, "/".join([*parts, "scores.json"])):
+                kind = "test" if suffix else "run"
+                raise FileNotFoundError(f"no predictions.json for this {kind}; re-run benchmark.run to write it")
+        if found is not None:
+            break
     if found is None:
         raise FileNotFoundError("no predictions.json for this run; re-run benchmark.run to write it")
     data = json.loads(found.read_text(encoding="utf-8"))
@@ -398,7 +416,8 @@ def load_benchmark_prediction(contender: str, dataset: str, target: str, scenari
         return {"wells": [w.get("key") or w.get("well_id") for w in data.get("wells", [])]}
     for w in data.get("wells", []):
         if well in (w.get("key"), w.get("well_id")):
-            return {k: data.get(k) for k in ("contender", "dataset", "target", "scenario")} | {"well": w}
+            return {k: data.get(k) for k in ("contender", "dataset", "target", "scenario")} | {"well": w} | {
+                "contender": canonical_model(data.get("contender"))}
     raise FileNotFoundError(f"well {well} not in predictions.json")
 
 

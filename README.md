@@ -75,7 +75,7 @@ Edit **only your own folder**. Shared folders change only after a heads-up in th
 | `src/wmb/` | Shared package: load wells, curve names, scoring, splits, the `Contender` interface ([INTERFACE.md](src/wmb/INTERFACE.md)) | Shared: announce changes |
 | `benchmark/` | Runner + scoreboard; finds every team's models automatically | Benchmark |
 | `workstreams/data_prep/` | Datasets, curve labelling, QC, Diskos | Data preparation |
-| `workstreams/red_foundation_models/` | Chronos-2, MOMENT, TTM | Red team |
+| `workstreams/red_foundation_models/` | Chronos-2, TimesFM 2.5, Timestral, MOMENT, TTM | Red team |
 | `workstreams/blue_boosted_trees/` | XGBoost, LightGBM | Blue team |
 | `workstreams/black_physics/` | Gardner, Greenberg-Castagna, other rules | Black team |
 | `viewer/` | Interactive well map and log plots (any dataset with a `wells.json`) | Shared |

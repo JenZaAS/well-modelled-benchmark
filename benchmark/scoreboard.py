@@ -11,6 +11,8 @@ import json
 from benchmark.registry import REPO  # noqa: F401  (sets sys.path)
 from benchmark.test_def import generated_name
 from wmb import paths
+from wmb.aliases import canonical_row
+from wmb.viewer import benchmark_run_order
 
 COLS = ["test", "dataset", "target", "scenario", "contender", "workstream", "MAE", "RMSE", "R2", "cover_90", "cover_50",
         "interval_width_90", "has_uncertainty", "cover_1sigma", "cover_2sigma", "sharpness_mean_sigma", "CRPS",
@@ -23,10 +25,14 @@ def collect() -> list[dict]:
     rows: dict[tuple, dict] = {}
     for pattern in ("*/*/*/scores.json", "*/*/*/*/scores.json", "*/*/*/*/*/scores.json"):
         for p in sorted(root.glob(pattern)):
-            r = json.loads(p.read_text())
+            r = canonical_row(json.loads(p.read_text()))
             r.setdefault("scenario", "missing_curve")
             r["test"] = r.get("test") or ""
-            rows[(r["contender"], r["test"], r["dataset"], r["target"], r["scenario"])] = r
+            key = (r["contender"], r["test"], r["dataset"], r["target"], r["scenario"])
+            previous = rows.get(key)
+            if (previous is None or r.get("legacy_contender") == previous.get("legacy_contender")
+                    or benchmark_run_order(r) >= benchmark_run_order(previous)):
+                rows[key] = r
     # Same rule as the viewer: a row without a test name is superseded by a named test of the same combination.
     named = {(k[0], *k[2:]) for k in rows if k[1]}
     rows = {k: r for k, r in rows.items() if k[1] or (k[0], *k[2:]) not in named}

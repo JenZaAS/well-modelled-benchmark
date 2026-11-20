@@ -15,9 +15,27 @@ if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
 
+class Registry(dict):
+    """name -> factory. Legacy ids (``wmb.aliases``) resolve on lookup but are never listed or iterated."""
+
+    def __missing__(self, key):
+        from wmb.aliases import canonical_model
+        new = canonical_model(key)
+        if new != key and new in self:
+            return self[new]
+        raise KeyError(key)
+
+    def __contains__(self, key):
+        from wmb.aliases import canonical_model
+        return dict.__contains__(self, key) or dict.__contains__(self, canonical_model(key))
+
+    def get(self, key, default=None):
+        return self[key] if key in self else default
+
+
 def discover_detailed(verbose: bool = False, *, call=lambda fn: fn()) -> tuple[dict, list[dict]]:
     """(found, failures): failures are [{"name", "workstream", "error"}] for workstreams or contenders that could not load."""
-    found, failures = {}, []
+    found, failures = Registry(), []
     for f in sorted((REPO / "workstreams").glob("*/contender.py")):
         ws = f.parent.name
         mod_name = f"workstreams.{ws}.contender"

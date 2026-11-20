@@ -30,6 +30,7 @@ import pandas as pd
 from benchmark import make_tasks as mt
 from benchmark import test_def as td
 from benchmark.registry import REPO, discover  # noqa: F401  (also puts src/ on sys.path)
+from wmb.aliases import canonical_model
 from wmb import paths, predict_cache, scoring, splits
 from wmb.contender import Prediction
 from wmb.contract import GAP_LENGTHS_M, SCENARIO_MISSING, TARGET_CURVES, Task, validate_prediction
@@ -414,7 +415,7 @@ def main(argv=None) -> int:
                 if given is not None and given != want:
                     ap.error(f"{flag} {given} conflicts with test {d.name} ({want}); drop {flag} or pick another test")
         found = discover()
-        names = list(found) if a.contenders == "all" else a.contenders.split(",")
+        names = list(found) if a.contenders == "all" else [canonical_model(n) for n in a.contenders.split(",")]
         out_root = paths.results_root()
         rows = run_tests(defs, found, names, a.cache, out_root, force=a.rerun, skip_missing=(a.test == "all"))
         if rows:
@@ -436,7 +437,7 @@ def main(argv=None) -> int:
             ap.error(f"dataset {a.dataset} has no task spec; only --scenario missing_curve is available")
 
     found = discover()
-    names = list(found) if a.contenders == "all" else a.contenders.split(",")
+    names = list(found) if a.contenders == "all" else [canonical_model(n) for n in a.contenders.split(",")]
     if a.seed != 0 and mt.has_spec(a.dataset):
         print(f"warning: --seed {a.seed} ignored; dataset {a.dataset} uses its committed task spec "
               f"(seed {mt.load_spec(a.dataset)['seed']})", file=sys.stderr)

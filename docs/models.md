@@ -17,8 +17,8 @@ To add a model, start with **[Build your model](build-your-model.md)**:
 | TimesFM 2.5 + XReg (`red_timesfm25`) | red | Apache-2.0 | Yes (covariates) | quantile output |
 | Timestral-5M (`red_timestral`) | red | Modified MIT weights; Apache-2.0 inference code | Yes (covariates) | licence restricts use by larger companies; see its `LICENSE.md` |
 | Training-mean floor (`red_floor_train_mean`) | red | — | No | no-model floor: the training mean of the target |
-| MOMENT (CMU, `white_moment`) | white | MIT | No (target-only; covariates accepted but unused) | 40M–385M; masked-patch reconstruction; p10/p90 interval from a training-set residual interval |
-| TTM r2 (IBM Granite, `white_ttm`) | white | Apache-2.0 | No (target-only; covariates accepted but unused) | from ~1M; can use other logs through its exogenous mixer after fine-tuning, which this wrapper does not do yet |
+| MOMENT (CMU, `red_moment`) | red | MIT | No (target-only; covariates accepted but unused) | 40M–385M; masked-patch reconstruction; p10/p90 interval from a training-set residual interval; deprecated alias `white_moment` |
+| TTM r2 (IBM Granite, `red_ttm`) | red | Apache-2.0 | No (target-only; covariates accepted but unused) | from ~1M; can use other logs through its exogenous mixer after fine-tuning, which this wrapper does not do yet; deprecated alias `white_ttm` |
 | Linear template (`template_linear`) | baseline | — | Yes | reference model; scores in the viewer are relative to it |
 
 Physics and empirical models use only the curves listed in the column; each typically predicts a single property.

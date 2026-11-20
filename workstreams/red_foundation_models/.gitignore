@@ -1,0 +1,4 @@
+# Base-model downloads and fine-tunes are filled on first run.
+# Keep the placeholder README so the empty folder can be tracked.
+weights/*
+!weights/README.md
