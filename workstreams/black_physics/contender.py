@@ -14,8 +14,15 @@ models/<family>/ with its equation, a thin station wrapper, a model card (README
 | black_vpvs_ratio      | DTS  <- DTC      | One fitted DTS/DTC ratio (empirical control)                    |
 
 `Gardner` and `MudrockDTS` stay importable from this module for existing callers.
+
+Opt-in rows of the Granite density-gap experiment (WMB_BLACK_GRANITE=1, NumPy only): black_linear_gap
+(interpolation reference) and black_gardner_flank_resid (Gardner + flank residual). The experiment's
+foundation-model rows (red_ttm_r3_*, red_tspulse_*, red_timestral_target_only) are registered by the red
+workstream (WMB_RED_MODELS=granite,timestral_target_only); the experiment itself stays in granite/.
 """
 from __future__ import annotations
+
+import os
 
 from workstreams.black_physics.models.castagna_mudrock.wrapper import MudrockDTS
 from workstreams.black_physics.models.gardner.wrapper import Gardner, GardnerFixed
@@ -25,6 +32,10 @@ from workstreams.black_physics.models.vpvs_ratio.wrapper import VpVsRatio
 from workstreams.black_physics.models.wyllie.wrapper import WyllieNPHI
 
 CONTENDERS = [Gardner, MudrockDTS, GardnerFixed, GreenbergCastagnaBrineGR, WyllieNPHI, DensityNPHI, VpVsRatio]
+
+if os.getenv("WMB_BLACK_GRANITE", "").strip() not in ("", "0"):
+    from workstreams.black_physics.models.granite.wrapper import EXTRA
+    CONTENDERS += [*EXTRA]
 
 __all__ = ["CONTENDERS", "DensityNPHI", "Gardner", "GardnerFixed", "GreenbergCastagnaBrineGR", "MudrockDTS",
            "VpVsRatio", "WyllieNPHI"]

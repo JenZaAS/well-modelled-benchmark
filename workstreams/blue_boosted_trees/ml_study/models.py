@@ -109,7 +109,8 @@ class MLContender(BaseContender):
             raise ValueError(f"unknown model kind {kind!r}; choose from {MODEL_KINDS}")
         self.kind, self.use_strat, self.max_train_rows, self.seed = kind, use_strat, max_train_rows, seed
         self.context, self.trend = context, trend
-        self.name = f"blue_{variant_name(kind, use_strat, context, trend)}"
+        if self.name == BaseContender.name:   # registered wrappers (models/<name>/) set their own name
+            self.name = f"blue_{variant_name(kind, use_strat, context, trend)}"
         self.n_train_rows = 0
 
     def fit(self, train_wells: list[Well], target: str) -> None:

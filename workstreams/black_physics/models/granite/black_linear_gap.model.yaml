@@ -1,0 +1,14 @@
+# Straight line in depth between the nearest measured target values above and below a gap (same segment).
+# Target-only; abstains (NaN) on whole-curve tasks and where a flank has no measured value.
+name: black_linear_gap
+licence: MIT
+targets:
+  RHOB:
+    required: []
+    optional: []
+  DTC:
+    required: []
+    optional: []
+  DTS:
+    required: []
+    optional: []

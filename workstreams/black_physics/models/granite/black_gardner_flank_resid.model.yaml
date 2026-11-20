@@ -1,0 +1,8 @@
+# Fixed Gardner from DTC plus the observed RHOB - Gardner residual, interpolated linearly across each gap.
+# Needs DTC inside the gap and measured RHOB + DTC on both flanks; NaN elsewhere. Abstains on whole-curve tasks.
+name: black_gardner_flank_resid
+licence: MIT
+targets:
+  RHOB:
+    required: [DTC]
+    optional: []

@@ -1,0 +1,9 @@
+# Inputs of red_ttm_r3_frozen per target (canonical names). DEPTH is always present; do not list it.
+# Target-only: the model reads only the measured RHOB flanks of a gap (Task.target_observed). No other log is used.
+# Whole-curve (missing_curve) tasks have no RHOB context: the model abstains (NaN).
+name: red_ttm_r3_frozen
+licence: Apache-2.0
+targets:
+  RHOB:
+    required: []
+    optional: []

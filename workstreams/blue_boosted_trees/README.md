@@ -12,10 +12,26 @@ XGBoost / LightGBM, a common choice in FORCE 2020. One depth sample = one row; w
 Contender classes in `contender.py` returning `Prediction(mean, std)`. Saved models (`*.json`, `*.pkl`, `*.joblib`) go to `FH2026_WORK`, not git.
 
 ## What's here
-`contender.py` with `blue_gbt` (XGBoost or sklearn fallback, quantile sigma). Earlier PoC: `experiments/poc-ml/`.
+`contender.py` is the registration file: the runner finds the blue models through its `CONTENDERS` list. Each model has its
+own folder under `models/` (wrapper, `model.yaml`, `LICENSE.md`, `README.md`), following
+[docs/moving-models.md](../../docs/moving-models.md):
 
-Run it:
+| Registered name(s) | Folder | What it is |
+|---|---|---|
+| `blue_gbt` | `models/xgboost_quantile/` | the starter: XGBoost (or scikit-learn fallback) with quantile-based uncertainty |
+| `blue_ml_gbt`, `blue_ml_gbt_trend` | `models/xgboost_gbt/` | XGBoost, point predictions, without / with trend features |
+| `blue_ml_linear`, `blue_ml_linear_trend` | `models/linear_regression/` | multilinear regression |
+| `blue_ml_rf` | `models/random_forest/` | random forest (base features only: with trend a fit takes about 7 min) |
+
+The registered ML-study variants have no stratigraphy, because benchmark wells carry no formation labels; the variants with
+stratigraphy and the context features are in the study and the app (below). The code that the three ML-study models share
+(features, estimators, saved-model store, new-well prediction, the app) stays in `ml_study/`, so the saved models
+(pickles that record that module path) keep loading; the model folders only hold thin wrappers. Earlier PoC: `experiments/poc-ml/`.
+
+Run and check them:
 ```
+python -m benchmark.check_model blue_ml_gbt                  # the contract check (synthetic data, no FORCE files needed)
+python -m benchmark.run --model blue_ml_gbt --test rhob_missing
 python -m benchmark.run --dataset synthetic --contenders blue_gbt
 ```
 
