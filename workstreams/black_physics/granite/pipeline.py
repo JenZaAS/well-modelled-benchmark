@@ -6,6 +6,7 @@
     python -m workstreams.black_physics.granite calibrate   # 50 % / 90 % bands on D for every row
     python -m workstreams.black_physics.granite decide      # decision fits on C, recalibration on D, freeze manifest
     python -m workstreams.black_physics.granite final       # sealed test gaps: keyed predictions + decisions
+    <timestral-python> -m workstreams.black_physics.granite timestral   # both Timestral rows, same gaps (CPU)
     python -m workstreams.black_physics.granite report      # tables, paired bootstrap, figures (local)
     python -m workstreams.black_physics.granite all         # prepare .. decide (everything before the test)
 
@@ -603,6 +604,77 @@ def final() -> dict:
     return res
 
 
+TIMESTRAL_ROWS = ("red_timestral", "black_timestral_target_only")
+
+
+def timestral() -> dict:
+    """Both Timestral-5M input policies on the identical sealed test gaps (run in the Timestral environment, CPU).
+
+    Frozen weights, red's adapter unchanged: `red_timestral` gets the test's permitted covariates, the target-only
+    control gets empty covariate dictionaries. Writes `final/timestral.json` (keyed rows, timing, versions) and
+    `final/timestral_predictions.npz` (full precision, gap depths only), which `report` joins to the other rows.
+    Intervals are red's own P10/P90 (raw) and the Gaussian 50 %/90 % bands derived from them: not D-calibrated.
+    """
+    from importlib import metadata
+
+    from benchmark import test_def as td
+    from wmb.scoring import gaussian_interval
+    from workstreams.black_physics.models.timestral_target_only.wrapper import TimestralTargetOnly
+    from workstreams.red_foundation_models.models.timestral.contender import Timestral
+
+    tr, te = official()
+    tdef = td.load_def(C.TEST_NAME)
+    tasks = td.build_def_tasks(tdef, tr, te)
+    wells = {w.name: w for w in te}
+    for t in tasks:
+        idx = np.flatnonzero(t.predict_mask)
+        t.meta["gap_id"] = f"{t.well_id}|{idx[0]}:{idx[-1] + 1}"
+    keyed, rows, timing = {}, {}, {}
+    for cls in (Timestral, TimestralTargetOnly):
+        m = cls()
+        t0 = time.perf_counter()
+        m.fit(tr, C.TARGET)
+        fit_s = time.perf_counter() - t0
+        t0 = time.perf_counter()
+        ps = [m.predict_task(t) for t in tasks]
+        inf_s = time.perf_counter() - t0
+        d = {"p50": [np.asarray(p.mean, float) for p in ps],
+             "raw_lo": [np.asarray(p.quantiles[0.1], float) for p in ps],
+             "raw_hi": [np.asarray(p.quantiles[0.9], float) for p in ps]}
+        for lev, (lo_k, hi_k) in ((0.90, ("p05", "p95")), (0.50, ("p25", "p75"))):
+            lo, hi = zip(*[gaussian_interval(p.mean, p.std, lev) for p in ps])
+            d[lo_k], d[hi_k] = [np.asarray(x, float) for x in lo], [np.asarray(x, float) for x in hi]
+        rows[m.name] = gap_rows(tasks, d["p50"], [[] for _ in tasks], wells)
+        # logs the test offered across the gap (red uses them as covariates; the control ignores them)
+        cov = {}
+        for t in tasks:
+            for c in t.inputs.columns:
+                if c not in ("DEPTH", C.TARGET) and bool(t.inputs[c].to_numpy(float)[t.predict_mask].size) \
+                        and np.isfinite(t.inputs[c].to_numpy(float)[t.predict_mask]).any():
+                    cov[c] = cov.get(c, 0) + 1
+        timing[m.name] = {"fit_s": round(fit_s, 3), "inference_s": round(inf_s, 3), "device": "cpu",
+                          "covariate_gaps": dict(sorted(cov.items())) if m.name == "red_timestral" else {}}
+        for i, t in enumerate(tasks):
+            for k, v in d.items():
+                keyed[f"{m.name}|{t.meta['gap_id']}|{k}"] = v[i][t.predict_mask]
+        log(f"timestral {m.name}: {summary(rows[m.name])['pooled_MAE']:.5f} pooled MAE, "
+            f"{mean_well_mae(rows[m.name]):.5f} mean well MAE, fit {fit_s:.1f} s, inference {inf_s:.1f} s")
+        del m
+    np.savez_compressed(path("final", "timestral_predictions.npz"), **keyed)
+    vers = {}
+    for pkg in ("torch", "numpy", "timestral", "safetensors", "huggingface_hub"):
+        try:
+            vers[pkg] = metadata.version(pkg)
+        except metadata.PackageNotFoundError:
+            vers[pkg] = None
+    res = {"tasks": len(tasks), "rows": rows, "timing": timing, "versions": vers, "git": git_head(),
+           "weights": "mistralai/Timestral-5M@bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f",
+           "code": "mistralai/timestral@a534bdbd244d64f3d9d743f46c7bf6fc330ed4ff", "frozen": True,
+           "intervals": "red P10/P90 raw; p05/p95 and p25/p75 Gaussian from sigma = (P90 - P10) / 2.563, not calibrated"}
+    save_json(path("final", "timestral.json"), res)
+    return res
+
+
 def _piece_arr(task, pieces, attr) -> np.ndarray | None:
     a = np.full(len(task.depth), np.nan)
     any_ = False
@@ -618,8 +690,8 @@ def main(argv=None) -> int:
     import argparse
 
     ap = argparse.ArgumentParser(description="Granite 50 m density-gap experiment")
-    ap.add_argument("stage", choices=["prepare", "train", "select", "calibrate", "decide", "freeze", "final", "report",
-                                      "all", "fetch"])
+    ap.add_argument("stage", choices=["prepare", "train", "select", "calibrate", "decide", "freeze", "final",
+                                      "timestral", "report", "all", "fetch"])
     ap.add_argument("--arm", choices=["ttm", "tspulse"], help="train only this arm")
     a = ap.parse_args(argv)
     if a.stage == "fetch":
@@ -640,6 +712,8 @@ def main(argv=None) -> int:
         freeze()
     if a.stage == "final":
         final()
+    if a.stage == "timestral":
+        timestral()
     if a.stage == "report":
         from workstreams.black_physics.granite import report
         report.build()

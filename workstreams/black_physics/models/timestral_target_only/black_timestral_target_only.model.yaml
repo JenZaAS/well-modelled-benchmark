@@ -6,3 +6,9 @@ targets:
   RHOB:
     required: []
     optional: []
+  DTC:
+    required: []
+    optional: []
+  DTS:
+    required: []
+    optional: []

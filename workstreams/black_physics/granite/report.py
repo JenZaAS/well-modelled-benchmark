@@ -28,15 +28,14 @@ REPO = HERE.parents[2]
 GRANITE = [C.VARIANT_IDS[k] for k in (("ttm", False), ("ttm", True), ("tspulse", False), ("tspulse", True))]
 OTHERS = ["black_linear_gap", "black_gardner_fixed", "black_gardner_flank_resid"]
 ROWS = GRANITE + OTHERS
-UNAVAILABLE = {
-    "red_timestral (with covariates)": "not run: no authorised Timestral-5M weights/environment on this laptop "
-                                       "(Modified MIT revenue clause; needs organisation confirmation)",
-    "black_timestral_target_only": "wrapper committed (WMB_BLACK_TIMESTRAL=1), not run for the same reason",
-}
+TIMESTRAL = ["red_timestral", "black_timestral_target_only"]   # scored by the `timestral` stage (own environment)
+MISSING_WHY = {"red_timestral": "not scored yet: run the `timestral` stage in the Timestral environment",
+               "black_timestral_target_only": "not scored yet: run the `timestral` stage in the Timestral environment"}
 LABEL = {"black_ttm_r3_frozen": "TTM-R3 frozen", "black_ttm_r3_tuned": "TTM-R3 tuned",
          "black_tspulse_frozen": "TSPulse frozen", "black_tspulse_tuned": "TSPulse tuned",
          "black_linear_gap": "Linear interpolation", "black_gardner_fixed": "Gardner (fixed)",
-         "black_gardner_flank_resid": "Gardner + flank residual"}
+         "black_gardner_flank_resid": "Gardner + flank residual",
+         "red_timestral": "Timestral-5M + other logs", "black_timestral_target_only": "Timestral-5M target-only"}
 METHOD_LABEL = {"prevalence": "Prevalence", "width_only": "Width-only logistic", "numeric": "Numeric logistic",
                 "numeric_gardner": "Numeric + Gardner", "numeric_cal": "Numeric (recal. D)",
                 "numeric_gardner_cal": "Numeric + Gardner (recal. D)", "decima_raw": "Decima-small raw",
@@ -50,7 +49,7 @@ BLUE_LIGHT = "#b7d3f6"
 GOOD, WARN, CRIT = "#0ca30c", "#fab219", "#d03b3b"
 ROW_COLOR = {"black_ttm_r3_frozen": VIOLET, "black_ttm_r3_tuned": BLUE, "black_tspulse_frozen": MAGENTA,
              "black_tspulse_tuned": AQUA, "black_linear_gap": MUTED, "black_gardner_fixed": ORANGE,
-             "black_gardner_flank_resid": YELLOW}
+             "black_gardner_flank_resid": YELLOW, "red_timestral": RED, "black_timestral_target_only": "#f2a3a2"}
 
 
 # ------------------------------------------------------------------------------------------------ loading
@@ -91,10 +90,18 @@ class Inputs:
         self.dev_B = {n: _load(W / "dev" / f"B_{n}.json") for n in GRANITE if (W / "dev" / f"B_{n}.json").is_file()}
         self.dev_D = {n: _load(W / "dev" / f"D_{n}.json") for n in GRANITE if (W / "dev" / f"D_{n}.json").is_file()}
         self.dec_rows = {g: _load(W / "decision" / f"rows_{g}.json") for g in ("C", "D")}
-        self.station = {n: station_scores(n) for n in ROWS}
-        self.rows = self.final["rows"]
+        self.rows = dict(self.final["rows"])
+        self.timestral = None
+        if (W / "final" / "timestral.json").is_file():   # joined only if scored on the same gaps (checked below)
+            self.timestral = _load(W / "final" / "timestral.json")
+            self.rows.update(self.timestral["rows"])
+            self.npz.update(dict(np.load(W / "final" / "timestral_predictions.npz")))
+            self.final["timing"].update(self.timestral["timing"])
+        self.names = ROWS + [n for n in TIMESTRAL if n in self.rows]
+        self.unavailable = {n: MISSING_WHY[n] for n in TIMESTRAL if n not in self.rows}
+        self.station = {n: station_scores(n) for n in self.names}
         self.keys = [r["key"] for r in self.rows[GRANITE[0]]]
-        for n in ROWS:   # every compared row must be scored on the identical gap set
+        for n in self.names:   # every compared row must be scored on the identical gap set
             if [r["key"] for r in self.rows[n]] != self.keys:
                 raise ValueError(f"{n}: gap ids differ from {GRANITE[0]}")
         if sorted(s["gap_id"] for s in self.sidecar) != sorted(self.keys):
@@ -174,7 +181,7 @@ def representative(I: Inputs, which: str = "median") -> str:
 def row_table(I: Inputs) -> list[dict]:
     lin = per_well(I.rows["black_linear_gap"])
     out = []
-    for name in ROWS:
+    for name in I.names:
         rows = I.rows[name]
         pw = per_well(rows)
         n = sum(r["n_pred"] for r in rows)
@@ -183,6 +190,7 @@ def row_table(I: Inputs) -> list[dict]:
         cal = I.calibration.get(name, {})
         b = I.selection["rows"].get(name, {}).get("summary", {}) if name in GRANITE else {}
         cov90, cov50 = coverage(I, name, "p05", "p95"), coverage(I, name, "p25", "p75")
+        raw80 = coverage(I, name, "raw_lo", "raw_hi")   # model's own P10-P90 (TTM, Timestral), uncalibrated
         t = I.final["timing"].get(name, {})
         status: dict = {}
         for r in rows:
@@ -202,11 +210,13 @@ def row_table(I: Inputs) -> list[dict]:
             "fill_fraction": n / max(sum(r["n_measured"] for r in rows), 1),
             "status": status,
             "gaps_passing_tolerance": sum(1 for r in rows if r["label"] == 1),
-            "cover90": cov90, "cover50": cov50,
+            "cover90": cov90, "cover50": cov50, "raw80_test": raw80,
+            "bands": ("nominal Gaussian from P10/P90" if name in TIMESTRAL else
+                      "D-calibrated" if name in GRANITE else None),
             "B_mean_well_MAE": b.get("mean_well_MAE"), "D_mean_well_MAE": cal.get("summary", {}).get("mean_well_MAE"),
             "k50": cal.get("calibrator", {}).get("k50"), "k90": cal.get("calibrator", {}).get("k90"),
             "raw80_D": cal.get("raw_80"),
-            "fit_s": t.get("fit_s"), "warm_inference_s_20_gaps": t.get("warm_inference_s"),
+            "fit_s": t.get("fit_s"), "warm_inference_s_20_gaps": t.get("warm_inference_s", t.get("inference_s")),
             "station_model_hash": st.get("model_hash"), "station_git": st.get("git_commit"),
         })
     return out
@@ -217,6 +227,14 @@ def bootstrap_table(I: Inputs) -> list[dict]:
     pairs = [("black_ttm_r3_tuned", "black_ttm_r3_frozen"), ("black_tspulse_tuned", "black_tspulse_frozen"),
              *[(n, "black_linear_gap") for n in GRANITE + ["black_gardner_flank_resid"]],
              (I.selected, "black_gardner_flank_resid"), ("black_ttm_r3_tuned", "black_tspulse_tuned")]
+    if all(n in I.rows for n in TIMESTRAL):
+        pairs += [("red_timestral", "black_timestral_target_only"),       # what the other logs are worth
+                  *[(n, "black_linear_gap") for n in TIMESTRAL],
+                  ("black_ttm_r3_tuned", "black_timestral_target_only"),  # target-only vs target-only
+                  ("black_tspulse_tuned", "black_timestral_target_only"),
+                  ("black_ttm_r3_tuned", "red_timestral"), (I.selected, "red_timestral"),
+                  ("black_gardner_flank_resid", "red_timestral")]
+        pairs = list(dict.fromkeys(pairs))
     out = []
     for i, (a, b) in enumerate(pairs):
         res = paired_bootstrap(per_well(I.rows[a]), per_well(I.rows[b]), cfg.bootstrap, cfg.seed + i)
@@ -265,6 +283,9 @@ def hashes(I: Inputs) -> dict:
             "predictions_npz_sha256": _sha(W / "final" / "predictions.npz"),
             "decision_sidecar_sha256": _sha(W / "final" / "decision_sidecar.json"),
             "final_json_sha256": _sha(W / "final" / "final.json"),
+            "timestral_json_sha256": _sha(W / "final" / "timestral.json"),
+            "timestral_predictions_npz_sha256": _sha(W / "final" / "timestral_predictions.npz"),
+            "timestral": I.timestral and {k: I.timestral.get(k) for k in ("weights", "code", "versions", "git")},
             "manifest_sha256": _sha(W / "manifest.json"),
             "test_def_sha256": _sha(REPO / "benchmark" / "test_defs" / f"{C.TEST_NAME}.yaml"),
             "manifest_frozen_at": I.manifest["frozen_at"], "git_at_freeze": I.manifest.get("git"),
@@ -289,6 +310,33 @@ def thirty_seconds(I: Inputs, table: list[dict], boot: list[dict], dec: dict, me
     dz = dec["test"].get("decima_raw", {"accepted": 0, "brier": float("nan")})
     zs = [s["p_pass"].get("decima_raw", np.nan) for s in I.sidecar]
     pz = (float(np.nanmin(zs)), float(np.nanmax(zs))) if np.isfinite(zs).any() else (np.nan, np.nan)
+    tail = (f"For each gap a small calibrated rule ({METHOD_LABEL[method]}) "
+            f"says whether the {LABEL[I.selected]} fill is within 0.05 g/cm³: at p ≥ 0.80 it accepted {t['accepted']} of "
+            f"20 gaps with {t['false_accepts']} false accepts and sent {t['review']} to review; Brier {t['brier']:.3f} vs "
+            f"{dec['test']['prevalence']['brier']:.3f} for the base rate. A small verifier model (Decima-small) "
+            f"reading the same facts as text accepted {dz['accepted']} gaps (p_pass {pz[0]:.2f}–{pz[1]:.2f}, Brier "
+            f"{dz['brier']:.3f}): it barely separates good from bad gaps.")
+    if all(n in r for n in TIMESTRAL):
+        rt, to = r["red_timestral"], r["black_timestral_target_only"]
+        b = {(x["a"], x["b"]): x for x in boot if x["set"] == "test"}
+        cv = b[("red_timestral", "black_timestral_target_only")]
+        vs = b[("black_ttm_r3_tuned", "black_timestral_target_only")]
+        ci = lambda x: f"95 % CI {x['ci95'][0]:+.4f} to {x['ci95'][1]:+.4f}"   # noqa: E731
+        return (
+            f"We hid one real 50 m stretch of bulk density in each of the 20 FORCE test wells. The best fill came from "
+            f"Mistral's Timestral-5M, frozen, reading the other logs across the gap: {rt['test_mean_well_MAE']:.3f} "
+            f"g/cm³ mean error, {pct(rt['test_mean_well_MAE'], lin['test_mean_well_MAE']):.0f} % better than a straight "
+            f"line ({lin['test_mean_well_MAE']:.3f}), better in {rt['wells_improved_vs_linear']} of 20 wells, "
+            f"{rt['gaps_passing_tolerance']} of 20 gaps within 0.05. From the density log alone the models tie: "
+            f"Timestral {to['test_mean_well_MAE']:.3f}, IBM TTM-R3 {r['black_ttm_r3_tuned']['test_mean_well_MAE']:.3f}, "
+            f"TSPulse {r['black_tspulse_tuned']['test_mean_well_MAE']:.3f} (TTM − Timestral {vs['mean_diff']:+.4f}, "
+            f"{ci(vs)}). So the gain is the other logs ({cv['mean_diff']:+.4f}, {ci(cv)}), not the model. Laptop "
+            f"fine-tuning of the IBM heads ({minutes}) changed TTM error by {ttm['mean_diff']:+.4f} ({ci(ttm)}) and "
+            f"TSPulse by {tsp['mean_diff']:+.4f}. Gardner from sonic alone is worse than the line "
+            f"({gf['test_mean_well_MAE']:.3f}); corrected by the flank residual it reaches "
+            f"{gfr['test_mean_well_MAE']:.3f}. Timestral's nominal 90 % band covers only "
+            f"{100 * rt['cover90']['well_weighted']:.0f} % of the hidden samples; the D-calibrated Granite bands cover "
+            f"{100 * sel['cover90']['well_weighted']:.0f} %. " + tail)
     return (
         f"We hid one real 50 m stretch of bulk density in each of the 20 FORCE test wells and asked small IBM "
         f"Granite time-series models to fill it from the density log alone. The row picked in advance on held-out "
@@ -300,12 +348,7 @@ def thirty_seconds(I: Inputs, table: list[dict], boot: list[dict], dec: dict, me
         f"({best['test_mean_well_MAE']:.3f}). Head-only fine-tuning ({minutes}) moved little: TTM "
         f"{ttm['mean_diff']:+.4f} (95 % CI {ttm['ci95'][0]:+.4f} to {ttm['ci95'][1]:+.4f}), TSPulse "
         f"{tsp['mean_diff']:+.4f} g/cm³. Gardner corrected by the flank residual, a two-line physics baseline, "
-        f"reaches {gfr['test_mean_well_MAE']:.3f}. For each gap a small calibrated rule ({METHOD_LABEL[method]}) "
-        f"says whether the fill is within 0.05 g/cm³: at p ≥ 0.80 it accepted {t['accepted']} of 20 gaps with "
-        f"{t['false_accepts']} false accepts and sent {t['review']} to review; Brier {t['brier']:.3f} vs "
-        f"{dec['test']['prevalence']['brier']:.3f} for the base rate. A small verifier model (Decima-small) "
-        f"reading the same facts as text accepted {dz['accepted']} gaps (p_pass {pz[0]:.2f}–{pz[1]:.2f}, Brier "
-        f"{dz['brier']:.3f}): it barely separates good from bad gaps.")
+        f"reaches {gfr['test_mean_well_MAE']:.3f}. " + tail)
 
 
 # ------------------------------------------------------------------------------------------------ figures
@@ -357,6 +400,8 @@ def _gap_panel(ax, I: Inputs, key: str, name: str, *, compact=False, show=("gard
         ax.plot(I.arr("black_gardner_flank_resid", key, "p50"), gd, color=YELLOW, lw=1.4, label="Gardner + flank residual")
     if "ttm" in show and name != "black_ttm_r3_tuned":
         ax.plot(I.arr("black_ttm_r3_tuned", key, "p50"), gd, color=VIOLET, lw=1.2, label="TTM-R3 tuned")
+    if "timestral" in show and I.arr("red_timestral", key, "p50") is not None:
+        ax.plot(I.arr("red_timestral", key, "p50"), gd, color=RED, lw=1.2, label=LABEL["red_timestral"])
     ax.plot(p50, gd, color=BLUE, lw=2.0, label=LABEL[name])
     ax.set_ylim(d.max(), d.min())
     ax.grid(axis="y", visible=False)
@@ -414,7 +459,7 @@ def fig_gallery(I: Inputs, out: Path, method: str) -> Path:  # noqa: C901
     fig, axes = plt.subplots(4, 5, figsize=(14, 15), sharex=False)
     order = sorted(I.sidecar, key=lambda s: s["mae"])
     for ax, s in zip(axes.flat, order):
-        _gap_panel(ax, I, s["gap_id"], I.selected, compact=True, show=("linear", "ttm"), margin_m=20)
+        _gap_panel(ax, I, s["gap_id"], I.selected, compact=True, show=("linear", "ttm", "timestral"), margin_m=20)
         acc = s["p_pass"][method] >= C.CONFIG.accept_threshold
         ax.set_title(f"{s['well']}  MAE {s['mae']:.3f}\np_pass {s['p_pass'][method]:.2f} "
                      f"{'✓ accept' if acc else '· review'}", fontsize=8, loc="left",
@@ -457,15 +502,15 @@ def fig_leaderboard(I: Inputs, table: list[dict], boot: list[dict], out: Path) -
     return p
 
 
-def fig_paired(I: Inputs, boot: list[dict], out: Path) -> Path:
+def fig_paired(I: Inputs, boot: list[dict], out: Path, pairs=None, fname: str = "paired_deltas.png") -> Path:
     from matplotlib.ticker import MaxNLocator
 
     plt = _mpl()
-    fig, axes = plt.subplots(1, 3, figsize=(12, 4.4), sharey=True)
+    pairs = pairs or [("black_ttm_r3_tuned", "black_ttm_r3_frozen", "TTM-R3: tuned − frozen"),
+                      ("black_tspulse_tuned", "black_tspulse_frozen", "TSPulse: tuned − frozen"),
+                      (I.selected, "black_linear_gap", f"{LABEL[I.selected]} − straight line")]
+    fig, axes = plt.subplots(1, len(pairs), figsize=(4 * len(pairs), 4.4), sharey=True)
     lin = per_well(I.rows["black_linear_gap"])
-    pairs = [("black_ttm_r3_tuned", "black_ttm_r3_frozen", "TTM-R3: tuned − frozen"),
-             ("black_tspulse_tuned", "black_tspulse_frozen", "TSPulse: tuned − frozen"),
-             (I.selected, "black_linear_gap", f"{LABEL[I.selected]} − straight line")]
     wells = sorted(lin, key=lambda w: lin[w])
     for ax, (a, b, title) in zip(axes, pairs):
         pa, pb = per_well(I.rows[a]), per_well(I.rows[b])
@@ -482,7 +527,7 @@ def fig_paired(I: Inputs, boot: list[dict], out: Path) -> Path:
     axes[0].set_yticks(range(len(wells)), wells, fontsize=7)
     axes[0].set_ylabel("Test well (sorted by straight-line error)")
     fig.tight_layout()
-    p = out / "paired_deltas.png"
+    p = out / fname
     fig.savefig(p, dpi=160)
     plt.close(fig)
     return p
@@ -563,7 +608,9 @@ def fig_coverage(I: Inputs, table: list[dict], out: Path) -> Path:
     ax.set_yticks(range(len(rows)), [r["label"] for r in rows])
     ax.set_xlim(0.3, 1.0)
     ax.set_xlabel("Observed coverage on test (well-weighted); dashed = nominal")
-    ax.set_title("Interval calibration (bands fitted on D wells)", loc="left")
+    ax.set_title("Interval calibration (Granite bands fitted on D wells; Timestral bands nominal)"
+                 if any(r["row"] in TIMESTRAL for r in rows) else "Interval calibration (bands fitted on D wells)",
+                 loc="left")
     ax.legend(loc="lower left", fontsize=8)
     ax.grid(axis="y", visible=False)
     fig.tight_layout()
@@ -640,11 +687,29 @@ def md_tables(I, table, boot, dec, res, method, aggregate_only: bool) -> str:
                  f"{_f(r['test_pooled_MAE'])}{st} | {_f(r['test_pooled_RMSE'])} | {_f(r['median_well_change_vs_linear'])} | "
                  f"{_f(r['wells_improved_vs_linear'])} | {sup} | {r['gaps_passing_tolerance']}/20 | {c90} | {c50} | "
                  f"{_f(r['B_mean_well_MAE'])} |")
-    for k, why in UNAVAILABLE.items():
-        L.append(f"| {k} | unavailable | | | | | | | | | {why} |")
+    for k, why in I.unavailable.items():
+        L.append(f"| {LABEL[k]} | unavailable | | | | | | | | | {why} |")
     L.append("")
     L.append("★ selected before the test on B (lowest B mean well-level MAE). Test wells hold one gap each, so per-well "
-             "MAE = gap MAE. Coverage is well-weighted over measured gap samples; bands are D-calibrated.")
+             "MAE = gap MAE. Coverage is well-weighted over measured gap samples; Granite bands are D-calibrated, "
+             "Timestral bands are nominal (Gaussian from its own P10/P90, as in red's adapter).")
+    if I.timestral:
+        L.append("")
+        L.append("Timestral-5M rows: frozen weights `" + I.timestral["weights"] + "`, red's adapter unchanged (256-sample "
+                 "flanks, 32-step rollout, inverse-distance blend), CPU. *+ other logs* gets every log the test offers "
+                 "across the gap as covariates; *target-only* gets empty covariate dictionaries.")
+        L.append("")
+        L.append("| Row | Fit s | Inference s (20 gaps, CPU) | Raw P10–P90 coverage on test (well-weighted, width) | "
+                 "Gaps with each covariate |")
+        L.append("|---|---|---|---|---|")
+        for r in table:
+            if r["row"] in TIMESTRAL:
+                t = I.final["timing"][r["row"]]
+                raw = r["raw80_test"]
+                cg = ", ".join(f"{k} {v}" for k, v in t.get("covariate_gaps", {}).items()) or "none (control)"
+                L.append(f"| {r['label']} | {_f(t.get('fit_s'), 1)} | {_f(t.get('inference_s'), 1)} | "
+                         f"{'–' if not raw else format(raw['well_weighted'], '.2f') + ' (' + format(raw['mean_width'], '.3f') + ')'}"
+                         f" | {cg} |")
     L.append("")
     L.append("**Paired bootstrap** (mean of per-well MAE differences a − b; 2,000 resamples of wells; negative = a better)")
     L.append("")
@@ -710,22 +775,30 @@ def build() -> dict:
     figures += [fig_gallery(I, figs, method), fig_leaderboard(I, table, boot, figs), fig_paired(I, boot, figs),
                 fig_training(I, figs), fig_decisions(I, dec, figs), fig_coverage(I, table, figs),
                 fig_coefficients(I, figs), fig_extension(I, figs)]
+    if all(n in I.rows for n in TIMESTRAL):
+        figures.append(fig_paired(I, boot, figs, [
+            ("red_timestral", "black_timestral_target_only", "Timestral: + other logs − target-only"),
+            ("black_ttm_r3_tuned", "black_timestral_target_only", "Density only: TTM-R3 tuned − Timestral"),
+            ("black_ttm_r3_tuned", "red_timestral", "TTM-R3 tuned − Timestral + other logs")], "paired_timestral.png"))
     replay = {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"), "test": C.TEST_NAME, "selected": I.selected,
               "headline_decision": method, "rows": table, "bootstrap": boot, "decisions": dec, "resources": res,
-              "unavailable": UNAVAILABLE, "hashes": H, "thirty_seconds": text,
+              "unavailable": I.unavailable, "hashes": H, "thirty_seconds": text,
               "replay": ["python -m workstreams.black_physics.granite all",
                          "WMB_BLACK_GRANITE=1 python -m benchmark.run --model black_ttm_r3_frozen,black_ttm_r3_tuned,"
                          "black_tspulse_frozen,black_tspulse_tuned,black_linear_gap,black_gardner_flank_resid,"
                          "black_gardner_fixed --test rhob_gap50 --predictions npz --rerun",
                          "python -m workstreams.black_physics.granite final",
+                         "<timestral-python>: WMB_RED_MODELS=timestral WMB_BLACK_TIMESTRAL=1 python -m benchmark.run "
+                         "--model red_timestral,black_timestral_target_only --test rhob_gap50 --predictions npz --rerun",
+                         "<timestral-python>: python -m workstreams.black_physics.granite timestral",
                          "python -m workstreams.black_physics.granite report"]}
     (out / "results_table.json").write_text(json.dumps(replay, indent=1, default=float), encoding="utf-8")
     tables = md_tables(I, table, boot, dec, res, method, aggregate_only=False)
-    gaps = ["| Gap | Status | " + " | ".join(LABEL[n] for n in ROWS) + f" | p_pass ({method}) | Decision |",
-            "|---|---|" + "---|" * (len(ROWS) + 2)]
+    gaps = ["| Gap | Status | " + " | ".join(LABEL[n] for n in I.names) + f" | p_pass ({method}) | Decision |",
+            "|---|---|" + "---|" * (len(I.names) + 2)]
     thr = C.CONFIG.accept_threshold
     for s in sorted(I.sidecar, key=lambda s: s["gap_id"]):
-        maes = [next(r["mae"] for r in I.rows[n] if r["key"] == s["gap_id"]) for n in ROWS]
+        maes = [next(r["mae"] for r in I.rows[n] if r["key"] == s["gap_id"]) for n in I.names]
         gaps.append(f"| {s['well']} {s['start_md']:.1f}–{s['end_md']:.1f} m | {s['status']} | "
                     + " | ".join(f"{m:.4f}" for m in maes)
                     + f" | {s['p_pass'][method]:.2f} | {'accept' if s['p_pass'][method] >= thr else 'review'} |")

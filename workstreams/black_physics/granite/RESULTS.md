@@ -4,7 +4,7 @@ Written by `python -m workstreams.black_physics.granite report` from the frozen 
 
 ## 30-second result
 
-We hid one real 50 m stretch of bulk density in each of the 20 FORCE test wells and asked small IBM Granite time-series models to fill it from the density log alone. The row picked in advance on held-out training wells (TSPulse tuned) misses by 0.049 g/cm³ on average, 19 % better than a straight line (0.061) and 50 % better than Gardner from sonic (0.100); it beats the line in 15 of 20 wells. The best Granite row on test was TTM-R3 tuned (0.048). Head-only fine-tuning (early-stopped after 75–125 updates, 5 s or less on a laptop GPU) moved little: TTM -0.0006 (95 % CI -0.0017 to +0.0004), TSPulse -0.0001 g/cm³. Gardner corrected by the flank residual, a two-line physics baseline, reaches 0.056. For each gap a small calibrated rule (Numeric logistic) says whether the fill is within 0.05 g/cm³: at p ≥ 0.80 it accepted 7 of 20 gaps with 0 false accepts and sent 13 to review; Brier 0.158 vs 0.261 for the base rate. A small verifier model (Decima-small) reading the same facts as text accepted 0 gaps (p_pass 0.47–0.53, Brier 0.239): it barely separates good from bad gaps.
+We hid one real 50 m stretch of bulk density in each of the 20 FORCE test wells. The best fill came from Mistral's Timestral-5M, frozen, reading the other logs across the gap: 0.033 g/cm³ mean error, 45 % better than a straight line (0.061), better in 18 of 20 wells, 16 of 20 gaps within 0.05. From the density log alone the models tie: Timestral 0.047, IBM TTM-R3 0.048, TSPulse 0.049 (TTM − Timestral +0.0007, 95 % CI -0.0023 to +0.0045). So the gain is the other logs (-0.0135, 95 % CI -0.0221 to -0.0062), not the model. Laptop fine-tuning of the IBM heads (early-stopped after 75–125 updates, 5 s or less on a laptop GPU) changed TTM error by -0.0006 (95 % CI -0.0017 to +0.0004) and TSPulse by -0.0001. Gardner from sonic alone is worse than the line (0.100); corrected by the flank residual it reaches 0.056. Timestral's nominal 90 % band covers only 46 % of the hidden samples; the D-calibrated Granite bands cover 96 %. For each gap a small calibrated rule (Numeric logistic) says whether the TSPulse tuned fill is within 0.05 g/cm³: at p ≥ 0.80 it accepted 7 of 20 gaps with 0 false accepts and sent 13 to review; Brier 0.158 vs 0.261 for the base rate. A small verifier model (Decima-small) reading the same facts as text accepted 0 gaps (p_pass 0.47–0.53, Brier 0.239): it barely separates good from bad gaps.
 
 ## Tables
 
@@ -17,10 +17,17 @@ We hid one real 50 m stretch of bulk density in each of the 20 FORCE test wells 
 | Linear interpolation | 0.0611 | 0.0611 (0.0611) | 0.0913 | 0.0000 | – | 20/20 | 8/20 | – | – | – |
 | Gardner (fixed) | 0.0995 | 0.0995 (0.0995) | 0.1170 | 0.0207 | 3 | 20/20 | 1/20 | 0.99 (0.507) | 0.51 | – |
 | Gardner + flank residual | 0.0563 | 0.0563 (0.0563) | 0.0861 | -0.0042 | 15 | 20/20 | 10/20 | – | – | – |
-| red_timestral (with covariates) | unavailable | | | | | | | | | not run: no authorised Timestral-5M weights/environment on this laptop (Modified MIT revenue clause; needs organisation confirmation) |
-| black_timestral_target_only | unavailable | | | | | | | | | wrapper committed (WMB_BLACK_TIMESTRAL=1), not run for the same reason |
+| Timestral-5M + other logs | 0.0333 | 0.0333 (0.0333) | 0.0541 | -0.0195 | 18 | 20/20 | 16/20 | 0.46 (0.055) | 0.24 | – |
+| Timestral-5M target-only | 0.0469 | 0.0469 (0.0469) | 0.0721 | -0.0029 | 16 | 20/20 | 14/20 | 0.24 (0.039) | 0.14 | – |
 
-★ selected before the test on B (lowest B mean well-level MAE). Test wells hold one gap each, so per-well MAE = gap MAE. Coverage is well-weighted over measured gap samples; bands are D-calibrated.
+★ selected before the test on B (lowest B mean well-level MAE). Test wells hold one gap each, so per-well MAE = gap MAE. Coverage is well-weighted over measured gap samples; Granite bands are D-calibrated, Timestral bands are nominal (Gaussian from its own P10/P90, as in red's adapter).
+
+Timestral-5M rows: frozen weights `mistralai/Timestral-5M@bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f`, red's adapter unchanged (256-sample flanks, 32-step rollout, inverse-distance blend), CPU. *+ other logs* gets every log the test offers across the gap as covariates; *target-only* gets empty covariate dictionaries.
+
+| Row | Fit s | Inference s (20 gaps, CPU) | Raw P10–P90 coverage on test (well-weighted, width) | Gaps with each covariate |
+|---|---|---|---|---|
+| Timestral-5M + other logs | 2.0 | 66.9 | 0.39 (0.043) | CALI 20, DTC 20, DTS 13, GR 20, NPHI 17, PEF 19, RDEP 20, RMED 20 |
+| Timestral-5M target-only | 0.1 | 30.8 | 0.21 (0.030) | none (control) |
 
 **Paired bootstrap** (mean of per-well MAE differences a − b; 2,000 resamples of wells; negative = a better)
 
@@ -35,6 +42,14 @@ We hid one real 50 m stretch of bulk density in each of the 20 FORCE test wells 
 | test | Gardner + flank residual | Linear interpolation | -0.0048 | [-0.0173, +0.0084] | 0.77 | 15 / 5 |
 | test | TSPulse tuned | Gardner + flank residual | -0.0069 | [-0.0210, +0.0055] | 0.84 | 12 / 8 |
 | test | TTM-R3 tuned | TSPulse tuned | -0.0018 | [-0.0071, +0.0032] | 0.77 | 11 / 9 |
+| test | Timestral-5M + other logs | Timestral-5M target-only | -0.0135 | [-0.0221, -0.0062] | 1.00 | 16 / 4 |
+| test | Timestral-5M + other logs | Linear interpolation | -0.0278 | [-0.0432, -0.0148] | 1.00 | 18 / 2 |
+| test | Timestral-5M target-only | Linear interpolation | -0.0143 | [-0.0292, -0.0029] | 0.99 | 16 / 4 |
+| test | TTM-R3 tuned | Timestral-5M target-only | +0.0007 | [-0.0023, +0.0045] | 0.36 | 9 / 11 |
+| test | TSPulse tuned | Timestral-5M target-only | +0.0025 | [-0.0018, +0.0071] | 0.12 | 7 / 13 |
+| test | TTM-R3 tuned | Timestral-5M + other logs | +0.0142 | [+0.0063, +0.0231] | 0.00 | 4 / 16 |
+| test | TSPulse tuned | Timestral-5M + other logs | +0.0160 | [+0.0077, +0.0257] | 0.00 | 3 / 17 |
+| test | Gardner + flank residual | Timestral-5M + other logs | +0.0230 | [+0.0105, +0.0399] | 0.00 | 4 / 16 |
 | B (selection wells) | TTM-R3 tuned | TTM-R3 frozen | +0.0006 | [-0.0001, +0.0014] | 0.07 | 6 / 6 |
 | B (selection wells) | TSPulse tuned | TSPulse frozen | -0.0001 | [-0.0002, +0.0001] | 0.79 | 8 / 4 |
 

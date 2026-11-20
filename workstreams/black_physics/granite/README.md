@@ -1,21 +1,28 @@
 # Granite 50 m density-gap experiment (handoff)
 
 **Question.** One real 50 m stretch of bulk density (RHOB) is hidden in a well. Two small IBM Granite time-series
-models see only the density measured above and below the gap. How well do they fill it, and can a cheap rule
-tell, gap by gap, whether to trust the fill?
+models see only the density measured above and below the gap; Mistral's Timestral-5M runs with and without the
+other logs. How well do they fill it, and can a cheap rule tell, gap by gap, whether to trust the fill?
 
 **Status (2026-11-20).**
-- All stages ran on a laptop (RTX GPU, Windows): prepare, train, select, calibrate, decide, freeze, the station
-  runs, final and report.
+- All stages ran on a laptop (Quadro T1000 4 GB, Windows): prepare, train, select, calibrate, decide, freeze, the
+  station runs, final, timestral and report.
 - Aggregate results are in [RESULTS.md](RESULTS.md).
 - Per-gap rows, figures and checkpoints are local under `<work_root>/black_granite/` and are not committed.
-- Timestral has no result (see *Not run*).
 
 ## Result in one paragraph
 
 On the station test `rhob_gap50` (one hidden 50 m gap in each of the 20 FORCE 2020 test wells):
 
-- **Selected row.** TSPulse tuned was chosen in advance on the B wells. Its mean per-well MAE is 0.049 g/cm³.
+- **Best row: Timestral-5M + other logs** (frozen, red's adapter): mean per-well MAE 0.033 g/cm³, against 0.061
+  for the straight line. It beats the line in 18 of 20 wells, and 16 of 20 gaps are within 0.05.
+  - It also beats TTM-R3 tuned in 16 of 20 wells: Δ +0.014 [+0.006, +0.023] in Timestral's favour.
+- **The other logs are what make the difference.** Timestral target-only gets 0.047, a tie with the density-only
+  Granite rows: TTM tuned − Timestral target-only is Δ +0.0007 [−0.0023, +0.0045]. Adding the other logs is worth
+  Δ −0.0135 [−0.0221, −0.0062].
+- **Timestral's intervals are overconfident.** Its nominal 90 % band covers 46 % of hidden samples. The
+  D-calibrated Granite bands cover 96 %, but are 5–7× wider (0.30–0.36 against 0.055 g/cm³).
+- **Selected Granite row.** TSPulse tuned was chosen in advance on the B wells. Its mean per-well MAE is 0.049 g/cm³.
   - The straight line gets 0.061 and fixed Gardner from sonic gets 0.100.
   - It beats the line in 15 of 20 wells. The paired bootstrap Δ is −0.012 [−0.027, −0.000].
 - **Other Granite rows.** TTM-R3 tuned did best on test at 0.0475. Its difference from TSPulse tuned is within
@@ -23,7 +30,8 @@ On the station test `rhob_gap50` (one hidden 50 m gap in each of the 20 FORCE 20
 - **Fine-tuning.** Head-only fine-tuning stopped early (75–125 updates, ≤ 5 s) and changed little: TTM
   Δ −0.0006 [−0.0017, +0.0004]; TSPulse Δ −0.0001.
 - **Two-line physics baseline.** Gardner + flank residual gets 0.056.
-- **Decision rule.** A numeric logistic rule decides from gap features whether the fill is within 0.05 g/cm³:
+- **Decision rule.** The decision layer sits on the selected Granite row, as the brief specifies, not on
+  Timestral. A numeric logistic rule decides from gap features whether the fill is within 0.05 g/cm³:
   - At p ≥ 0.80 it accepted 7 of 20 test gaps with 0 false accepts and sent 13 to review.
   - Its Brier score is 0.158, against 0.261 for the base rate.
 - **Decima-small.** Reading the same facts as text, it gave p_pass of 0.47–0.53 for every gap and accepted none.
@@ -39,6 +47,9 @@ WMB_BLACK_GRANITE=1 python -m benchmark.check_test rhob_gap50
 WMB_BLACK_GRANITE=1 python -m benchmark.check_model black_ttm_r3_tuned        # likewise for the other five IDs
 WMB_BLACK_GRANITE=1 python -m benchmark.run --model black_ttm_r3_frozen,black_ttm_r3_tuned,black_tspulse_frozen,black_tspulse_tuned,black_linear_gap,black_gardner_flank_resid,black_gardner_fixed --test rhob_gap50 --predictions npz --rerun
 python -m workstreams.black_physics.granite final        # sealed test gaps once: keyed predictions + decision sidecar
+# Timestral environment (see Environments), HF_HOME=<cache_dir>/hf, HF_HUB_OFFLINE=1:
+WMB_RED_MODELS=timestral WMB_BLACK_TIMESTRAL=1 <timestral-python> -m benchmark.run --model red_timestral,black_timestral_target_only --test rhob_gap50 --predictions npz --rerun
+<timestral-python> -m workstreams.black_physics.granite timestral   # both Timestral rows on the same keyed gaps
 python -m workstreams.black_physics.granite report       # tables, bootstrap, figures, 30-second text, RESULTS.md
 python -m pytest -q workstreams/black_physics/tests/test_granite.py               # NumPy-only (any env)
 python -m pytest -q workstreams/black_physics/tests/test_granite_torch.py         # real networks (Granite env)
@@ -47,7 +58,8 @@ python -m pytest -q workstreams/black_physics/tests/test_granite_torch.py       
 Each stage can be run on its own: `prepare`, `train [--arm ttm|tspulse]`, `select`, `calibrate`, `decide`,
 `freeze`. Every stage appends to `<work_root>/black_granite/pipeline.log`.
 
-On this laptop, `all` takes about 2 minutes, and `final` and `report` under a minute each.
+On this laptop, `all` takes about 2 minutes, and `final` and `report` under a minute each. The Timestral station
+run takes about 3.5 minutes on CPU, and `timestral` about 2 minutes.
 
 ## Design
 
@@ -57,6 +69,7 @@ On this laptop, `all` takes about 2 minutes, and `final` and `report` under a mi
 | Gaps | Placed by the station's own `place_gap` (50 m, one acquisition segment, fully measured). A: up to 32 overlapping gaps per well (1,728). B/C/D: up to 8 non-overlapping per well (91 / 148 / 88). Test: the station test definition, one gap per well (20, 6,600 samples). |
 | TTM-R3 | Forecast 512 → 336 down from the shallow flank, and up from the reversed deep flank. Blend with weight u = depth fraction across the gap. P50 is the blended q0.5; the raw band is the blended q0.1 / q0.9. |
 | TSPulse | One 512-sample window, centred on the gap and clipped to the segment. The gap goes in as a user mask (the mask token replaces the values); the reconstruction is read in raw units. |
+| Timestral-5M | Frozen `mistralai/Timestral-5M@bdd20cf`, red's `DepthForecaster` unchanged: ≤ 256-sample flanks, rollout in blocks of 32, deeper flank reversed, inverse-distance blend. `red_timestral` gets every log the test offers as covariates (GR, RDEP, RMED, CALI, DTC on all 20 gaps; PEF 19, NPHI 17, DTS 13). `black_timestral_target_only` passes empty covariate dictionaries. Bands are nominal (Gaussian from its P10/P90), not D-calibrated. |
 | Fine-tuning | Head only. AdamW, lr 3e-4, weight decay 0.01, effective batch 8 (microbatch picked by 10 measured steps), ≤ 300 updates or 45 min, evaluated on B every 25 updates, patience 3. Each run starts with an overfit-and-reload check: 2 examples, loss down, and the reload is exact. TTM uses pinball loss over 9 quantiles, with two directed examples per A gap. TSPulse uses MAE on the hidden samples. |
 | Selection | One row among the four: lowest B mean well-level MAE with full support. Result: TSPulse tuned (0.07885). |
 | Bands | Fitted on D. Width = k·s, where s is the local TTM P90 − P10 (floor 0.005) or 1 for TSPulse; k is an equal-well-weighted quantile of \|error\|/s, giving P05/P95 and P25/P75. Raw TTM 80 % coverage on D is recorded: 0.78 frozen, 0.80 tuned. |
@@ -89,19 +102,14 @@ On this laptop, `all` takes about 2 minutes, and `final` and `report` under a mi
    - The four numeric variants give the same accept/review split on test.
 5. **Test pass rate.** It is 0.65 on test, against 0.49 on C and 0.40 on D. The test gaps (station placement, one
    per well) are easier than the development gaps, so the prevalence rule is miscalibrated on test.
-6. **Station check.** The pipeline's own scoring of the frozen rows matches `benchmark.run` to within 2e-8 g/cm³ for all seven
+6. **Station check.** The pipeline's own scoring matches `benchmark.run` to within 2e-8 g/cm³ for all nine
    rows; both use the identical gap IDs.
-
-## Not run
-
-- **Timestral-5M, with covariates (`red_timestral`) and target-only (`black_timestral_target_only`).**
-  - Not run because this laptop has no authorised weights or environment. The checkpoint's Modified MIT licence
-    carries a revenue clause, and the red team asks for organisation confirmation before use.
-  - The target-only wrapper is committed: `WMB_BLACK_TIMESTRAL=1` (red's adapter, empty covariate dictionaries).
-  - With access, run it with
-    `WMB_BLACK_TIMESTRAL=1 WMB_RED_MODELS=1 python -m benchmark.run --model red_timestral,black_timestral_target_only --test rhob_gap50 --predictions npz`
-    in the red Timestral environment. The `report` stage then needs these two rows added to `ROWS` (they are
-    listed as unavailable today).
+7. **Timestral ran after the first report.** Both Timestral rows were scored after `final` and the first report,
+   in their own CPU environment, with frozen weights and red's adapter unchanged. Nothing about them was tuned or
+   chosen on test data.
+   - The decision layer and the B selection are Granite-only, as the brief specifies, so they did not change.
+   - Timestral's bands come from its own quantiles and are not D-calibrated. Its coverage is therefore not
+     comparable with the Granite bands.
 
 ## Step 8: material to choose from
 
@@ -112,8 +120,9 @@ share them deliberately.
 | --- | --- | --- |
 | `figures/pitch_median.png` | **Brief's pitch figure.** Left: the representative gap (deterministic: selected-row MAE closest to the median), with flanks, hidden truth, P50, 90 % band, Gardner and the straight line. Right: p_pass against actual gap error for all 20 test gaps, with accepted and review counts. | Main slide |
 | `figures/pitch_best.png`, `pitch_worst.png` | The same layout on the easiest and the hardest test gap | Showing honest failure, Q&A |
-| `figures/leaderboard.png` | Mean per-well MAE for all seven rows, with bootstrap CIs | One-glance result |
-| `figures/gallery_test_gaps.png` | All 20 gaps sorted by error, with accept/review marks | Backup slide; credibility |
+| `figures/leaderboard.png` | Mean per-well MAE for all nine rows, with bootstrap CIs | One-glance result |
+| `figures/paired_timestral.png` | Per well: Timestral with − without the other logs; density-only TTM − Timestral; TTM − Timestral with logs | "Is it the model or the inputs?" |
+| `figures/gallery_test_gaps.png` | All 20 gaps sorted by error, with accept/review marks, plus the TTM and Timestral + logs fills | Backup slide; credibility |
 | `figures/paired_deltas.png` | Per-well tuned − frozen (both arms), and selected − line | "Did fine-tuning matter?" |
 | `figures/decisions_risk_reliability.png` | Risk–coverage curves and 3-bin reliability for the rules and Decima | The decision story |
 | `figures/coverage.png` | Observed 50 % / 90 % coverage and band width per row | Uncertainty honesty |
@@ -124,14 +133,19 @@ share them deliberately.
 | `results_table.json` | Replayable table: every number, the hashes behind it (code, config, split, data, gaps, heads, predictions, sidecar) and the replay commands | Audit |
 | `../final/decision_sidecar.json` | Small keyed sidecar: one row per test gap, with gap ID, checkpoint, features, text state, p_pass for every method, MAE and label | Joining with the viewer |
 | `../final/predictions.npz` | Full-precision keyed predictions: `<row>\|<gap_id>\|p50/p05/p25/p75/p95/raw_lo/raw_hi`, plus `truth\|` and `depth\|` | Re-scoring |
+| `../final/timestral.json`, `timestral_predictions.npz` | The same, for the two Timestral rows (timing, covariates offered, package versions) | Re-scoring |
 
 The 30-second text is at the top of [RESULTS.md](RESULTS.md); `report` regenerates it from the numbers.
 
 **Possible stories:**
-- (a) "Small foundation models beat interpolation and physics on density gaps, and know when they are right":
+- (a) "The other logs matter more than the model": leaderboard plus paired_timestral. From density alone, three
+  foundation models tie at about 0.048. Give Timestral the other logs and it drops to 0.033.
+- (b) "Small foundation models beat interpolation and physics on density gaps, and know when they are right":
   pitch_median plus leaderboard.
-- (b) "Fine-tuning a few minutes is not worth it here": paired_deltas.
-- (c) "Physics plus flanks is a cheap strong baseline": extension_vs_linear.
+- (c) "Accurate is not the same as honest": coverage. Timestral is the most accurate, but its 90 % band covers
+  46 %. The calibrated Granite bands cover 96 %.
+- (d) "Fine-tuning a few minutes is not worth it here": paired_deltas.
+- (e) "Physics plus flanks is a cheap strong baseline": extension_vs_linear.
 
 ## Files
 
@@ -165,3 +179,10 @@ These are not part of `pyproject`. The Granite and Decima environments need conf
     huggingface_hub, numpy. No torch.
   - The pipeline finds it through `WMB_DECIMA_PYTHON`, defaulting to `%LOCALAPPDATA%\wmb-envs\decima-cpu`.
   - If it is missing, the Decima rows are marked unavailable and the run continues.
+- **Timestral** (Python 3.12, CPU; `%LOCALAPPDATA%\wmb-envs\timestral-cpu`):
+  - The pins from red's [backend.py](../../red_foundation_models/models/timestral/backend.py): torch 2.8.0 (CPU
+    wheel), numpy 2.2.6, safetensors 0.6.2, huggingface_hub 0.35.3 and timestral at commit `a534bdb`. Then
+    `pip install -e ".[dev]"`.
+  - Weights: `mistralai/Timestral-5M` at revision `bdd20cf`, downloaded once into `<cache_dir>/hf`. Inference
+    uses `HF_HUB_OFFLINE=1`.
+  - Licence: Modified MIT, with a revenue clause for companies over USD 20 M a month (see red's LICENSE.md).

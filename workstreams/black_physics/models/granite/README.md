@@ -36,7 +36,7 @@ TTM P90 − P10 (with a 0.005 floor), or 1 for TSPulse. The other rows return no
 - Whole-curve (`missing_curve`) tasks have no RHOB context, so every row here abstains on them.
 
 **Fit and runtime.** The rows need the Granite environment (torch, granite-tsfm at commit `31fa2f0`) and the
-cached weights. On a laptop RTX GPU, fit (load) takes 2–10 s and prediction on 20 gaps under 0.1 s.
+cached weights. On a laptop Quadro T1000, fit (load) takes 2–10 s and prediction on 20 gaps under 0.1 s.
 
 **Licences:** [LICENSE.md](LICENSE.md). Apache-2.0 covers the IBM weights and code; MIT covers these wrappers.
 

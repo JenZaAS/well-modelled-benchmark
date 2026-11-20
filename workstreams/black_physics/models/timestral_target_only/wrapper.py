@@ -2,8 +2,8 @@
 
 Context (256), rollout (blocks of 32 using predicted medians), deeper-flank reversal and inverse-distance blend
 are exactly red's `DepthForecaster`; only the covariates passed to the backend are removed. This isolates how
-much of red's full-input result depends on access to the other logs. Requires the red Timestral environment and
-authorised weights (see LICENSE.md); importing this module imports neither torch nor timestral.
+much of red's full-input result depends on access to the other logs. Requires the Timestral environment and the
+cached weights (licence: LICENSE.md); importing this module imports neither torch nor timestral.
 """
 from __future__ import annotations
 

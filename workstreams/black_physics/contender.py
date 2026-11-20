@@ -19,7 +19,7 @@ Opt-in rows (WMB_BLACK_GRANITE=1; the Granite rows need torch + granite-tsfm, se
 black_ttm_r3_frozen, black_ttm_r3_tuned, black_tspulse_frozen, black_tspulse_tuned (target-only gap
 reconstruction), black_linear_gap (interpolation reference) and black_gardner_flank_resid (Gardner + flank
 residual). WMB_BLACK_TIMESTRAL=1 adds black_timestral_target_only (red's Timestral adapter without covariates;
-needs the red Timestral environment and authorised weights). Default runs import neither torch nor timestral.
+needs the Timestral environment and cached weights). Default runs import neither torch nor timestral.
 """
 from __future__ import annotations
 
