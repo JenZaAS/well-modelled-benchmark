@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 import threading
 import urllib.error
 import urllib.request
@@ -191,18 +192,75 @@ def test_git_info_soft_fails_without_git(monkeypatch):
     run.git_info.cache_clear()
 
 
-def test_optional_test_field_keeps_separate_rows(results, base_url):
-    """An optional `test` on scores.json (and a deeper folder) must not collapse rows."""
-    _write(results, "m1", "ds", "RHOB", "missing_curve", mae=0.3)
-    # New layout: .../scenario/<test>/scores.json
-    deep = results / "m1" / "ds" / "RHOB" / "missing_curve" / "official"
+def _write_named(results, test, mae, scenario="missing_curve", contender="m1"):
+    deep = results / contender / "ds" / "RHOB" / scenario / test
     deep.mkdir(parents=True, exist_ok=True)
     (deep / "scores.json").write_text(json.dumps({
-        "contender": "m1", "dataset": "ds", "target": "RHOB", "scenario": "missing_curve",
-        "test": "official", "MAE": 0.05, "RMSE": 0.1, "R2": 0.95,
+        "contender": contender, "dataset": "ds", "target": "RHOB", "scenario": scenario,
+        "test": test, "MAE": mae, "RMSE": 0.1, "R2": 0.95,
     }))
+
+
+def test_named_test_supersedes_empty_test_row(results, base_url):
+    """A legacy row without `test` is dropped once a named test exists for the same combination."""
+    _write(results, "m1", "ds", "RHOB", "missing_curve", mae=0.3)
+    _write_named(results, "official", 0.05)
     status, body = _get(base_url + "/api/benchmark/runs")
     assert status == 200
-    tests = sorted((r.get("test") or "") for r in body["rows"])
-    assert tests == ["", "official"]
-    assert {r["MAE"] for r in body["rows"]} == {0.3, 0.05}
+    assert [(r.get("test"), r["MAE"]) for r in body["rows"]] == [("official", 0.05)]
+
+
+def test_scoreboard_drops_legacy_row_when_named_test_exists(results):
+    from benchmark import scoreboard
+
+    _write(results, "m1", "ds", "RHOB", "missing_curve", mae=0.3)
+    _write(results, "m2", "ds", "RHOB", "missing_curve", mae=0.4)
+    _write_named(results, "official", 0.05)
+    rows = scoreboard.collect()
+    assert sorted((r["contender"], r["test"]) for r in rows)[0] == ("m1", "official")
+    assert len([r for r in rows if r["contender"] == "m1"]) == 1
+    assert len([r for r in rows if r["contender"] == "m2"]) == 1
+
+
+def test_scoreboard_named_row_equal_to_generated_name_survives_either_order(results):
+    from benchmark import scoreboard
+    from benchmark.test_def import generated_name
+
+    gen = generated_name("ds", "RHOB", "missing_curve")
+    for legacy_dir in ("0_legacy", "~legacy"):
+        for p in results.glob("*"):
+            shutil.rmtree(p)
+        _write_named(results, gen, 0.05)
+        deep = results / "m1" / "ds" / "RHOB" / "missing_curve" / legacy_dir
+        deep.mkdir(parents=True)
+        (deep / "scores.json").write_text(json.dumps({
+            "contender": "m1", "dataset": "ds", "target": "RHOB", "scenario": "missing_curve", "MAE": 0.3,
+        }))
+        rows = scoreboard.collect()
+        assert [(r["test"], r["MAE"]) for r in rows] == [(gen, 0.05)], legacy_dir
+
+
+def test_scoreboard_lone_legacy_row_gets_generated_name(results):
+    from benchmark import scoreboard
+    from benchmark.test_def import generated_name
+
+    _write(results, "m1", "ds", "RHOB", "missing_curve", mae=0.3)
+    _write_named(results, "official", 0.05, contender="m2")
+    rows = {r["contender"]: r["test"] for r in scoreboard.collect()}
+    assert rows == {"m1": generated_name("ds", "RHOB", "missing_curve"), "m2": "official"}
+
+
+def test_different_named_tests_stay_separate(results, base_url):
+    _write_named(results, "official", 0.05)
+    _write_named(results, "other", 0.07)
+    status, body = _get(base_url + "/api/benchmark/runs")
+    assert status == 200
+    assert sorted(r["test"] for r in body["rows"]) == ["official", "other"]
+
+
+def test_lone_empty_test_row_is_kept(results, base_url):
+    _write(results, "m1", "ds", "RHOB", "missing_curve", mae=0.3)
+    _write_named(results, "official", 0.05, contender="m2")
+    status, body = _get(base_url + "/api/benchmark/runs")
+    assert status == 200
+    assert {(r["contender"], r.get("test") or "") for r in body["rows"]} == {("m1", ""), ("m2", "official")}

@@ -4,14 +4,27 @@ To add a model, start with **[Build your model](build-your-model.md)**:
 `python -m benchmark.check_model <name>`, then
 `python -m benchmark.run --model <name> --test all`.
 
-| Model | Team | Licence | Notes |
-|---|---|---|---|
-| Gardner (1974) | black | — | ρ ≈ 0.31·Vp^0.25 (Vp in m/s); RHOB from DTC |
-| Castagna mudrock / Greenberg-Castagna | black | — | DTS from DTC (Vs from Vp) |
-| XGBoost / LightGBM | blue | Apache-2.0 / MIT | one depth sample = one row |
-| Chronos-2 (Amazon) | red | Apache-2.0 | 120M; covariates; quantile output |
-| MOMENT (CMU) | red | MIT | 40M–385M; masked-patch reconstruction; point output |
-| TTM r2 (IBM Granite) | red | Apache-2.0 | from ~1M; exogenous mixer when fine-tuned |
+| Model | Team | Licence | Uses other logs? | Notes |
+|---|---|---|---|---|
+| Gardner (`black_gardner`, `black_gardner_fixed`) | black | MIT (original code) | Only DTC | ρ ≈ 0.31·Vp^0.25 (Vp in m/s); RHOB from DTC |
+| Castagna mudrock (`black_castagna_dts`) | black | MIT (original code) | Only DTC | DTS from DTC (Vs from Vp) |
+| Greenberg-Castagna brine mixture (`black_gc_brine_gr`) | black | MIT (original code) | Only DTC and GR | DTS from DTC and GR |
+| Wyllie time average (`black_wyllie_nphi`) | black | MIT (original code) | Only NPHI | DTC from NPHI |
+| Density from neutron (`black_density_nphi`) | black | MIT (original code) | Only NPHI | RHOB from NPHI (volumetric mixing) |
+| Constant Vp/Vs ratio (`black_vpvs_ratio`) | black | MIT (original code) | Only DTC | DTS from DTC; control model |
+| XGBoost / LightGBM (`blue_gbt`) | blue | Apache-2.0 / MIT | Yes | one depth sample = one row |
+| Chronos-2 (Amazon, `red_chronos2`) | red | Apache-2.0 | Yes (covariates) | 120M; quantile output |
+| TimesFM 2.5 + XReg (`red_timesfm25`) | red | Apache-2.0 | Yes (covariates) | quantile output |
+| Timestral-5M (`red_timestral`) | red | Modified MIT weights; Apache-2.0 inference code | Yes (covariates) | licence restricts use by larger companies; see its `LICENSE.md` |
+| Training-mean floor (`red_floor_train_mean`) | red | — | No | no-model floor: the training mean of the target |
+| MOMENT (CMU, `white_moment`) | white | MIT | No (target-only; covariates accepted but unused) | 40M–385M; masked-patch reconstruction; p10/p90 interval from a training-set residual interval |
+| TTM r2 (IBM Granite, `white_ttm`) | white | Apache-2.0 | No (target-only; covariates accepted but unused) | from ~1M; can use other logs through its exogenous mixer after fine-tuning, which this wrapper does not do yet |
+| Linear template (`template_linear`) | baseline | — | Yes | reference model; scores in the viewer are relative to it |
+
+Physics and empirical models use only the curves listed in the column; each typically predicts a single property.
+TTM and MOMENT, as wired today, forecast from the target alone. On whole-well tests (no visible target) this
+reduces to an unconditional prior taken from a training-well demonstration of the target, so their scores there
+say little about the models themselves.
 
 Weights are downloaded to the local Hugging Face cache (`tools/laptop_setup/`), never committed.
 Each model folder needs a `LICENSE.md` (or `LICENSE` / `LICENSE.txt`) and licence fields on the class (see `THIRD_PARTY.md`). `python -m benchmark.check_model` looks in that folder; a licence only in the team folder is a warning, not a failure.

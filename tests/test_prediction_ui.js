@@ -218,6 +218,14 @@ test("Predict reads cache, Rerun bypasses it, and changing targets clears the ba
   post.resolve({models: [{name: "m", ok: true, cached: true, cached_at: "2026-11-19T10:00:00Z"}]});
   await predict;
   assert.match(el("cache").textContent, /^cached, 2026-/);
+  const asked = [];
+  globalThis.confirm = (msg) => { asked.push(msg); return false; };
+  t.after(() => { delete globalThis.confirm; });
+  el("rerun").click();
+  assert.match(pane.innerHTML, />Predict \(use cache\)<\/button>/);
+  assert.equal(asked[0], "Recompute from scratch? This can take minutes for foundation models.");
+  assert.equal(pending.get("/api/predict"), post);
+  globalThis.confirm = () => true;
   const rerun = el("rerun").click();
   const forced = pending.get("/api/predict");
   assert.equal(JSON.parse(forced.opts.body).force, true);

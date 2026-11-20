@@ -149,7 +149,8 @@
 
   function scenarioLabel(sc) {
     const g = /^gap_(\d+(?:\.\d+)?)$/.exec(sc || "");
-    if (g) return g[1] + " m gaps";
+    if (g) return g[1] + " m gap (target visible around it)";
+    if (sc === "missing_curve") return "whole well hidden";
     return String(sc || "").replace(/_/g, " ");
   }
 
@@ -274,7 +275,25 @@
   // Scored items of one property of a run (one per model) or of the All aggregate.
   function propertyItems(run, prop) {
     if (prop === "ALL") {
-      return Q.scoreItems(Q.aggregateAll(run.rows).filter((i) => i.props.length && i.acc != null));
+      const total = run.props ? run.props.length : new Set(run.rows.map((r) => r.target)).size;
+      const items = Q.aggregateAll(run.rows).filter((i) => i.props.length && i.acc != null);
+      const full = items.filter((i) => i.props.length >= total);
+      const partial = items.filter((i) => i.props.length < total);
+      // Classes and ranks come from the full-property cohort only. Models scored on fewer properties stay visible,
+      // are classified against that cohort's best, and take no rank.
+      const scoredFull = Q.scoreItems(full);
+      const bestAcc = Math.min.apply(null, full.map((i) => i.acc).filter((v) => v != null));
+      const calWidths = scoredFull.filter((i) => (i.calClass === "good" || i.calClass === "ok") && i.width != null).map((i) => i.width);
+      const bestWidth = calWidths.length ? Math.min.apply(null, calWidths) : null;
+      const scoredPartial = partial.map((p) => {
+        const calClass = Q.classifyCalibration(p.dev);
+        return Object.assign({}, p, {
+          accClass: Q.classifyAccuracy(p.acc, bestAcc), calClass, speedClass: Q.speedZone(p.speed),
+          sharpClass: Q.classifySharpness(p.width, bestWidth, calClass), partial: { n: p.props.length, N: total },
+        });
+      });
+      const byId = new Map(scoredFull.concat(scoredPartial).map((i) => [i.id, i]));
+      return items.map((i) => byId.get(i.id));
     }
     const items = run.rows.filter((r) => r.target === prop).map((r) => ({
       id: r.contender, acc: num(r.MAE), width: num(r.interval_width_90), cover: num(r.cover_90),
@@ -283,7 +302,9 @@
     return Q.scoreItems(items);
   }
 
-  const MODEL_PALETTE = ["#2F6FAE", "#C9663A", "#7B5EA7", "#2E8B8B", "#B0892B", "#A34A6B", "#5C7F3A", "#6B6F76"];
+  // Distinct colours per model (about 14); the baseline keeps the first colour.
+  const MODEL_PALETTE = ["#2F6FAE", "#C9663A", "#7B5EA7", "#2E8B8B", "#B0892B", "#A34A6B", "#5C7F3A", "#6B6F76",
+    "#D1495B", "#00798C", "#8F5B2C", "#3E4C9A", "#7A9E2E", "#C77DAA", "#1F8A5B", "#9C6B00"];
   function modelColor(name, all) {
     if (name === Q.BASELINE_MODEL) return MODEL_PALETTE[0];
     const sorted = all.filter((n) => n !== Q.BASELINE_MODEL).sort();
@@ -375,7 +396,8 @@
   const INFO_ALL = "\u201CAll\u201D compares models across properties without mixing units. " +
     "Each model\u2019s error is divided by the Linear template\u2019s error on that property, then averaged. " +
     "1.0 matches the baseline; lower is better. Sharpness is combined the same way. " +
-    "Calibration is the average distance from 90% coverage.";
+    "Calibration is the average distance from 90% coverage. " +
+    "Models scored on fewer properties are averaged over those only, shown as n/N, and are not ranked against models that have every property.";
   const INFO_READ = "Each cell scores one model on one property against the other models in its column. " +
     "Accuracy: average error, lower is better. Calibration: how close the 90% bands come to containing the truth 90% of the time (marker on the 60\u2013100% scale, dashed tick = 90%). " +
     "Sharpness: width of the 90% band, narrower is better, but it only counts when calibration is not poor. " +
@@ -392,6 +414,19 @@
     return all ? `${v.toFixed(d)}\u00D7 baseline` : `${v.toFixed(d)} ${Q.unitOf(prop)}`.trim();
   }
   function modelName(id) { return id === Q.BASELINE_MODEL ? "Linear template" : id; }
+  function itemName(i) { return modelName(i.id) + (i.partial ? ` (${i.partial.n}/${i.partial.N})` : ""); }
+  function modelFamily(id) {
+    if (id === "red_floor_train_mean") return "floor";
+    if (id === Q.BASELINE_MODEL) return "baseline";
+    if (/^black_/.test(id)) return "physics";
+    if (/^blue_/.test(id)) return "GBT";
+    if (/^(red|white|purple)_/.test(id)) return "foundation";
+    return "";
+  }
+  function familyBadge(id) {
+    const f = modelFamily(id);
+    return f ? ` <small class="bm-fam na">${esc(f)}</small>` : "";
+  }
   function ranked(rank) {
     return `<span class="bm-rk${rank === 1 ? " first" : ""}"${rank ? ` aria-label="Rank ${rank}"` : ""}>${rank || "\u2013"}</span>`;
   }
@@ -400,7 +435,7 @@
   }
   function magnitude(value, max) { return max > 0 ? Math.max(0.05, value / max) : 0; }
   function metricRow(i, ctx, rank, cls, value, visual, qualifier, note) {
-    return `<div class="bm-r"><div class="bm-r-head">${ranked(rank)}<span class="bm-nm">${dot(ctx.colorOf(i.id))}${esc(modelName(i.id))}</span>` +
+    return `<div class="bm-r"><div class="bm-r-head">${ranked(rank)}<span class="bm-nm">${dot(ctx.colorOf(i.id))}${esc(itemName(i))}${familyBadge(i.id)}</span>` +
       `<small>${esc(value)}</small></div><div class="bm-r-track${qualifier != null ? " bm-cal-row" : ""}">` +
       `${visual}${chip(cls, Q.WORDS[cls || "muted"])}${qualifier != null ? `<small>${esc(qualifier)}</small>` : ""}</div>` +
       `${note ? `<div class="bm-cap-note">${esc(note)}</div>` : ""}</div>`;
@@ -442,7 +477,7 @@
       Number(!a.sharpClass || a.sharpClass === "muted") - Number(!b.sharpClass || b.sharpClass === "muted") || a.width - b.width);
     const max = Math.max(0, ...rows.map((i) => i.width));
     let rank = 0;
-    const body = rows.map((i) => metricRow(i, ctx, i.sharpClass && i.sharpClass !== "muted" ? ++rank : null,
+    const body = rows.map((i) => metricRow(i, ctx, i.sharpClass && i.sharpClass !== "muted" && !i.partial ? ++rank : null,
       i.sharpClass, withUnit(i.width, ctx.prop, ctx.all, true), track(magnitude(i.width, max), i.sharpClass),
       null, i.sharpClass === "muted" ? SHARP_MUTED : !i.sharpClass ? "No calibration score" : "")).join("");
     return card("Sharpness: width of the 90% uncertainty band", "\u2193 Narrower is better", "only if calibrated",
@@ -471,7 +506,7 @@
       return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/>` +
         `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${c}" stroke="#fff"><title>${esc(modelName(i.id))}: ${esc(Q.formatSeconds(i.speed))} per well</title></circle>`;
     }).join("");
-    const legend = withSpeed.map((i) => `<div class="bm-dl">${ranked(i.speedRank)}<span class="bm-nm">${dot(ctx.colorOf(i.id))}${esc(modelName(i.id))}</span>` +
+    const legend = withSpeed.map((i) => `<div class="bm-dl">${ranked(i.speedRank)}<span class="bm-nm">${dot(ctx.colorOf(i.id))}${esc(itemName(i))}${familyBadge(i.id)}</span>` +
       `${chip(i.speedClass, Q.speedZoneName(i.speedClass))}<small>${esc(Q.formatSeconds(i.speed))}</small></div>`).join("");
     const minorTicks = [-3, -2, -1, 0, 1].flatMap((exponent) => [2, 3, 4, 5, 6, 7, 8, 9].map((factor) => {
       const f = Q.speedFrac(factor * 10 ** exponent);
@@ -554,12 +589,12 @@
       ? `<line x1="${x1.toFixed(1)}" y1="${m.t}" x2="${x1.toFixed(1)}" y2="${H - m.b}" stroke="#8a8f94" stroke-width="1"/>` +
         `<line x1="${m.l}" y1="${y1.toFixed(1)}" x2="${W - m.r}" y2="${y1.toFixed(1)}" stroke="#8a8f94" stroke-width="1"/>`
       : "";
-    const front = Q.paretoFront(pts.map((p) => ({ x: p.width, y: p.acc })));
+    const front = Q.paretoFront(pts.filter((p) => !p.partial).map((p) => ({ x: p.width, y: p.acc })));
     const frontLine = front.length > 1
       ? `<polyline points="${front.map((p) => `${sx(p.x).toFixed(1)},${sy(p.y).toFixed(1)}`).join(" ")}" fill="none" stroke="#4a5560" stroke-width="1.5" stroke-dasharray="6 4"/>` : "";
     const marks = pts.map((p) => {
       const x = sx(p.width), y = sy(p.acc), c = ctx.colorOf(p.id);
-      const name = modelName(p.id), label = name.length > 23 ? name.slice(0, 22) + "\u2026" : name;
+      const name = itemName(p), label = name.length > 23 ? name.slice(0, 22) + "\u2026" : name;
       const isLinear = ctx.all && (p.id === Q.BASELINE_MODEL || p.id === "template_linear");
       if (isLinear) {
         const right = x + 12 + label.length * 6 < W - m.r;
@@ -600,9 +635,25 @@
       '<span><svg width="30" height="22"><line x1="2" y1="11" x2="28" y2="11" stroke="#4a5560" stroke-width="1.5" stroke-dasharray="6 4"/></svg>Raw accuracy\u2013width Pareto front (ignores calibration)</span></div>';
   }
 
+  // Models scored in other runs of the same dataset (on this property, or any for "ALL") but not in this run.
+  // A physics model that never scores a property in any run is therefore not listed for it.
+  function notScoredModels(run, runs, prop) {
+    const all = prop === "ALL" || !prop;
+    const inRun = (t) => !run.props || run.props.includes(t);
+    const here = new Set(run.rows.filter((r) => all || r.target === prop).map((r) => r.contender));
+    const out = new Set();
+    for (const o of runs) {
+      if (o === run || o.dataset !== run.dataset) continue;
+      for (const r of o.rows) if ((all ? inRun(r.target) : r.target === prop) && !here.has(r.contender)) out.add(r.contender);
+    }
+    return Array.from(out).sort();
+  }
+
   function summaryHtml(items, ctx) {
     const title = ctx.all ? "All properties \u2014 accuracy vs sharpness (relative to Linear)" : `${ctx.prop} \u2014 accuracy vs sharpness`;
-    const models = items.map((i) => `<div class="bm-nm">${dot(ctx.colorOf(i.id))}${esc(modelName(i.id))}</div>`).join("");
+    const models = items.map((i) => `<div class="bm-nm">${dot(ctx.colorOf(i.id))}${esc(itemName(i))}${familyBadge(i.id)}</div>`).join("") +
+      (ctx.missing && ctx.missing.length
+        ? `<div class="na bm-missing">Not scored in this test: ${ctx.missing.map((m) => esc(modelName(m))).join(", ")}</div>` : "");
     const nScatter = items.filter((i) => i.acc != null && i.width != null).length;
     const caption = "";
     return `<div class="bm-cards">${cardAccuracy(items, ctx)}${cardCalibration(items, ctx)}${cardSharpness(items, ctx)}${cardSpeed(items, ctx)}</div>` +
@@ -638,7 +689,7 @@
       return `<th scope="col"><b>${esc(p)}</b>${Q.PROPERTY_NAMES[p] ? ` <span class="na">\u00B7 ${esc(Q.PROPERTY_NAMES[p])}</span>` : ""}` +
         `${facts ? `<div class="na">${esc(facts)}</div>` : ""}</th>`;
     }).join("");
-    const body = models.map((m) => `<tr><th class="bm-model" scope="row">${dot(colorOf(m))}${esc(modelName(m))}</th>` + run.props.map((p) => {
+    const body = models.map((m) => `<tr><th class="bm-model" scope="row">${dot(colorOf(m))}${esc(modelName(m))}${familyBadge(m)}</th>` + run.props.map((p) => {
       const col = perProp[p];
       const max = (k) => Math.max.apply(null, col.map((i) => i[k]).filter((v) => v != null).concat([0]));
       return byPropertyCell(col.find((i) => i.id === m), p, { acc: max("acc"), width: max("width") });
@@ -834,7 +885,8 @@
       const all = st.prop === "ALL";
       const items = propertyItems(st.sel, st.prop);
       if (!items.length) { host.innerHTML = '<p class="na">No scores for this property.</p>'; return; }
-      host.innerHTML = summaryHtml(items, { prop: st.prop, all, colorOf, hwKnown: !!header.hardware });
+      host.innerHTML = summaryHtml(items, { prop: st.prop, all, colorOf, hwKnown: !!header.hardware,
+        missing: notScoredModels(st.sel, runs, st.prop) });
     }
 
     $("bm-run").addEventListener("change", (e) => {
@@ -1283,7 +1335,7 @@
   return {
     parseTabHash, tabHash, parseBenchmarkView, benchmarkHash, viewState, viewId, defaultProperty, BENCHMARK_VIEWS,
     createTabs, METRICS, sharpnessOf, filterRows, barFraction, bandArrays, gapIntervals, contextTracks, wheelWindow, uniq, mount,
-    groupRuns, runTitle, datasetLabel, scenarioLabel, runHeader, formatRunTime, hardwareLabel, propertyItems,
+    groupRuns, runTitle, datasetLabel, scenarioLabel, runHeader, formatRunTime, hardwareLabel, propertyItems, notScoredModels, modelFamily,
     summaryHtml, byPropertyHtml, scatterSvg, scatterExtent, scatterQuadrant,
   };
 });

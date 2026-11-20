@@ -89,6 +89,11 @@ inside a measured interval; they never start in a real hole.
 Lithology classification and a "fill every real gap" speed test are
 later work; they are not in this cut.
 
+Gap tests still show the target above and below the gap, so a univariate
+gap-filler can score well. Whole-well tests hide the target in the entire
+well, so the model needs other logs or a prior. Do not compare scores
+across those two scenario types.
+
 ## Splits
 
 Always split by **whole wells**. No sample from a test well may appear

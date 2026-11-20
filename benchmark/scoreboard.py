@@ -25,8 +25,13 @@ def collect() -> list[dict]:
         for p in sorted(root.glob(pattern)):
             r = json.loads(p.read_text())
             r.setdefault("scenario", "missing_curve")
-            r.setdefault("test", generated_name(r["dataset"], r["target"], r["scenario"]))
+            r["test"] = r.get("test") or ""
             rows[(r["contender"], r["test"], r["dataset"], r["target"], r["scenario"])] = r
+    # Same rule as the viewer: a row without a test name is superseded by a named test of the same combination.
+    named = {(k[0], *k[2:]) for k in rows if k[1]}
+    rows = {k: r for k, r in rows.items() if k[1] or (k[0], *k[2:]) not in named}
+    for r in rows.values():
+        r["test"] = r["test"] or generated_name(r["dataset"], r["target"], r["scenario"])
     return sorted(rows.values(), key=lambda r: (r["test"], r["dataset"], r["target"], r["scenario"], r.get("MAE", 1e9)))
 
 

@@ -323,6 +323,9 @@ def collect_benchmark_rows(root: Path | None = None) -> list[dict[str, Any]]:
                 rows[key] = r
         except (OSError, ValueError, KeyError, TypeError):
             continue
+    # A legacy row without a test name is superseded when the same combination has a named test.
+    named = {k[:4] for k in rows if k[4]}
+    rows = {k: v for k, v in rows.items() if k[4] or k[:4] not in named}
     return sorted(rows.values(), key=lambda r: (
         r["dataset"], r.get("test") or "", r["target"], r["scenario"],
         r["MAE"] if isinstance(r.get("MAE"), (int, float)) else float("inf"),

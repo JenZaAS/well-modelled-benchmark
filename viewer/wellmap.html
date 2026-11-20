@@ -1145,7 +1145,6 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
     show(pane) { WmbBenchmark.mount(pane, PU); } });
   tabs.register({ id: "prediction", title: "Prediction", pane: document.getElementById("tab-prediction"),
     show(pane) { WmbPrediction.mount(pane, { PU, L, DATA }); } });
-  tabs.register({ id: "leaderboard", title: "Leaderboard", disabled: true, tooltip: "Coming later \u2014 ranks across stored runs" });
   openFromUrl();
   tabs.select(WmbBenchmark.parseTabHash(location.hash, tabs.ids(), "viewer"));
   window.addEventListener("hashchange", () => {

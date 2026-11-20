@@ -120,10 +120,77 @@ test("runs group by dataset + scenario and are titled by property", () => {
   assert.equal(runs.length, 2);
   const gap = runs.find((x) => x.scenario === "gap_50");
   assert.deepEqual(gap.props, ["RHOB", "DTS"]);
-  assert.equal(B.runTitle(gap), "All properties · 50 m gaps · FORCE 2020");
-  assert.equal(B.runTitle(runs.find((x) => x.scenario === "missing_curve")), "RHOB · missing curve · FORCE 2020");
+  assert.equal(B.runTitle(gap), "All properties · 50 m gap (target visible around it) · FORCE 2020");
+  assert.equal(B.runTitle(runs.find((x) => x.scenario === "missing_curve")), "RHOB · whole well hidden · FORCE 2020");
   const split = B.groupRuns([r("a", "RHOB", { test: "x" }), r("a", "RHOB", { test: "y" })]);
   assert.equal(split.length, 2);
+});
+
+test("All ranks only models with every property; partial models show n/N", () => {
+  const row = (contender, target, mae) => ({ contender, target, MAE: mae, interval_width_90: mae, cover_90: 0.9, predict_s_per_well: 1 });
+  const rows = [
+    row("template_linear", "RHOB", 1), row("template_linear", "DTS", 1),
+    row("blue_gbt", "RHOB", 0.5), row("blue_gbt", "DTS", 0.6),
+    row("black_gardner", "RHOB", 0.1),
+  ];
+  const run = { rows, props: ["RHOB", "DTS"] };
+  const items = B.propertyItems(run, "ALL");
+  const gardner = items.find((i) => i.id === "black_gardner");
+  assert.deepEqual(gardner.partial, { n: 1, N: 2 });
+  assert.equal(gardner.accRank, undefined);
+  assert.equal(items.find((i) => i.id === "blue_gbt").accRank, 1);
+  assert.equal(items.find((i) => i.id === "template_linear").accRank, 2);
+  const html = B.summaryHtml(items, { prop: "ALL", all: true, colorOf: () => "#000" });
+  assert.match(html, /black_gardner \(1\/2\)/);
+  assert.doesNotMatch(html, /blue_gbt \(/);
+  const sharp = html.split("Sharpness: width")[1].split("Speed")[0];
+  const sharpRow = (name) => sharp.split('<div class="bm-r">').find((s) => s.includes(name));
+  assert.match(sharpRow("blue_gbt"), /aria-label="Rank 1"/);
+  assert.doesNotMatch(sharpRow("black_gardner"), /aria-label="Rank/);
+  assert.notEqual(items.find((i) => i.id === "blue_gbt").accClass, "poor");
+  assert.notEqual(items.find((i) => i.id === "blue_gbt").sharpClass, "poor");
+});
+
+test("All Pareto front is drawn from full-property models only", () => {
+  const row = (contender, target, mae, w) => ({ contender, target, MAE: mae, interval_width_90: w, cover_90: 0.9, predict_s_per_well: 1 });
+  const rows = [
+    row("template_linear", "RHOB", 1, 1), row("template_linear", "DTS", 1, 1),
+    row("blue_gbt", "RHOB", 0.5, 1.2), row("blue_gbt", "DTS", 0.6, 1.2),
+    row("black_gardner", "RHOB", 0.1, 0.1),
+  ];
+  const items = B.propertyItems({ rows, props: ["RHOB", "DTS"] }, "ALL");
+  const html = B.summaryHtml(items, { prop: "ALL", all: true, colorOf: () => "#000" });
+  assert.match(html, /black_gardner \(1\/2\)/);
+  const line = html.match(/<polyline points="([^"]*)"/);
+  assert.ok(line, "front line drawn from the two full models");
+  assert.equal(line[1].split(" ").length, 2);
+});
+
+test("summary lists models scored in other runs of the dataset but missing here", () => {
+  const r = (contender, target, scenario) => ({ contender, target, scenario, dataset: "force2020", test: "t_" + scenario, MAE: 1 });
+  const runs = B.groupRuns([
+    r("a", "RHOB", "gap_50"), r("red_timesfm25", "RHOB", "gap_50"), r("black_castagna", "DTS", "gap_50"),
+    r("a", "RHOB", "missing_curve"),
+  ]);
+  const whole = runs.find((x) => x.scenario === "missing_curve");
+  assert.deepEqual(B.notScoredModels(whole, runs, "RHOB"), ["red_timesfm25"]);
+  const html = B.summaryHtml(B.propertyItems(whole, "RHOB"), { prop: "RHOB", colorOf: () => "#000", missing: ["red_timesfm25"] });
+  assert.match(html, /Not scored in this test: red_timesfm25/);
+  assert.equal(B.modelFamily("red_floor_train_mean"), "floor");
+  assert.equal(B.modelFamily("white_ttm"), "foundation");
+  assert.equal(B.modelFamily("black_castagna"), "physics");
+});
+
+test("All 'not scored' stays inside the run's properties", () => {
+  const r = (contender, target, scenario) => ({ contender, target, scenario, dataset: "force2020", test: "t_" + scenario + target, MAE: 1 });
+  const runs = B.groupRuns([
+    r("a", "RHOB", "gap_50"), r("red_timesfm25", "RHOB", "gap_50"), r("black_castagna", "DTS", "gap_50"),
+    r("a", "RHOB", "missing_curve"),
+  ]);
+  const whole = runs.find((x) => x.scenario === "missing_curve");
+  assert.deepEqual(whole.props, ["RHOB"]);
+  assert.deepEqual(B.notScoredModels(whole, runs, "ALL"), ["red_timesfm25"]);
+  assert.deepEqual(B.notScoredModels(whole, runs, "RHOB"), ["red_timesfm25"]);
 });
 
 test("run header omits missing fields and summarises uneven well counts", () => {

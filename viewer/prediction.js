@@ -312,7 +312,7 @@
           <label>Scenario <select id="pd-scenario"></select></label>
           <div id="pd-best-note" class="na"></div>
         </div>
-        <button id="pd-run" type="button">Predict</button>
+        <button id="pd-run" type="button">Predict (use cache)</button>
         <button id="pd-rerun" type="button" title="Recompute and replace the cached prediction">Rerun</button>
         <span id="pd-cache" class="na"></span>
         <h3>More logs <span class="na">(display only)</span></h3>
@@ -595,7 +595,8 @@
     $("pd-metric").addEventListener("change", (e) => { st.metric = e.target.value; renderBest(); });
     $("pd-scenario").addEventListener("change", (e) => { st.scenario = e.target.value; renderBest(); });
     $("pd-run").addEventListener("click", () => run(false));
-    $("pd-rerun").addEventListener("click", () => run(true));
+    $("pd-rerun").addEventListener("click", () => (
+      confirm("Recompute from scratch? This can take minutes for foundation models.") ? run(true) : undefined));
 
     function cacheBadge(j) {
       const ms = (j && j.models || []).filter((m) => m.ok);
