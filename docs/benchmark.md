@@ -194,6 +194,19 @@ writes a combined `results/runs/<timestamp>_<dataset>.json` and `.csv`
 all `scores.json` files, and `--write` updates
 `results/summary/scoreboard.md` (small; may be committed).
 
+Next to `scores.json`, each scored run writes one **prediction file** for the viewer's Benchmark tab (not used for
+scoring): per test well the depth, measured target, p50, the 90% band and the hidden intervals, rounded to 4 decimals.
+Two formats hold the same information, and the viewer shows either one identically:
+
+| Format | File | Use |
+|---|---|---|
+| `json` (default) | `predictions.json` | readable in any editor or tool |
+| `npz` | `predictions.npz` | about 3x smaller and about 3x faster to write than JSON; the viewer reads one well without loading the whole run (needs NumPy) |
+
+Choose with `--predictions json|npz`, the environment variable `WMB_PREDICTIONS_FORMAT`, or `predictions_format=`
+on `benchmark.run.run_scenario` / `run_model` / `run_tests`. Writing one format removes the other from that folder.
+Layout and rounding: `src/wmb/prediction_files.py`.
+
 ## Adding a model
 
 Follow [**Build your model**](build-your-model.md). In short: copy
