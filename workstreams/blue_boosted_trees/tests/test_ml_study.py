@@ -6,8 +6,10 @@ import pytest
 from workstreams.blue_boosted_trees.ml_study import report
 from workstreams.blue_boosted_trees.ml_study.features import FeatureBuilder
 from workstreams.blue_boosted_trees.ml_study.metrics import evaluate, target_space
-from workstreams.blue_boosted_trees.ml_study.models import MODEL_KINDS, MLContender
+from workstreams.blue_boosted_trees.ml_study.models import MODEL_KINDS, MedianImputer, MLContender, variant_name
+from workstreams.blue_boosted_trees.ml_study.run_study import merge_metrics
 from wmb import synthetic
+from wmb.io import Well
 
 
 def _wells_with_strat(n_wells: int = 5):
@@ -45,15 +47,74 @@ def test_unseen_strat_label_is_not_an_error():
 
 
 @pytest.mark.parametrize("kind", MODEL_KINDS)
+@pytest.mark.parametrize("flags", [(False, False), (True, False), (False, True)], ids=["base", "ctx", "trend"])
 @pytest.mark.parametrize("use_strat", [False, True])
-def test_contender_fits_and_predicts_without_target(kind, use_strat):
+def test_contender_fits_and_predicts_without_target(kind, use_strat, flags):
     wells = _wells_with_strat()
     train, test = wells[:4], wells[4]
-    model = MLContender(kind, use_strat, max_train_rows=500)
+    model = MLContender(kind, use_strat, max_train_rows=500, context=flags[0], trend=flags[1])
     model.fit(train, "RHOB")
     assert "RHOB" not in model.inputs
+    assert not any(n.startswith("RHOB") for n in model.features.names)   # no neighbouring-depth features of the target
     pred = model.predict(test.without("RHOB"), "RHOB").mean
     assert pred.shape == test.depth.shape and np.isfinite(pred).all()
+
+
+def test_context_features_shift_and_average():
+    depth = np.arange(0.0, 100.0, 1.0)                       # 1 m spacing: 5 m = 5 samples
+    well = Well("w", depth, {"GR": depth.copy()})            # GR equals depth, so values are easy to check
+    fb = FeatureBuilder(["GR"], context=True).fit([well])
+    col = dict(zip(fb.names, fb.transform(well).T))
+    assert col["GR_above5m"][10] == 5 and col["GR_below5m"][10] == 15   # above = shallower, below = deeper
+    assert np.isnan(col["GR_above5m"][:5]).all() and np.isnan(col["GR_below5m"][-5:]).all()
+    assert col["GR_avg5m"][50] == pytest.approx(50) and np.isfinite(col["GR_avg20m"]).all()
+    assert fb.n_continuous == len(fb.names) == 1 + 4 + 1                # log + 4 context columns + depth
+
+
+def test_trend_features_describe_the_change_with_depth():
+    depth = np.arange(0.0, 100.0, 1.0)                       # 1 m spacing: the 10 m window is 10 samples
+    up = Well("w", depth, {"GR": depth.copy()})              # GR increases with depth
+    fb = FeatureBuilder(["GR"], trend=True).fit([up])
+    col = dict(zip(fb.names, fb.transform(up).T))
+    assert col["GR_above10m"][50] == pytest.approx(44.5)     # mean of the 10 samples above, sample itself excluded
+    assert col["GR_below10m"][50] == pytest.approx(55.5)
+    assert col["GR_trend10m"][50] == pytest.approx(11.0)     # below minus above: positive = increases with depth
+    assert col["GR_std10m"][50] == pytest.approx(np.std(np.arange(10.0), ddof=1))
+    assert np.isnan(col["GR_above10m"][0]) and np.isnan(col["GR_below10m"][-1])
+    assert fb.n_continuous == len(fb.names) == 1 + 4 + 1
+    flat = Well("w", depth, {"GR": np.full(100, 7.0)})
+    assert np.allclose(dict(zip(fb.names, fb.transform(flat).T))["GR_trend10m"][20:80], 0)
+
+
+def test_median_imputer_matches_scikit_learn():
+    from sklearn.impute import SimpleImputer
+    rng = np.random.default_rng(0)
+    X = rng.normal(size=(200, 5))
+    X[rng.random(X.shape) < 0.2] = np.nan
+    X[:, 3] = rng.normal(size=200)                           # a column with no gaps gets no flag
+    expected = SimpleImputer(strategy="median", add_indicator=True).fit_transform(X)
+    np.testing.assert_allclose(MedianImputer().fit(X).transform(X), expected)
+    empty = np.column_stack([X, np.full(200, np.nan)])       # a column with no data at all is dropped
+    assert MedianImputer().fit(empty).transform(empty).shape == expected.shape
+
+
+def test_variant_names_and_labels():
+    assert variant_name("rf", True) == "rf_strat"                       # names of the earlier results still valid
+    assert variant_name("gbt", True, True) == "gbt_ctx_strat" and variant_name("gbt", trend=True) == "gbt_trend"
+    assert len(report.VARIANTS) == 18 and len(set(report.VARIANTS)) == 18
+    assert report.variant_label("rf_ctx_strat") == "Random forest + context + stratigraphy"
+    assert report.variant_label("gbt_trend_strat") == "Gradient boosting (XGBoost) + trend + stratigraphy"
+    assert report.variant_label("gbt") == "Gradient boosting (XGBoost)"
+
+
+def test_merge_metrics_replaces_only_rerun_variants():
+    old = pd.DataFrame([{"target": "GR", "variant": "gbt", "R2": 0.1}, {"target": "GR", "variant": "rf", "R2": 0.2}])
+    merged = merge_metrics(old, [{"target": "GR", "variant": "gbt", "R2": 0.9, "context": False, "trend": False},
+                                 {"target": "GR", "variant": "gbt_trend", "R2": 0.5, "context": False, "trend": True}])
+    assert sorted(merged["variant"]) == ["gbt", "gbt_trend", "rf"]
+    by = merged.set_index("variant")
+    assert by.loc["gbt", "R2"] == 0.9 and by.loc["gbt_trend", "trend"]
+    assert not by.loc["rf", "context"] and not by.loc["rf", "trend"]    # older rows have no flags
 
 
 def test_resistivity_is_modelled_in_log10_and_returned_in_ohm_m():
@@ -91,3 +152,17 @@ def test_report_tables():
     effect = report.stratigraphy_effect(m, "R2")
     assert effect.loc["GR", "Gradient boosting (XGBoost)"] == pytest.approx(0.05)
     assert effect.loc["RHOB", "Multilinear regression"] == pytest.approx(0.1)
+
+
+def test_context_effect_table():
+    m = pd.DataFrame([{"target": "GR", "variant": v, "R2": r2} for v, r2 in
+                      (("gbt", 0.30), ("gbt_ctx", 0.45), ("gbt_strat", 0.35), ("gbt_ctx_strat", 0.50))])
+    effect = report.context_effect(m, "R2")
+    assert effect.loc["GR", "Gradient boosting (XGBoost)"] == pytest.approx(0.15)
+    assert effect.loc["GR", "Gradient boosting (XGBoost) + stratigraphy"] == pytest.approx(0.15)
+    assert report.available_variants(m) == ["gbt", "gbt_strat", "gbt_ctx", "gbt_ctx_strat"]
+    trend = pd.DataFrame([{"target": "GR", "variant": v, "R2": r2} for v, r2 in
+                          (("gbt", 0.30), ("gbt_trend", 0.40), ("gbt_strat", 0.35), ("gbt_trend_strat", 0.33))])
+    assert report.trend_effect(trend, "R2").loc["GR", "Gradient boosting (XGBoost)"] == pytest.approx(0.10)
+    assert report.trend_effect(trend, "R2").loc["GR", "Gradient boosting (XGBoost) + stratigraphy"] == pytest.approx(-0.02)
+    assert report.stratigraphy_effect(trend, "R2").loc["GR", "Gradient boosting (XGBoost) + trend"] == pytest.approx(-0.07)

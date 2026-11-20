@@ -10,14 +10,22 @@ from wmb.curves import CORE, LOG_SCALE
 from .metrics import HIGHER_IS_BETTER, METRIC_COLUMNS
 from .models import MODEL_KINDS, MODEL_LABELS, variant_name
 
-VARIANTS = [variant_name(k, s) for k in MODEL_KINDS for s in (False, True)]
+FEATURE_FLAGS = [(False, False), (True, False), (False, True)]   # base, context, trend
+VARIANTS = [variant_name(k, s, c, t) for k in MODEL_KINDS for c, t in FEATURE_FLAGS for s in (False, True)]
 TABLE_COLUMNS = [c for c in METRIC_COLUMNS if c != "n"] + ["n"]
 
 
 def variant_label(variant: str) -> str:
-    """'rf_strat' -> 'Random forest + stratigraphy'."""
-    kind = variant.removesuffix("_strat")
-    return MODEL_LABELS[kind] + (" + stratigraphy" if variant.endswith("_strat") else "")
+    """'rf_ctx_strat' -> 'Random forest + context + stratigraphy'."""
+    kind, *flags = variant.split("_")
+    return (MODEL_LABELS[kind] + (" + context" if "ctx" in flags else "") + (" + trend" if "trend" in flags else "")
+            + (" + stratigraphy" if "strat" in flags else ""))
+
+
+def available_variants(metrics: pd.DataFrame) -> list[str]:
+    """Variants present in the results, in display order (older result files only have the first six)."""
+    present = set(metrics["variant"])
+    return [v for v in VARIANTS if v in present]
 
 
 def load_metrics(out_dir: Path) -> pd.DataFrame:
@@ -26,6 +34,9 @@ def load_metrics(out_dir: Path) -> pd.DataFrame:
     if not f.exists():
         return pd.DataFrame()
     df = pd.read_csv(f)
+    for flag in ("context", "trend"):   # results from before these feature sets existed
+        if flag not in df:
+            df[flag] = False
     df["target"] = pd.Categorical(df["target"], categories=CORE, ordered=True)
     return df.sort_values(["target", "variant"]).reset_index(drop=True)
 
@@ -61,9 +72,28 @@ def best_variant_per_log(table: pd.DataFrame, metric: str) -> pd.Series:
     return (table.abs() if metric == "bias" else table).idxmin(axis=1)
 
 
-def stratigraphy_effect(metrics: pd.DataFrame, metric: str = "R2") -> pd.DataFrame:
-    """Change in ``metric`` when stratigraphy is added (with minus without), per log and model."""
+def _effect_table(metrics: pd.DataFrame, metric: str, pairs: list[tuple[str, str]]) -> pd.DataFrame:
+    """Per log, ``metric`` of the second variant minus the first, for every pair whose results exist."""
     t = metrics.pivot(index="target", columns="variant", values=metric)
     t.index = _log_labels(t.index)
-    out = {MODEL_LABELS[k]: t[f"{k}_strat"] - t[k] for k in MODEL_KINDS if {k, f"{k}_strat"} <= set(t.columns)}
+    out = {variant_label(base): t[other] - t[base] for base, other in pairs if {base, other} <= set(t.columns)}
     return pd.DataFrame(out).rename_axis("log")
+
+
+def stratigraphy_effect(metrics: pd.DataFrame, metric: str = "R2") -> pd.DataFrame:
+    """Change in ``metric`` when stratigraphy is added (with minus without), per log and model."""
+    pairs = [(variant_name(k, False, c, t), variant_name(k, True, c, t)) for k in MODEL_KINDS
+             for c, t in FEATURE_FLAGS]
+    return _effect_table(metrics, metric, pairs)
+
+
+def context_effect(metrics: pd.DataFrame, metric: str = "R2") -> pd.DataFrame:
+    """Change in ``metric`` when context features are added (with minus without), per log and model."""
+    pairs = [(variant_name(k, s), variant_name(k, s, True)) for k in MODEL_KINDS for s in (False, True)]
+    return _effect_table(metrics, metric, pairs)
+
+
+def trend_effect(metrics: pd.DataFrame, metric: str = "R2") -> pd.DataFrame:
+    """Change in ``metric`` when trend features are added (with minus without), per log and model."""
+    pairs = [(variant_name(k, s), variant_name(k, s, trend=True)) for k in MODEL_KINDS for s in (False, True)]
+    return _effect_table(metrics, metric, pairs)
