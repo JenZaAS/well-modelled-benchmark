@@ -154,6 +154,28 @@ test("runs group by dataset + scenario and are titled by property", () => {
   assert.equal(split.length, 2);
 });
 
+test("family filter hides models but retains baseline normalization and cohort ranks", () => {
+  const rows = [["template_linear", 2], ["blue_gbt", 3]].map(([contender, mae]) => ({
+    contender, dataset: "fixture", scenario: "gap_50", target: "RHOB", MAE: mae, interval_width_90: mae, cover_90: 0.9,
+  }));
+  const [run] = B.groupRuns(rows);
+  const items = B.propertyItems(run, "ALL");
+  const colorOf = () => "#000";
+  const ctx = { prop: "ALL", all: true, colorOf, missing: ["red_moment", "blue_ml_gbt"] };
+  const html = B.summaryHtml(items, { ...ctx, family: "GBT" });
+  assert.match(html, /Quantile GBT/);
+  assert.match(html, /1\.50× baseline/);
+  assert.match(html.split("Sharpness: width")[1].split("Speed:")[0], /Rank 2/);
+  assert.match(html, /Not scored in this test: .*?>XGBoost<\/a>/);
+  assert.doesNotMatch(html, /MOMENT|Linear reference \(1\.0\)/);
+  assert.match(B.summaryHtml(items, ctx), /Linear reference \(1\.0\)/);
+  assert.match(B.summaryHtml(items, { ...ctx, family: "Physics" }), /No models of this type/);
+  const grid = B.byPropertyHtml(run, colorOf, "GBT");
+  assert.match(grid, /Quantile GBT/);
+  assert.match(grid, /Rank 2/);
+  assert.doesNotMatch(grid, /Linear template/);
+});
+
 test("All ranks only models with every property; partial models show n/N", () => {
   const row = (contender, target, mae) => ({ contender, target, MAE: mae, interval_width_90: mae, cover_90: 0.9, predict_s_per_well: 1 });
   const rows = [
@@ -169,12 +191,12 @@ test("All ranks only models with every property; partial models show n/N", () =>
   assert.equal(items.find((i) => i.id === "blue_gbt").accRank, 1);
   assert.equal(items.find((i) => i.id === "template_linear").accRank, 2);
   const html = B.summaryHtml(items, { prop: "ALL", all: true, colorOf: () => "#000" });
-  assert.match(html, /black_gardner \(1\/2\)/);
-  assert.doesNotMatch(html, /blue_gbt \(/);
+  assert.match(html, /Gardner \(1\/2\)/);
+  assert.doesNotMatch(html, /Quantile GBT \(/);
   const sharp = html.split("Sharpness: width")[1].split("Speed")[0];
-  const sharpRow = (name) => sharp.split('<div class="bm-r">').find((s) => s.includes(name));
-  assert.match(sharpRow("blue_gbt"), /aria-label="Rank 1"/);
-  assert.doesNotMatch(sharpRow("black_gardner"), /aria-label="Rank/);
+  const sharpRow = (name) => sharp.split('<div class="bm-r"').find((s) => s.includes(name));
+  assert.match(sharpRow("Quantile GBT"), /aria-label="Rank 1"/);
+  assert.doesNotMatch(sharpRow("Gardner"), /aria-label="Rank/);
   assert.notEqual(items.find((i) => i.id === "blue_gbt").accClass, "poor");
   assert.notEqual(items.find((i) => i.id === "blue_gbt").sharpClass, "poor");
 });
@@ -188,7 +210,7 @@ test("All Pareto front is drawn from full-property models only", () => {
   ];
   const items = B.propertyItems({ rows, props: ["RHOB", "DTS"] }, "ALL");
   const html = B.summaryHtml(items, { prop: "ALL", all: true, colorOf: () => "#000" });
-  assert.match(html, /black_gardner \(1\/2\)/);
+  assert.match(html, /Gardner \(1\/2\)/);
   const line = html.match(/<polyline points="([^"]*)"/);
   assert.ok(line, "front line drawn from the two full models");
   assert.equal(line[1].split(" ").length, 2);
@@ -203,12 +225,18 @@ test("summary lists models scored in other runs of the dataset but missing here"
   const whole = runs.find((x) => x.scenario === "missing_curve");
   assert.deepEqual(B.notScoredModels(whole, runs, "RHOB"), ["red_timesfm25"]);
   const html = B.summaryHtml(B.propertyItems(whole, "RHOB"), { prop: "RHOB", colorOf: () => "#000", missing: ["red_timesfm25"] });
-  assert.match(html, /Not scored in this test: red_timesfm25/);
-  assert.equal(B.modelFamily("red_floor_train_mean"), "floor");
-  assert.equal(B.modelFamily("white_ttm"), "foundation");
-  assert.equal(B.modelFamily("red_ttm"), "foundation");
-  assert.equal(B.modelFamily("red_moment"), "foundation");
-  assert.equal(B.modelFamily("black_castagna"), "physics");
+  assert.match(html, /Not scored in this test: .*?>TimesFM 2.5 \+ XReg<\/a>/);
+});
+
+test("model families follow the method, not the team prefix", () => {
+  for (const [family, ids] of [
+    ["Baseline", ["red_floor_train_mean", "template_linear", "black_linear_gap"]],
+    ["Time-series foundation", ["white_ttm", "red_ttm", "red_moment", "black_tspulse_ft"]],
+    ["Tabular foundation", ["purple_kumo_tabular", "purple_tabum_v11"]],
+    ["Physics", ["black_castagna_dts"]], ["GBT", ["blue_gbt", "blue_ml_gbt_trend"]],
+    ["Linear regression", ["blue_ml_linear_trend"]], ["Random forest", ["blue_ml_rf"]],
+    ["Other", ["blue_new_method"]],
+  ]) for (const id of ids) assert.equal(B.modelFamily(id), family, id);
 });
 
 test("All 'not scored' stays inside the run's properties", () => {

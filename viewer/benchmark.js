@@ -30,6 +30,11 @@
   }
 
   function benchmarkHash(view) { return "#benchmark/" + view; }
+  function modelHash(id) { return benchmarkHash("model/" + encodeURIComponent(id)); }
+  function parseModelHash(hash) {
+    const match = /^#benchmark\/model\/([^/]+)$/.exec(hash || "");
+    try { return match ? decodeURIComponent(match[1]) : null; } catch { return null; }
+  }
 
   // "summary-rhob" -> {mode: "summary", prop: "RHOB"}; "summary-all" -> prop "ALL";
   // "byproperty" / "welllogs" -> {mode, prop: null}.
@@ -413,16 +418,96 @@
     const d = all ? 2 : prop === "RHOB" ? (width ? 3 : 4) : 1;
     return all ? `${v.toFixed(d)}\u00D7 baseline` : `${v.toFixed(d)} ${Q.unitOf(prop)}`.trim();
   }
-  function modelName(id) { return id === Q.BASELINE_MODEL ? "Linear template" : id; }
+  // Display metadata only: result lookup, ranks and colors always use the original contender ID.
+  const modelProfiles = new Map();
+  function profile(id, name, family, input, method, output) {
+    modelProfiles.set(id, { name, family, input, method, output });
+  }
+  const tsFamily = "Time-series foundation", tableFamily = "Tabular foundation";
+  profile(Q.BASELINE_MODEL, "Linear template", "Baseline", "Available logs", "Fit a linear relationship", "Target estimate");
+  profile("red_floor_train_mean", "Training mean", "Baseline", "Training targets", "Average the observed values", "Constant prediction");
+  for (const [id, name, input, method, output] of [
+    ["gardner", "Gardner", "DTC", "Fit a Gardner velocity–density relation", "RHOB"],
+    ["gardner_fixed", "Gardner (fixed)", "DTC", "Apply the fixed Gardner relation", "RHOB"],
+    ["gardner_flank_resid", "Gardner + flank residual", "DTC and adjacent RHOB", "Add interpolated flank residuals to Gardner density", "RHOB"],
+    ["castagna_dts", "Castagna mudrock", "DTC", "Convert compressional to shear velocity", "DTS"],
+    ["gc_brine_gr", "Greenberg–Castagna", "DTC and GR", "Estimate shear velocity from a brine mixture", "DTS"],
+    ["wyllie_nphi", "Wyllie time average", "NPHI", "Apply the time-average relation", "DTC"],
+    ["density_nphi", "Density from neutron", "NPHI", "Mix matrix and fluid densities", "RHOB"],
+    ["vpvs_ratio", "Constant Vp/Vs", "DTC", "Apply a constant velocity ratio", "DTS"],
+  ]) profile("black_" + id, name, "Physics", input, method, output);
+  profile("black_linear_gap", "Linear gap interpolation", "Baseline", "Measured gap flanks", "Interpolate linearly in depth", "Gap estimate");
+  profile("blue_gbt", "Quantile GBT", "GBT", "Depth sample features", "Fit boosted regression trees", "Target quantiles");
+  for (const [id, name, family, method] of [
+    ["gbt", "XGBoost", "GBT", "Combine boosted trees"],
+    ["linear", "Multilinear regression", "Linear regression", "Fit a linear combination of logs"],
+  ]) {
+    profile("blue_ml_" + id, name, family, "Depth sample features", method, "Point estimate");
+    profile("blue_ml_" + id + "_trend", name + " + trend", family, "Sample and ±10 m trend features", method, "Point estimate");
+  }
+  profile("blue_ml_rf", "Random forest", "Random forest", "Depth sample features", "Average regression trees", "Point estimate");
+  for (const [id, name] of [["kumo_tabular", "Kumo-Tabular"], ["tabum_v11", "tabUM v1.1"]]) {
+    profile("purple_" + id, name, tableFamily, "Labeled context and query depth rows", "Condition a pretrained tabular regressor on examples", "P05 / P50 / P95");
+  }
+  for (const [id, name, input, method] of [
+    ["chronos2", "Chronos-2", "Depth sequences and covariates", "Forecast with Chronos-2"],
+    ["timesfm25", "TimesFM 2.5 + XReg", "Depth sequences and covariates", "Combine TimesFM forecasting and regression"],
+    ["timestral", "Timestral-5M", "Depth sequences and covariates", "Forecast with Timestral"],
+    ["timestral_target_only", "Timestral (target only)", "Target sequence", "Forecast with Timestral"],
+    ["moment", "MOMENT", "Target sequence", "Reconstruct masked patches"],
+    ["ttm", "Tiny Time Mixer", "Target sequence", "Forecast with a pretrained mixer"],
+    ["ttm_r2_frozen", "TTM R2 (frozen)", "Target sequence", "Forecast with frozen mixer weights"],
+    ["ttm_r2_dts_pilot_combined", "TTM R2 (DTS pilot)", "DTS sequence", "Predict with the DTS pilot adapter"],
+  ]) profile("red_" + id, name, tsFamily, input, method, "Target prediction");
+  for (const [id, name, method] of [["ttm_r3", "TTM R3", "Blend forecasts from both flanks"], ["tspulse", "TSPulse", "Reconstruct a masked depth window"]]) {
+    for (const [suffix, variant] of [["frozen", "frozen"], ["tuned", "tuned head"], ["ft", "fine-tuned"]]) {
+      profile(`red_${id}_${suffix}`, `${name} (${variant})`, tsFamily, "RHOB gap flanks", method, "RHOB gap estimate");
+      modelProfiles.set(`black_${id}_${suffix}`, modelProfiles.get(`red_${id}_${suffix}`));
+    }
+  }
+  for (const alias of ["ttm", "moment"]) modelProfiles.set("white_" + alias, modelProfiles.get("red_" + alias));
+  function modelProfile(id) {
+    return modelProfiles.get(id) || { name: String(id).replace(/^(?:black|blue|red|purple|white)_/, "").replace(/_/g, " "), family: "Other" };
+  }
+  function modelName(id) { return modelProfile(id).name; }
+  function modelMark(id) { return `data-model-id="${esc(id)}"`; }
+  function modelLink(id, label = modelName(id)) {
+    return `<a class="bm-model-link" href="${esc(modelHash(id))}">${esc(label)}</a>`;
+  }
+  function modelDetailHtml(id, backView) {
+    const profile = modelProfile(id);
+    const stages = [["Input", profile.input], ["Method", profile.method], ["Output", profile.output]];
+    return `<a href="${esc(benchmarkHash(backView))}">← Back to benchmark</a>` +
+      `<h2 tabindex="-1" id="bm-detail-title">${esc(profile.name)}</h2>` +
+      `<p>${esc(profile.family)} · <code>${esc(id)}</code></p>` +
+      (profile.method ? `<h3>How it predicts</h3><ol class="bm-architecture">${stages.map(([label, text]) =>
+        `<li><strong>${label}</strong><span>${esc(text)}</span></li>`).join("")}</ol>` :
+        '<p>Architecture details are not documented for this model.</p>');
+  }
+  // Delegate to the persistent view host: chart marks and rows are replaced on every filter change.
+  function bindModelHighlights(host) {
+    let hover = null, focus = null, active = null;
+    const idOf = (node) => node?.closest?.("[data-model-id]")?.dataset.modelId || null;
+    function paint(id) {
+      if (id === active) return;
+      active = id;
+      for (const mark of host.querySelectorAll("[data-model-id]")) {
+        mark.classList.toggle("bm-picked", !!id && mark.dataset.modelId === id);
+        mark.classList.toggle("bm-subdued", !!id && mark.dataset.modelId !== id);
+      }
+    }
+    host.addEventListener("pointerover", (e) => { hover = idOf(e.target); paint(hover || focus); });
+    host.addEventListener("pointerleave", () => { hover = null; paint(focus); });
+    host.addEventListener("focusin", (e) => { focus = idOf(e.target); paint(focus || hover); });
+    host.addEventListener("focusout", (e) => { focus = host.contains(e.relatedTarget) ? idOf(e.relatedTarget) : null; paint(focus || hover); });
+    return () => { hover = focus = active = null; }; // Called before replacing host contents.
+  }
   function itemName(i) { return modelName(i.id) + (i.partial ? ` (${i.partial.n}/${i.partial.N})` : ""); }
   function modelFamily(id) {
-    if (id === "red_floor_train_mean") return "floor";
-    if (id === Q.BASELINE_MODEL) return "baseline";
-    if (/^black_/.test(id)) return "physics";
-    if (/^blue_/.test(id)) return "GBT";
-    if (/^(red|white|purple)_/.test(id)) return "foundation"; // white_: ids of results written before the move to red
-    return "";
+    return modelProfile(id).family;
   }
+  function matchesFamily(id, family) { return !family || modelFamily(id) === family; }
+  const NO_FAMILY_RESULTS = "No models of this type were scored here. Choose another model type or select All.";
   function familyBadge(id) {
     const f = modelFamily(id);
     return f ? ` <small class="bm-fam na">${esc(f)}</small>` : "";
@@ -437,7 +522,7 @@
     return scale.knee == null ? "" : `<div class="bm-cap-note">${label}: scale compressed above ${tickText(scale.knee)} (last 20% of axis).</div>`;
   }
   function metricRow(i, ctx, rank, cls, value, visual, qualifier, note) {
-    return `<div class="bm-r"><div class="bm-r-head">${ranked(rank)}<span class="bm-nm">${dot(ctx.colorOf(i.id))}${esc(itemName(i))}${familyBadge(i.id)}</span>` +
+    return `<div class="bm-r" ${modelMark(i.id)}><div class="bm-r-head">${ranked(rank)}<span class="bm-nm">${dot(ctx.colorOf(i.id))}${modelLink(i.id, itemName(i))}${familyBadge(i.id)}</span>` +
       `<small>${esc(value)}</small></div><div class="bm-r-track${qualifier != null ? " bm-cal-row" : ""}">` +
       `${visual}${chip(cls, Q.WORDS[cls || "muted"])}${qualifier != null ? `<small>${esc(qualifier)}</small>` : ""}</div>` +
       `${note ? `<div class="bm-cap-note">${esc(note)}</div>` : ""}</div>`;
@@ -475,15 +560,18 @@
   }
 
   function cardSharpness(items, ctx) {
-    const rows = items.filter((i) => i.width != null).sort((a, b) =>
+    const rows = (ctx.cohort || items).filter((i) => i.width != null).sort((a, b) =>
       Number(!a.sharpClass || a.sharpClass === "muted") - Number(!b.sharpClass || b.sharpClass === "muted") || a.width - b.width);
     const scale = Q.comparisonScale(rows.map((i) => i.width));
     let rank = 0;
-    const body = rows.map((i) => metricRow(i, ctx, i.sharpClass && i.sharpClass !== "muted" && !i.partial ? ++rank : null,
+    const body = rows.map((i) => {
+      const position = i.sharpClass && i.sharpClass !== "muted" && !i.partial ? ++rank : null;
+      return matchesFamily(i.id, ctx.family) ? metricRow(i, ctx, position,
       i.sharpClass, withUnit(i.width, ctx.prop, ctx.all, true), track(scale.fraction(i.width), i.sharpClass),
-      null, i.sharpClass === "muted" ? SHARP_MUTED : !i.sharpClass ? "No calibration score" : "")).join("") + scaleNote(scale, "Width");
+      null, i.sharpClass === "muted" ? SHARP_MUTED : !i.sharpClass ? "No calibration score" : "") : "";
+    }).join("");
     return card("Sharpness: width of the 90% uncertainty band", "\u2193 Narrower is better", "only if calibrated",
-      body || '<p class="na">No interval widths.</p>');
+      body ? body + scaleNote(scale, "Width") : '<p class="na">No interval widths.</p>');
   }
 
   // Semicircular log dial: 0.001-100 s per well, one needle per model.
@@ -505,10 +593,10 @@
     const needles = withSpeed.slice().reverse().map((i, k) => {
       const [x, y] = pt(Q.speedFrac(i.speed), R - (k / Math.max(1, withSpeed.length - 1)) * 30);
       const c = ctx.colorOf(i.id);
-      return `<line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/>` +
-        `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${c}" stroke="#fff"><title>${esc(modelName(i.id))}: ${esc(Q.formatSeconds(i.speed))} per well</title></circle>`;
+      return `<a ${modelMark(i.id)} href="${esc(modelHash(i.id))}" aria-label="${esc(modelName(i.id))}"><line x1="${cx}" y1="${cy}" x2="${x.toFixed(1)}" y2="${y.toFixed(1)}" stroke="${c}" stroke-width="2.4" stroke-linecap="round"/>` +
+        `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${c}" stroke="#fff"><title>${esc(modelName(i.id))}: ${esc(Q.formatSeconds(i.speed))} per well</title></circle></a>`;
     }).join("");
-    const legend = withSpeed.map((i) => `<div class="bm-dl">${ranked(i.speedRank)}<span class="bm-nm">${dot(ctx.colorOf(i.id))}${esc(itemName(i))}${familyBadge(i.id)}</span>` +
+    const legend = withSpeed.map((i) => `<div class="bm-dl" ${modelMark(i.id)}>${ranked(i.speedRank)}<span class="bm-nm">${dot(ctx.colorOf(i.id))}${modelLink(i.id, itemName(i))}${familyBadge(i.id)}</span>` +
       `${chip(i.speedClass, Q.speedZoneName(i.speedClass))}<small>${esc(Q.formatSeconds(i.speed))}</small></div>`).join("");
     const minorTicks = [-3, -2, -1, 0, 1].flatMap((exponent) => [2, 3, 4, 5, 6, 7, 8, 9].map((factor) => {
       const f = Q.speedFrac(factor * 10 ** exponent);
@@ -607,18 +695,18 @@
       const isLinear = ctx.all && (p.id === Q.BASELINE_MODEL || p.id === "template_linear");
       if (isLinear) {
         const right = x + 12 + label.length * 6 < W - m.r;
-        return `<g><title>${esc(name)}: Linear reference (1.0)</title>` +
+        return `<a ${modelMark(p.id)} href="${esc(modelHash(p.id))}"><title>${esc(name)}: Linear reference (1.0)</title>` +
           `<circle cx="${x}" cy="${y}" r="3.5" fill="#8B929A" stroke="#fff" stroke-width="1"/>` +
-          `<text x="${x + (right ? 10 : -10)}" y="${y + 3}" text-anchor="${right ? "start" : "end"}" font-size="10" font-weight="600" fill="#6b6f76">${esc(label)}</text></g>`;
+          `<text x="${x + (right ? 10 : -10)}" y="${y + 3}" text-anchor="${right ? "start" : "end"}" font-size="10" font-weight="600" fill="#6b6f76">${esc(label)}</text></a>`;
       }
       const calOk = p.calClass === "good" || p.calClass === "ok";
       const ring = calOk
         ? `<circle cx="${x}" cy="${y}" r="14" fill="${g.fg}" opacity=".18"/><circle cx="${x}" cy="${y}" r="10.5" fill="none" stroke="${c}" stroke-width="2.5"/>`
         : `<circle cx="${x}" cy="${y}" r="10.5" fill="none" stroke="${p.calClass ? r.fg : "#8B929A"}" stroke-width="2" stroke-dasharray="3 2.5"/>`;
       const right = x + 17 + label.length * 7 < W - m.r;
-      return `<g><title>${esc(name)}: MAE ${tickText(p.acc)}, width ${tickText(p.width)}; ${p.calClass ? `calibration ${p.calClass}` : "no calibration score"}</title>${ring}` +
+      return `<a ${modelMark(p.id)} href="${esc(modelHash(p.id))}"><title>${esc(name)}: MAE ${tickText(p.acc)}, width ${tickText(p.width)}; ${p.calClass ? `calibration ${p.calClass}` : "no calibration score"}</title>${ring}` +
         `<circle cx="${x}" cy="${y}" r="6.5" fill="${c}" stroke="#fff" stroke-width="1.5"/>` +
-        `<text x="${x + (right ? 17 : -17)}" y="${y + 4}" text-anchor="${right ? "start" : "end"}" font-size="12" font-weight="700" fill="#1A1E23">${esc(label)}</text></g>`;
+        `<text x="${x + (right ? 17 : -17)}" y="${y + 4}" text-anchor="${right ? "start" : "end"}" font-size="12" font-weight="700" fill="#1A1E23">${esc(label)}</text></a>`;
     }).join("");
     const bx = m.l + 8, by = H - m.b - 28;
     const better = ctx.all ? "" : (`<g><rect x="${bx}" y="${by}" width="63" height="18" rx="9" fill="${g.fg}"/>` +
@@ -659,11 +747,15 @@
     return Array.from(out).sort();
   }
 
-  function summaryHtml(items, ctx) {
+  function summaryHtml(cohort, ctx) {
+    const items = cohort.filter((i) => matchesFamily(i.id, ctx.family));
+    const missing = (ctx.missing || []).filter((id) => matchesFamily(id, ctx.family));
+    const missingHtml = missing.length ? `<div class="na bm-missing">Not scored in this test: ${missing.map((id) => `<span ${modelMark(id)}>${modelLink(id)}</span>`).join(", ")}</div>` : "";
+    if (!items.length) return `<p class="na">${ctx.family ? NO_FAMILY_RESULTS : "No scores for this property."}</p>` + missingHtml;
+    ctx = { ...ctx, cohort };
     const title = ctx.all ? "All properties \u2014 accuracy vs sharpness (relative to Linear)" : `${ctx.prop} \u2014 accuracy vs sharpness`;
-    const models = items.map((i) => `<div class="bm-nm">${dot(ctx.colorOf(i.id))}${esc(itemName(i))}${familyBadge(i.id)}</div>`).join("") +
-      (ctx.missing && ctx.missing.length
-        ? `<div class="na bm-missing">Not scored in this test: ${ctx.missing.map((m) => esc(modelName(m))).join(", ")}</div>` : "");
+    const models = items.map((i) => `<div class="bm-nm" ${modelMark(i.id)}>${dot(ctx.colorOf(i.id))}${modelLink(i.id, itemName(i))}${familyBadge(i.id)}</div>`).join("") +
+      missingHtml;
     const nScatter = items.filter((i) => i.acc != null && i.width != null).length;
     const caption = "";
     return `<div class="bm-cards">${cardAccuracy(items, ctx)}${cardCalibration(items, ctx)}${cardSharpness(items, ctx)}${cardSpeed(items, ctx)}</div>` +
@@ -689,20 +781,21 @@
     return `<td class="bm-cell">${acc}${cal}${sharp}${speed}</td>`;
   }
 
-  function byPropertyHtml(run, colorOf) {
+  function byPropertyHtml(run, colorOf, family) {
     const perProp = {};
     for (const p of run.props) perProp[p] = propertyItems(run, p);
     const scales = Object.fromEntries(run.props.map((p) => [p, {
       acc: Q.comparisonScale(perProp[p].map((i) => i.acc)), width: Q.comparisonScale(perProp[p].map((i) => i.width)),
     }]));
-    const models = run.models.slice().sort((a, b) => (a === Q.BASELINE_MODEL ? -1 : b === Q.BASELINE_MODEL ? 1 : a.localeCompare(b)));
+    const models = run.models.filter((id) => matchesFamily(id, family)).sort((a, b) => (a === Q.BASELINE_MODEL ? -1 : b === Q.BASELINE_MODEL ? 1 : a.localeCompare(b)));
+    if (!models.length) return `<p class="na">${NO_FAMILY_RESULTS}</p>`;
     const head = run.props.map((p) => {
       const f = propertyFacts(run, p);
       const facts = [Q.unitOf(p), f.wells != null ? `${f.wells} wells` : "", f.samples != null ? `${Math.round(f.samples).toLocaleString("en-GB")} samples` : ""].filter(Boolean).join(" \u00B7 ");
       return `<th scope="col"><b>${esc(p)}</b>${Q.PROPERTY_NAMES[p] ? ` <span class="na">\u00B7 ${esc(Q.PROPERTY_NAMES[p])}</span>` : ""}` +
         `${facts ? `<div class="na">${esc(facts)}</div>` : ""}${scaleNote(scales[p].acc, "Error")}${scaleNote(scales[p].width, "Width")}</th>`;
     }).join("");
-    const body = models.map((m) => `<tr><th class="bm-model" scope="row">${dot(colorOf(m))}${esc(modelName(m))}${familyBadge(m)}</th>` + run.props.map((p) => {
+    const body = models.map((m) => `<tr ${modelMark(m)}><th class="bm-model" scope="row">${dot(colorOf(m))}${modelLink(m)}${familyBadge(m)}</th>` + run.props.map((p) => {
       const col = perProp[p];
       return byPropertyCell(col.find((i) => i.id === m), p, scales[p]);
     }).join("") + "</tr>").join("");
@@ -770,8 +863,8 @@
       return null;
     }
     const runs = groupRuns(rows);
-    const st = { sel: runs[0], mode: "summary", prop: null, model: "", target: "", well: "", scale: "auto", fillSource: "formation", data: null, token: 0 };
-    pane.innerHTML = `<div class="bm">
+    const st = { sel: runs[0], family: "", mode: "summary", prop: null, model: "", target: "", well: "", scale: "auto", fillSource: "formation", data: null, token: 0 };
+    pane.innerHTML = `<section class="bm bm-detail" id="bm-detail" hidden></section><div class="bm" id="bm-overview">
       <div class="bm-top">
         <div>
           <div class="bm-title"><h2 id="bm-title"></h2>
@@ -781,6 +874,7 @@
           <div class="bm-hw" id="bm-hw"></div>
         </div>
         <div class="bm-ctl">
+          <label>Model type <select id="bm-family">${options([...new Set(uniq(rows, "contender").map(modelFamily))].sort(), "", "All")}</select></label>
           <div class="bm-picker" id="bm-picker"></div>
           <button type="button" class="bm-i" id="bm-i-read" aria-label="How to read" aria-controls="bm-tipbox" aria-expanded="false" hidden>\u2139</button>
           <div class="bm-seg" id="bm-mode"><button type="button" data-mode="summary">Summary</button><button type="button" data-mode="byproperty">Per property</button><button type="button" data-mode="welllogs">Well logs</button></div>
@@ -793,6 +887,7 @@
         <h2 class="bm-sec">Well logs <span class="na">\u2014 true curve, prediction and 90% band for one well of the selected run</span></h2>
         <div class="bm-bar">
           <label>Model <select id="bm-model"></select></label>
+          <span id="bm-model-info"></span>
           <label>Property <select id="bm-target"></select></label>
           <label>Well <select id="bm-well"></select></label>
           <label>X scale <select id="bm-scale"><option value="auto">Auto</option><option value="std">Standard</option></select></label>
@@ -808,6 +903,7 @@
       </div>
     </div>`;
     const $ = (id) => pane.querySelector("#" + id);
+    const resetHighlight = bindModelHighlights($("bm-view"));
 
     const hasBaseline = () => st.sel.models.indexOf(Q.BASELINE_MODEL) >= 0;
     const availableViews = () => st.sel.props.map((p) => "summary-" + p.toLowerCase())
@@ -885,6 +981,7 @@
     }
 
     function renderView(header) {
+      resetHighlight();
       const host = $("bm-view");
       const colorOf = (n) => modelColor(n, st.sel.models);
       if (st.mode === "welllogs") {
@@ -893,14 +990,18 @@
         else draw();
         return;
       }
-      if (st.mode === "byproperty") { host.innerHTML = byPropertyHtml(st.sel, colorOf); return; }
+      if (st.mode === "byproperty") { host.innerHTML = byPropertyHtml(st.sel, colorOf, st.family); return; }
       const all = st.prop === "ALL";
       const items = propertyItems(st.sel, st.prop);
-      if (!items.length) { host.innerHTML = '<p class="na">No scores for this property.</p>'; return; }
-      host.innerHTML = summaryHtml(items, { prop: st.prop, all, colorOf, hwKnown: !!header.hardware,
+      host.innerHTML = summaryHtml(items, { family: st.family, prop: st.prop, all, colorOf, hwKnown: !!header.hardware,
         missing: notScoredModels(st.sel, runs, st.prop) });
     }
 
+    $("bm-family").addEventListener("change", (e) => {
+      st.family = e.target.value;
+      renderSelectors();
+      renderView(renderHeader());
+    });
     $("bm-run").addEventListener("change", (e) => {
       st.sel = runs.find((r) => r.key === e.target.value) || runs[0];
       st.model = ""; st.target = "";
@@ -926,15 +1027,18 @@
     }
 
     // Per-well plot selectors cascade: model -> property over the selected run's rows.
-    const pool = () => st.sel.rows;
+    const pool = () => st.sel.rows.filter((r) => matchesFamily(r.contender, st.family));
     function renderSelectors() {
       const p = pool();
       const models = uniq(p, "contender");
       if (!models.includes(st.model)) st.model = models.includes(Q.BASELINE_MODEL) ? Q.BASELINE_MODEL : models[0] || "";
-      $("bm-model").innerHTML = options(models, st.model);
+      $("bm-model").innerHTML = models.map((id) => `<option value="${esc(id)}"${id === st.model ? " selected" : ""}>${esc(modelName(id))}</option>`).join("");
+      $("bm-model").disabled = !models.length;
+      $("bm-model-info").innerHTML = st.model ? modelLink(st.model, "Model details") : "";
       const targets = uniq(p.filter((r) => r.contender === st.model), "target");
       if (!targets.includes(st.target)) st.target = targets.includes(st.prop) ? st.prop : targets[0] || "";
       $("bm-target").innerHTML = options(targets, st.target);
+      $("bm-target").disabled = !targets.length;
       st.run = p.find((r) => r.contender === st.model && r.target === st.target) || null;
       loadWells();
     }
@@ -955,7 +1059,12 @@
       select.innerHTML = "";
       st.data = null;
       draw();
-      if (!st.run) { note.textContent = "No matching benchmark run."; return; }
+      if (!st.run) {
+        const example = $("bm-example");
+        if (example && example.dataset) example.dataset.show = "";
+        note.textContent = st.family ? NO_FAMILY_RESULTS : "No matching benchmark run.";
+        return;
+      }
       note.textContent = "Loading wells…";
       let wells;
       try {
@@ -1328,6 +1437,14 @@
 
     // Called each time the tab is shown: follows the URL hash (or sets the default view), then redraws.
     function show() {
+      const id = parseModelHash(location.hash);
+      $("bm-overview").hidden = !!id;
+      $("bm-detail").hidden = !id;
+      if (id) {
+        $("bm-detail").innerHTML = modelDetailHtml(id, currentViewOrDefault());
+        $("bm-detail-title").focus();
+        return;
+      }
       const fromHash = parseBenchmarkView(location.hash);
       if (fromHash && availableViews().indexOf(fromHash) >= 0) setView(fromHash, false);
       else setView(currentViewOrDefault());
@@ -1348,6 +1465,6 @@
     parseTabHash, tabHash, parseBenchmarkView, benchmarkHash, viewState, viewId, defaultProperty, BENCHMARK_VIEWS,
     createTabs, METRICS, sharpnessOf, filterRows, barFraction, bandArrays, gapIntervals, contextTracks, wheelWindow, uniq, mount,
     groupRuns, runTitle, datasetLabel, scenarioLabel, runHeader, formatRunTime, hardwareLabel, propertyItems, notScoredModels, modelFamily,
-    summaryHtml, byPropertyHtml, scatterSvg, scatterExtent, scatterQuadrant,
+    summaryHtml, byPropertyHtml, scatterSvg, scatterExtent, scatterQuadrant, modelHash, parseModelHash, modelDetailHtml,
   };
 });
