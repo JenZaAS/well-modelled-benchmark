@@ -1,0 +1,6 @@
+name: red_ttm_r2_dts_pilot_combined
+licence: Apache-2.0
+targets:
+  DTS:
+    required: []
+    optional: []
