@@ -20,6 +20,7 @@ from wmb import synthetic  # noqa: E402
 
 SHIPPED = {
     "rhob_missing": ("RHOB", "missing_curve"), "rhob_gap50": ("RHOB", "gap_50"), "dtc_missing": ("DTC", "missing_curve"),
+    "dtc_gap50": ("DTC", "gap_50"),
     "dts_missing": ("DTS", "missing_curve"), "dts_gap50": ("DTS", "gap_50"),
 }
 
