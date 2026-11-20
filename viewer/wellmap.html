@@ -144,6 +144,16 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
 #tab-benchmark .bm-dir { display: flex; flex-wrap: wrap; align-items: center; gap: 3px 6px; margin-top: 5px; color: var(--muted); font-size: 11.5px; font-weight: 650; }
 #tab-benchmark .bm-dir b { border-radius: 8px; background: #E4EEF7; color: #1F4B73; padding: 1px 6px; font-size: 10.5px; }
 #tab-benchmark .bm-r + .bm-r { margin-top: 7px; }
+#tab-benchmark .bm-subdued { opacity: .53; }
+#tab-benchmark .bm-picked:not(svg *) { background: #e4eef7; outline: 2px solid #32658a; outline-offset: 1px; border-radius: 4px; }
+#tab-benchmark svg .bm-picked { filter: drop-shadow(0 0 2px #32658a); }
+#tab-benchmark .bm-model-link { color: inherit; text-decoration: underline dotted; text-underline-offset: 3px; }
+#tab-benchmark .bm-model-link:is(:hover, :focus-visible) { color: #1f4b73; text-decoration-style: solid; }
+#tab-benchmark .bm-detail { max-width: 860px; margin: auto; }
+#tab-benchmark [hidden] { display: none !important; }
+#tab-benchmark .bm-architecture { display: flex; flex-wrap: wrap; gap: 12px; padding: 0; list-style: none; }
+#tab-benchmark .bm-architecture li { flex: 1 1 160px; padding: 16px; border: 1px solid var(--line); border-top: 3px solid #32658a; border-radius: 8px; background: var(--card); }
+#tab-benchmark .bm-architecture strong { display: block; color: #1f4b73; margin-bottom: 6px; }
 #tab-benchmark .bm-r-head, #tab-benchmark .bm-r-track, #tab-benchmark .bm-dl { display: flex; align-items: center; gap: 6px; }
 #tab-benchmark .bm-dl .bm-nm { margin-right: auto; }
 #tab-benchmark .bm-r-head small { margin: 0 0 0 auto; }
