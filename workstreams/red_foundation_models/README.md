@@ -1,7 +1,8 @@
 # Red team: foundation models for missing well logs
 
-`red_chronos2` (Amazon Chronos-2), `red_timestral` (Mistral Timestral), and
-`red_timesfm25` (Google TimesFM 2.5 with XReg) use the
+`red_chronos2` (Amazon Chronos-2), `red_timestral` (Mistral Timestral),
+`red_timesfm25` (Google TimesFM 2.5 with XReg), `red_ttm` (IBM Granite TTM r2) and
+`red_moment` (AutonLab MOMENT) use the
 same depth-window adapter. `red_floor_train_mean` remains a no-model baseline.
 Run from the repository root with the project installed (`pip install -e .`).
 Use local inference only; never upload wells or commit data, weights, or predictions.
@@ -10,8 +11,13 @@ Use local inference only; never upload wells or commit data, weights, or predict
 
 Each backbone has its own wrapper, backend, tests, and licence under
 [`models/`](models/).
-The shared depth adapter stays in `depth_model.py`; `contender.py` handles registration.
-Keep weights under the configured cache, outside the repository. Before fetching
+The shared depth adapter stays in `depth_model.py` (TTM and MOMENT use the sibling
+`tsfm_depth_model.py`); `contender.py` handles registration. Enable models with
+`WMB_RED_MODELS=<keys>` (`chronos2`, `timestral`, `timesfm25`, `ttm`, `moment`); the
+legacy `WMB_WHITE_MODELS` (`ttm`, `moment`) still works.
+Keep weights under the configured cache, outside the repository
+(TTM and MOMENT use `workstreams/red_foundation_models/weights/`, git-ignored except its
+README; override with `WMB_RED_CACHE`, legacy `WMB_WHITE_CACHE`). Before fetching
 or loading a checkpoint, set:
 
 ```sh
@@ -23,6 +29,13 @@ export HF_HOME="$(python -c 'from wmb.paths import cache_dir; print(cache_dir() 
   use the same `HF_HOME` at inference. The existing laptop forward-pass check is
   `check_chronos2` in `tools/laptop_setup/fh2026_smoke_test.py`.
 - **TimesFM 2.5:** see the [selection rationale and offline setup](models/timesfm25/README.md).
+- **TTM r2 and MOMENT-1-small:** see [`models/ttm/README.md`](models/ttm/README.md) (zero-shot
+  and CPU fine-tuning, including a quantile head with conformal widening) and
+  [`models/moment/README.md`](models/moment/README.md). Install `momentfm` only with
+  `--no-deps` (never in a way that changes `transformers`, `torch` or `scikit-learn`); see
+  [`models/moment/SETUP.md`](models/moment/SETUP.md). The former ids `white_ttm` and
+  `white_moment` are deprecated aliases (`src/wmb/aliases.py`): old commands and the
+  results under `results/white_*` keep working and display as `red_ttm` / `red_moment`.
 - **Timestral-5M:** the [upstream inference code](https://github.com/mistralai/timestral)
   is Apache-2.0, but the [checkpoint licence](models/timestral/LICENSE.md)
   ([pinned upstream copy](https://huggingface.co/mistralai/Timestral-5M/blob/bdd20cfc15a3fea0e4cb5ccef37f8d3ca7aa335f/LICENSE))
@@ -127,7 +140,7 @@ and one mask seed; it is not evidence about whole-curve recovery or official tes
 
 Use the repository's shared viewer (`python -m wmb.viewer --launch`) for
 cross-workstream results. Run each backbone in its installed environment with
-`WMB_RED_MODELS` set to `timestral`, `chronos2`, or `timesfm25`, using
+`WMB_RED_MODELS` set to `timestral`, `chronos2`, `timesfm25`, `ttm` or `moment`, using
 `python -m benchmark.run --model red_timestral --test rhob_gap50,dts_gap50,rhob_missing,dtc_missing,dts_missing`
 (replace the model name for other backbones). These shipped FORCE definitions use the
 shared runner, inputs policy, splits and metrics. It writes scores and per-well

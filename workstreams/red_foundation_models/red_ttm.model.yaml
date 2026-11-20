@@ -1,0 +1,15 @@
+# Inputs of red_ttm per target (canonical names). DEPTH is always present; do not list it.
+# No log is required: the depth adapter uses visible target flanks (gap) or training
+# demonstrations (missing_curve). Other core logs are optional (unused in zero-shot TTM).
+name: red_ttm
+licence: Apache-2.0
+targets:
+  RHOB:
+    required: []
+    optional: [GR, RDEP, RMED, CALI, NPHI, PEF, DTC, DTS]
+  DTC:
+    required: []
+    optional: [GR, RDEP, RMED, CALI, RHOB, NPHI, PEF, DTS]
+  DTS:
+    required: []
+    optional: [GR, RDEP, RMED, CALI, RHOB, NPHI, PEF, DTC]

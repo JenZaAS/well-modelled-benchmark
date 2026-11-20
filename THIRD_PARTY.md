@@ -37,9 +37,11 @@ Each workstream folder has a `LICENSE.md`. Contender classes also set
 | LightGBM (optional dependency) | blue | MIT | see [LightGBM LICENSE](https://github.com/microsoft/LightGBM/blob/master/LICENSE) |
 | scikit-learn (optional dependency) | blue | BSD-3-Clause | see [scikit-learn COPYING](https://github.com/scikit-learn/scikit-learn/blob/main/COPYING) |
 | `red_floor_train_mean` placeholder | `red_foundation_models` | MIT | none (placeholder); replace this entry when a real model is added |
-| Chronos-2 (planned) | red | Apache-2.0 | see the upstream model card / licence before use |
-| MOMENT (planned) | red | MIT | see the upstream model card / licence before use |
-| TTM r2 (planned) | red | Apache-2.0 | see the upstream model card / licence before use |
+| Chronos-2 | red | Apache-2.0 | [workstreams/red_foundation_models/models/chronos2/LICENSE.md](workstreams/red_foundation_models/models/chronos2/LICENSE.md) |
+| TimesFM 2.5 + XReg | red | Apache-2.0 | [workstreams/red_foundation_models/models/timesfm25/LICENSE.md](workstreams/red_foundation_models/models/timesfm25/LICENSE.md) |
+| Timestral-5M | red | Modified MIT (weights); Apache-2.0 (inference code) | revenue restriction on the weights; see [workstreams/red_foundation_models/models/timestral/LICENSE.md](workstreams/red_foundation_models/models/timestral/LICENSE.md) |
+| MOMENT (`momentfm`) | red | MIT | install with `--no-deps`; see [workstreams/red_foundation_models/models/moment/LICENSE.md](workstreams/red_foundation_models/models/moment/LICENSE.md) |
+| TTM r2 (IBM Granite) | red | Apache-2.0 | [workstreams/red_foundation_models/models/ttm/LICENSE.md](workstreams/red_foundation_models/models/ttm/LICENSE.md) |
 
 When you add a model, append a row here, add or update `workstreams/<team>/LICENSE.md`,
 and set the three licence fields on the class.

@@ -1,0 +1,5 @@
+# Compatible with Chronos-2's transformers pin (>=4.57.6,<5) and a current CPU torch.
+# granite-tsfm 0.3.12 declares transformers>=4.57.6,<6 and torch>=2.10,<2.12.
+# Do not downgrade torch/transformers if a shared environment already has newer
+# compatible versions; if pip wants torch>=2.12, use an isolated venv instead.
+granite-tsfm>=0.3.12

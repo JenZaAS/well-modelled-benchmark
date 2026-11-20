@@ -79,6 +79,84 @@ def test_runs_and_prediction_happy_path(results, base_url):
     assert _get(f"{base_url}/api/benchmark/prediction?{q}&well=*")[1] == {"wells": [well]}
 
 
+@pytest.mark.parametrize("model", ["ttm", "moment"])
+def test_legacy_white_results_show_as_red_and_prediction_loads_by_new_id(results, base_url, model):
+    from benchmark import scoreboard
+
+    well = "W1"
+    old, new = f"white_{model}", f"red_{model}"
+    _write(results, old, "ds", "RHOB", "missing_curve", well=well)
+    path = results / old / "ds" / "RHOB" / "missing_curve" / "scores.json"
+    row = json.loads(path.read_text())
+    path.write_text(json.dumps({**row, "workstream": "white_finetuned_tsfm", "model_hash": "old"}))
+    status, body = _get(base_url + "/api/benchmark/runs")
+    assert status == 200 and len(body["rows"]) == 1
+    shown = body["rows"][0]
+    assert shown["contender"] == new and shown["workstream"] == "red_foundation_models"
+    assert [(r["contender"], r["workstream"]) for r in scoreboard.collect()] == [(new, "red_foundation_models")]
+    assert not shown.get("stale")
+    q = "dataset=ds&target=RHOB&scenario=missing_curve&well=W1"
+    for name in (new, old):
+        status, got = _get(f"{base_url}/api/benchmark/prediction?contender={name}&{q}")
+        assert status == 200 and got["contender"] == new and got["well"]["p50"] == [1.1, 1.2]
+
+
+def test_named_legacy_prediction_takes_priority_over_classic_current(results):
+    legacy = results / "white_ttm" / "ds" / "RHOB" / "missing_curve"
+    _write(results, "white_ttm", "ds", "RHOB", "missing_curve", well="legacy")
+    _write(results, "red_ttm", "ds", "RHOB", "missing_curve", well="current")
+    _write_named(results, "official", 0.05, contender="white_ttm")
+    (legacy / "predictions.json").rename(legacy / "official" / "predictions.json")
+    (legacy / "scores.json").unlink()
+
+    shown, = viewer.collect_benchmark_rows(results)
+    assert shown["prediction_test"] == "official"
+    assert viewer.load_benchmark_prediction(
+        "red_ttm", "ds", "RHOB", "missing_curve", "*", root=results, test="official",
+    ) == {"wells": ["legacy"]}
+    assert viewer.load_benchmark_prediction(
+        "white_ttm", "ds", "RHOB", "missing_curve", "*", root=results,
+    ) == {"wells": ["current"]}
+
+
+def test_scoreboard_and_viewer_prefer_newer_canonical_result(results):
+    from benchmark import scoreboard
+
+    for name, mae, stamp in (("white_moment", 0.4, "2026-11-19"), ("red_moment", 0.1, "2026-11-20")):
+        _write(results, name, "ds", "RHOB", "missing_curve", mae=mae)
+        path = results / name / "ds" / "RHOB" / "missing_curve" / "scores.json"
+        row = json.loads(path.read_text())
+        path.write_text(json.dumps({**row, "run_at": stamp}))
+    for rows in (scoreboard.collect(), viewer.collect_benchmark_rows(results)):
+        assert [(r["contender"], r["MAE"]) for r in rows] == [("red_moment", 0.1)]
+
+
+def test_registry_resolves_legacy_names_without_listing_them(monkeypatch, caplog):
+    import importlib
+    from benchmark.registry import discover
+    import workstreams.red_foundation_models.contender as red
+    try:
+        with monkeypatch.context() as env:
+            env.setenv("WMB_RED_MODELS", "")
+            env.setenv("WMB_WHITE_MODELS", "")
+            importlib.reload(red)
+            assert red.CONTENDERS == [red.TrainMeanFloor]
+
+            env.setenv("WMB_RED_MODELS", "chronos2, typo")
+            env.setenv("WMB_WHITE_MODELS", "ttm,moment, typo")
+            importlib.reload(red)
+            found = discover()
+            assert "red_chronos2" in found
+            for model in ("ttm", "moment"):
+                old, new = f"white_{model}", f"red_{model}"
+                assert new in found and old in found and old not in list(found)
+                assert found[old] is found.get(old) is found[new]
+            assert "Ignoring unknown model key 'typo' in WMB_RED_MODELS" in caplog.text
+            assert "Ignoring unknown model key 'typo' in WMB_WHITE_MODELS" in caplog.text
+    finally:
+        importlib.reload(red)
+
+
 def test_runs_return_valid_json_for_undefined_r2_and_sort_perfect_mae_first(results, base_url):
     _write(results, "m1", "ds", "RHOB", "missing_curve")
     _write(results, "m2", "ds", "RHOB", "missing_curve", mae=0, r2=float("nan"))

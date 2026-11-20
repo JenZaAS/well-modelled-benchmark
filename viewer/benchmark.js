@@ -420,7 +420,7 @@
     if (id === Q.BASELINE_MODEL) return "baseline";
     if (/^black_/.test(id)) return "physics";
     if (/^blue_/.test(id)) return "GBT";
-    if (/^(red|white|purple)_/.test(id)) return "foundation";
+    if (/^(red|white|purple)_/.test(id)) return "foundation"; // white_: ids of results written before the move to red
     return "";
   }
   function familyBadge(id) {
@@ -930,7 +930,7 @@
     function query(well) {
       const r = st.run;
       const test = r.prediction_test ?? r.test;
-      return `contender=${encodeURIComponent(r.contender)}&dataset=${encodeURIComponent(r.dataset)}&target=${encodeURIComponent(r.target)}` +
+      return `contender=${encodeURIComponent(r.legacy_contender ?? r.contender)}&dataset=${encodeURIComponent(r.dataset)}&target=${encodeURIComponent(r.target)}` +
         `&scenario=${encodeURIComponent(r.scenario)}&well=${encodeURIComponent(well)}` +
         (test ? `&test=${encodeURIComponent(test)}` : "");
     }
