@@ -309,3 +309,33 @@ def test_decision_metrics_and_tie_aware_risk_coverage():
     assert DEC.risk_at_coverage(curve, 0.2) == pytest.approx(0.5)
     none = DEC.decision_metrics([0.1, 0.2], [1, 0], [True, True], 0.8)
     assert none["accepted"] == 0 and none["accepted_risk"] is None
+
+
+# ------------------------------------------------------------------ stronger fine-tune (extension)
+def test_finetune_pair_examples_match_inference_geometry():
+    from workstreams.black_physics.granite import finetune as FTN
+    from workstreams.black_physics.granite.reconstruct import _distance_weight
+
+    w = well(3000)
+    a, b = 1000, 1330
+    g = G._make_gap(w.name, "A", 0, w.depth, a, b)
+    e = FTN.ttm_pair_examples({w.name: w}, [g])[0]
+    y = w.curves["RHOB"]
+    assert e.up is not None and e.dn is not None and len(e.up) == len(e.dn) == 512
+    assert e.up[-1] == y[a - 1] and e.dn[-1] == y[b]               # each context ends next to the gap
+    assert e.dn[0] == y[b + 511]                                    # deeper flank reversed
+    np.testing.assert_array_equal(e.y, y[a:b])
+    np.testing.assert_allclose(e.u, _distance_weight(w.depth, a, b, a - 1, b))
+    hidden = set(np.round(y[a:b], 12))
+    assert not hidden & set(np.round(np.r_[e.up, e.dn], 12))       # labels never reach the inputs
+    g2 = G._make_gap(w.name, "A", 1, w.depth, 100, 430)             # 100-sample upper flank < 256: deep side only
+    e2 = FTN.ttm_pair_examples({w.name: w}, [g2])[0]
+    assert e2.up is None and e2.u is None and e2.dn is not None
+
+
+def test_finetune_schedule_warms_up_then_decays_to_the_floor():
+    from workstreams.black_physics.granite import finetune as FTN
+
+    f = [FTN._lr_factor(s, FTN.FT) for s in range(FTN.FT.max_updates + 1)]
+    assert f[0] == pytest.approx(1 / FTN.FT.warmup) and max(f) == pytest.approx(1.0)
+    assert f[-1] == pytest.approx(FTN.FT.min_lr_frac) and min(f[FTN.FT.warmup:]) >= FTN.FT.min_lr_frac - 1e-12

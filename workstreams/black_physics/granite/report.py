@@ -29,6 +29,9 @@ GRANITE = [C.VARIANT_IDS[k] for k in (("ttm", False), ("ttm", True), ("tspulse",
 OTHERS = ["black_linear_gap", "black_gardner_fixed", "black_gardner_flank_resid"]
 ROWS = GRANITE + OTHERS
 TIMESTRAL = ["red_timestral", "black_timestral_target_only"]   # scored by the `timestral` stage (own environment)
+FT_ROWS = ["black_ttm_r3_ft", "black_tspulse_ft"]             # stronger fine-tune extension (`finetune` stages)
+FT_BASE = {"black_ttm_r3_ft": ("black_ttm_r3_frozen", "black_ttm_r3_tuned"),
+           "black_tspulse_ft": ("black_tspulse_frozen", "black_tspulse_tuned")}
 MISSING_WHY = {"red_timestral": "not scored yet: run the `timestral` stage in the Timestral environment",
                "black_timestral_target_only": "not scored yet: run the `timestral` stage in the Timestral environment"}
 LABEL = {"black_ttm_r3_frozen": "TTM-R3 frozen", "black_ttm_r3_tuned": "TTM-R3 tuned",
@@ -49,7 +52,8 @@ BLUE_LIGHT = "#b7d3f6"
 GOOD, WARN, CRIT = "#0ca30c", "#fab219", "#d03b3b"
 ROW_COLOR = {"black_ttm_r3_frozen": VIOLET, "black_ttm_r3_tuned": BLUE, "black_tspulse_frozen": MAGENTA,
              "black_tspulse_tuned": AQUA, "black_linear_gap": MUTED, "black_gardner_fixed": ORANGE,
-             "black_gardner_flank_resid": YELLOW, "red_timestral": RED, "black_timestral_target_only": "#f2a3a2"}
+             "black_gardner_flank_resid": YELLOW, "red_timestral": RED, "black_timestral_target_only": "#f2a3a2",
+             "black_ttm_r3_ft": VIOLET, "black_tspulse_ft": "#a99ff0"}
 
 
 # ------------------------------------------------------------------------------------------------ loading
@@ -97,7 +101,22 @@ class Inputs:
             self.rows.update(self.timestral["rows"])
             self.npz.update(dict(np.load(W / "final" / "timestral_predictions.npz")))
             self.final["timing"].update(self.timestral["timing"])
-        self.names = ROWS + [n for n in TIMESTRAL if n in self.rows]
+        self.ft, self.ft_runs = None, {}
+        if (W / "final" / "finetune.json").is_file():    # stronger fine-tune extension
+            self.ft = _load(W / "final" / "finetune.json")
+            self.rows.update(self.ft["rows"])
+            self.npz.update(dict(np.load(W / "final" / "finetune_predictions.npz")))
+            for name, v in self.ft["variants"].items():
+                arm, scope = v["meta"]["arm"], v["meta"]["scope"]
+                LABEL[name] = f"{'TTM-R3' if arm == 'ttm' else 'TSPulse'} {scope} fine-tune"
+                self.calibration[name] = {"calibrator": v["calibrator"], "summary": v["D"]}
+                self.selection["rows"][name] = {"summary": v["B"]}
+                self.final["timing"][name] = {"inference_s": v["inference_s"]}
+                if (W / "dev" / f"B_{name}.json").is_file():
+                    self.dev_B[name] = _load(W / "dev" / f"B_{name}.json")
+            self.ft_runs = {a: _load(W / f"finetune_{a}.json") for a in C.ARMS if (W / f"finetune_{a}.json").is_file()}
+        ft = [n for n in FT_ROWS if n in self.rows]
+        self.names = GRANITE + ft + OTHERS + [n for n in TIMESTRAL if n in self.rows]
         self.unavailable = {n: MISSING_WHY[n] for n in TIMESTRAL if n not in self.rows}
         self.station = {n: station_scores(n) for n in self.names}
         self.keys = [r["key"] for r in self.rows[GRANITE[0]]]
@@ -188,7 +207,7 @@ def row_table(I: Inputs) -> list[dict]:
         d = np.array([pw[w] - lin[w] for w in pw if w in lin])
         st = I.station.get(name) or {}
         cal = I.calibration.get(name, {})
-        b = I.selection["rows"].get(name, {}).get("summary", {}) if name in GRANITE else {}
+        b = I.selection["rows"].get(name, {}).get("summary", {}) if name in GRANITE + FT_ROWS else {}
         cov90, cov50 = coverage(I, name, "p05", "p95"), coverage(I, name, "p25", "p75")
         raw80 = coverage(I, name, "raw_lo", "raw_hi")   # model's own P10-P90 (TTM, Timestral), uncalibrated
         t = I.final["timing"].get(name, {})
@@ -212,7 +231,7 @@ def row_table(I: Inputs) -> list[dict]:
             "gaps_passing_tolerance": sum(1 for r in rows if r["label"] == 1),
             "cover90": cov90, "cover50": cov50, "raw80_test": raw80,
             "bands": ("nominal Gaussian from P10/P90" if name in TIMESTRAL else
-                      "D-calibrated" if name in GRANITE else None),
+                      "D-calibrated" if name in GRANITE + FT_ROWS else None),
             "B_mean_well_MAE": b.get("mean_well_MAE"), "D_mean_well_MAE": cal.get("summary", {}).get("mean_well_MAE"),
             "k50": cal.get("calibrator", {}).get("k50"), "k90": cal.get("calibrator", {}).get("k90"),
             "raw80_D": cal.get("raw_80"),
@@ -235,11 +254,21 @@ def bootstrap_table(I: Inputs) -> list[dict]:
                   ("black_ttm_r3_tuned", "red_timestral"), (I.selected, "red_timestral"),
                   ("black_gardner_flank_resid", "red_timestral")]
         pairs = list(dict.fromkeys(pairs))
+    ft_pairs = []
+    for n in FT_ROWS:
+        if n in I.rows:
+            frozen, tuned = FT_BASE[n]
+            ft_pairs += [(n, frozen), (n, tuned), (n, "black_linear_gap")]
+            ft_pairs += [(n, t) for t in TIMESTRAL if t in I.rows]
     out = []
     for i, (a, b) in enumerate(pairs):
         res = paired_bootstrap(per_well(I.rows[a]), per_well(I.rows[b]), cfg.bootstrap, cfg.seed + i)
         out.append({"set": "test", "a": a, "b": b, **res})
-    for i, (a, b) in enumerate(pairs[:2]):
+    for i, (a, b) in enumerate(ft_pairs):     # own seed block so earlier pairs keep their numbers
+        res = paired_bootstrap(per_well(I.rows[a]), per_well(I.rows[b]), cfg.bootstrap, cfg.seed + 200 + i)
+        out.append({"set": "test", "a": a, "b": b, **res})
+    b_pairs = pairs[:2] + [p for p in ft_pairs if p[1] in GRANITE]
+    for i, (a, b) in enumerate(b_pairs):
         if a in I.dev_B and b in I.dev_B:
             res = paired_bootstrap(per_well(I.dev_B[a]), per_well(I.dev_B[b]), cfg.bootstrap, cfg.seed + 100 + i)
             out.append({"set": "B (selection wells)", "a": a, "b": b, **res})
@@ -286,6 +315,9 @@ def hashes(I: Inputs) -> dict:
             "timestral_json_sha256": _sha(W / "final" / "timestral.json"),
             "timestral_predictions_npz_sha256": _sha(W / "final" / "timestral_predictions.npz"),
             "timestral": I.timestral and {k: I.timestral.get(k) for k in ("weights", "code", "versions", "git")},
+            "finetune_json_sha256": _sha(W / "final" / "finetune.json"),
+            "finetune_predictions_npz_sha256": _sha(W / "final" / "finetune_predictions.npz"),
+            "finetune_checkpoints": {a: r.get("checkpoint_sha256") for a, r in I.ft_runs.items()},
             "manifest_sha256": _sha(W / "manifest.json"),
             "test_def_sha256": _sha(REPO / "benchmark" / "test_defs" / f"{C.TEST_NAME}.yaml"),
             "manifest_frozen_at": I.manifest["frozen_at"], "git_at_freeze": I.manifest.get("git"),
@@ -294,6 +326,112 @@ def hashes(I: Inputs) -> dict:
 
 
 # ------------------------------------------------------------------------------------------------ text
+LOG_NAMES = {"GR": "gamma ray (natural radioactivity; high in shale)",
+             "RDEP": "deep resistivity (how strongly the rock resists current, far from the hole; fluids, porosity)",
+             "RMED": "medium resistivity (the same, closer to the hole)",
+             "CALI": "caliper (hole diameter; a washed-out hole spoils density readings)",
+             "DTC": "compressional sonic slowness (how slowly a sound wave crosses the rock)",
+             "DTS": "shear sonic slowness",
+             "NPHI": "neutron porosity (hydrogen content, mostly water in pores)",
+             "PEF": "photoelectric factor (tracks mineralogy, e.g. sandstone vs limestone)"}
+
+
+def explainer(I: Inputs) -> str:
+    """Plain-language description of the experiment: what is hidden, what each row sees, how it is scored."""
+    cov = (I.timestral or {}).get("timing", {}).get("red_timestral", {}).get("covariate_gaps", {})
+    logs = "\n".join(f"  - **{k}**: {v}" + (f"; present in {cov[k]} of the 20 test gaps" if k in cov else "")
+                     for k, v in LOG_NAMES.items())
+    ft = ""
+    if I.ft:
+        ft = ("| TTM-R3 / TSPulse *head*, *decoder* or *full fine-tune* | density only | The stronger fine-tune added "
+              "after the brief's run: up to the whole network is trained, on 8× more practice gaps (13,824), for "
+              "minutes rather than seconds. The part trained and the learning rate are picked on the B wells; see "
+              "the sweep table. |\n")
+    return f"""## What this experiment is
+
+**The problem.** A well log is one physical measurement recorded against depth as a tool is pulled up a borehole.
+Bulk density (RHOB, g/cm³) is one such log. Logs often have holes: the tool failed, the borehole wall caved in, or
+a section was never logged. Petrophysicists then fill the hole by hand or with a crude rule. We test how well
+automatic methods fill a hole, and whether a method can say when its fill should not be trusted.
+
+**The test.** FORCE 2020 is a public set of Norwegian offshore wells. Its 20 official test wells were never used for
+fitting or choosing anything. In each test well we hide one real, fully measured 50 m stretch of density, about
+330 samples at 0.15 m spacing; the benchmark's named test `{C.TEST_NAME}` places it. Each method fills the
+stretch. We then reveal the measurements and score the fill. Rock densities here mostly lie between about 2.0 and
+2.7 g/cm³, so an error of 0.05 g/cm³ is about 2 %.
+
+**What a method may see.** Every method sees the density measured above and below the hidden stretch (the
+*flanks*). Only density is hidden. The well's **other logs**, recorded by other tools at the same depths, stay
+visible, including inside the hidden stretch. Some methods use them and some deliberately do not:
+{logs}
+
+**The rows.**
+
+| Row | Sees | What it does |
+|---|---|---|
+| Straight line | density flanks | Draws a straight line from the last measured density above to the first below. The baseline to beat. |
+| Gardner (fixed) | sonic (DTC) inside the gap | A textbook rock-physics formula, density = 0.31 × velocity^0.25, using sonic speed. Uses no density at all. |
+| Gardner + flank residual | sonic + density flanks | Gardner, shifted by how far it is off on the flanks (that offset is interpolated across the gap). |
+| TTM-R3 frozen / tuned | density only | IBM's small (3 M weights) time-series forecaster, pretrained on non-geological series; one depth step is treated as one time step. It forecasts down from the upper flank and up from the lower flank and blends the two. *Tuned*: the brief's run, which retrained its output layers on our training wells but stopped after 75 updates (under 5 s). |
+| TSPulse frozen / tuned | density only | IBM's small (1 M weights) gap-filling model: it sees a 512-sample window with the gap blanked out and reconstructs it. *Tuned*: the brief's run, which retrained only its final 200-weight output layer for 125 updates. |
+{ft}| Timestral-5M + other logs | density flanks + all other logs + depth | Mistral's forecaster with the red team's adapter, frozen. The other logs across the flanks *and* the gap are side information. |
+| Timestral-5M target-only | density only | The same model and adapter, with the other logs removed: the control that shows what the other logs are worth. |
+
+*Frozen* means the published weights, untouched. No method sees the hidden density.
+
+**Wells and why they are split.** The 98 training wells are split once, by a fixed hash of the well name:
+A (54 wells) to fine-tune the models, B (12) to choose checkpoints and the "selected" row, C (20) to fit the trust
+rule, and D (12) to calibrate the uncertainty bands and the trust rule's probabilities. Each well is used for one
+job only, so no choice is checked on the wells it was made on.
+
+**How it is scored.**
+- **Gap error (MAE):** the mean of |filled − measured| over the hidden samples, in g/cm³. Each test well has one
+  gap, so per-well and per-gap error are the same; the headline is the mean over the 20 wells.
+- **Paired bootstrap:** to compare two methods we take their per-well differences and resample the 20 wells 2,000
+  times. The 95 % interval of the mean difference is reported; if it excludes 0, the difference holds up at this
+  sample size. Negative means the first method is better.
+- **Uncertainty bands:** a 90 % band should contain 90 % of the hidden values. *Coverage* is how often it does;
+  *width* is how wide it is. The Granite bands are calibrated on D; Timestral's come from its own quantiles.
+- **Trust rule (decision):** for each gap, a probability that the fill is within 0.05 g/cm³ (gap MAE ≤ 0.05). It is
+  computed only from things known without the truth: how much the two flanks disagree, how variable the density
+  is on the flanks (for TTM: its band width), the fill's range, flank lengths, and disagreement with the
+  sonic-based Gardner estimate. A gap is **accepted** when
+  p ≥ 0.80 and otherwise sent to **review** by a person. A *false accept* is an accepted gap that misses the
+  tolerance. The **Brier score** is the mean squared error of these probabilities: lower is better, and a
+  constant 50 % scores 0.25. The rule is fitted on C, recalibrated on D, and applied to the row selected on B
+  ({LABEL[I.selected]}). *Decima-small* is a small language model given the same facts as text and asked the
+  same yes/no question.
+
+**How to read the main table.** *Support* is gaps filled out of 20. *Gaps ≤ 0.05* counts gaps within tolerance.
+*Wells better than line* counts wells where the row beats the straight line. *B mean well MAE* is the error on the
+selection wells (higher than test, because B gaps are harder). The pooled MAE in brackets is the benchmark
+runner's own score, as a cross-check.
+"""
+
+
+def ft_text(I: Inputs, r: dict, boot: list[dict], minutes: str, ttm: dict, tsp: dict, ci) -> str:
+    """Fine-tuning sentence: the brief's head-only run and, when present, the stronger fine-tune."""
+    s = (f"The brief's laptop fine-tune of the IBM heads ({minutes}) changed TTM error by {ttm['mean_diff']:+.4f} "
+         f"({ci(ttm)}) and TSPulse by {tsp['mean_diff']:+.4f}.")
+    b = {(x["a"], x["b"]): x for x in boot if x["set"] == "test"}
+    parts = []
+    for n in FT_ROWS:
+        if n not in r:
+            continue
+        frozen = FT_BASE[n][0]
+        run = I.ft_runs.get(I.ft["variants"][n]["meta"]["arm"], {})
+        sel = next((x for x in run.get("runs", []) if x["scope"] == I.ft["variants"][n]["meta"]["scope"]
+                    and x["lr"] == I.ft["variants"][n]["meta"]["lr"]), {})
+        d = b[(n, frozen)]
+        parts.append(f"{LABEL[n]} ({sel.get('n_trainable', 0) / 1e6:.2f} M weights trained, "
+                     f"{sel.get('updates_run', '?')} updates, {sel.get('train_minutes', float('nan')):.1f} min) "
+                     f"{r[n]['test_mean_well_MAE']:.3f}, {d['mean_diff']:+.4f} vs frozen ({ci(d)})")
+    if parts:
+        s += (" A stronger fine-tune afterwards (broader unfreezing, 8× more training gaps, longer schedule, chosen "
+              "on B only): " + "; ".join(parts) + ".")
+    return s
+
+
 def thirty_seconds(I: Inputs, table: list[dict], boot: list[dict], dec: dict, method: str) -> str:
     r = {x["row"]: x for x in table}
     sel = r[I.selected]
@@ -330,9 +468,8 @@ def thirty_seconds(I: Inputs, table: list[dict], boot: list[dict], dec: dict, me
             f"{rt['gaps_passing_tolerance']} of 20 gaps within 0.05. From the density log alone the models tie: "
             f"Timestral {to['test_mean_well_MAE']:.3f}, IBM TTM-R3 {r['black_ttm_r3_tuned']['test_mean_well_MAE']:.3f}, "
             f"TSPulse {r['black_tspulse_tuned']['test_mean_well_MAE']:.3f} (TTM − Timestral {vs['mean_diff']:+.4f}, "
-            f"{ci(vs)}). So the gain is the other logs ({cv['mean_diff']:+.4f}, {ci(cv)}), not the model. Laptop "
-            f"fine-tuning of the IBM heads ({minutes}) changed TTM error by {ttm['mean_diff']:+.4f} ({ci(ttm)}) and "
-            f"TSPulse by {tsp['mean_diff']:+.4f}. Gardner from sonic alone is worse than the line "
+            f"{ci(vs)}). So the gain is the other logs ({cv['mean_diff']:+.4f}, {ci(cv)}), not the model. "
+            f"{ft_text(I, r, boot, minutes, ttm, tsp, ci)} Gardner from sonic alone is worse than the line "
             f"({gf['test_mean_well_MAE']:.3f}); corrected by the flank residual it reaches "
             f"{gfr['test_mean_well_MAE']:.3f}. Timestral's nominal 90 % band covers only "
             f"{100 * rt['cover90']['well_weighted']:.0f} % of the hidden samples; the D-calibrated Granite bands cover "
@@ -557,6 +694,37 @@ def fig_training(I: Inputs, out: Path) -> Path:
     return p
 
 
+def fig_finetune(I: Inputs, out: Path) -> Path | None:
+    """B metric over updates for every setting of the stronger fine-tune sweep, against step 0 and head-only."""
+    if not I.ft_runs:
+        return None
+    plt = _mpl()
+    arms = [a for a in C.ARMS if a in I.ft_runs]
+    fig, axes = plt.subplots(1, len(arms), figsize=(5.6 * len(arms), 4.2), squeeze=False)
+    colors = [BLUE, ORANGE, AQUA, MAGENTA]
+    for ax, arm in zip(axes[0], arms):
+        rec = I.ft_runs[arm]
+        sel = rec["selected"]
+        for c, run in zip(colors, rec["runs"]):
+            h = run["history"]
+            star = " (selected)" if (run["scope"], run["lr"]) == (sel["scope"], sel["lr"]) else ""
+            ax.plot([x["update"] for x in h], [x["B_metric"] for x in h], color=c, marker="o", ms=3, lw=1.4,
+                    label=f"{run['scope']}, lr {run['lr']:g}{star}")
+        ax.axhline(sel["step0_metric"], color=MUTED, ls="--", lw=0.9, label="pretrained (step 0)")
+        t = I.train.get(arm)
+        if t:
+            ax.axhline(t["best_metric"], color=INK2, ls=":", lw=1.1, label="brief's head-only tune")
+        ax.set_title(f"{'TTM-R3' if arm == 'ttm' else 'TSPulse'}: B mean well MAE while fine-tuning", loc="left")
+        ax.set_xlabel("Optimizer update (batch 32)")
+        ax.set_ylabel("g/cm³ (lower is better)")
+        ax.legend(fontsize=7.5)
+    fig.tight_layout()
+    p = out / "finetune_sweep.png"
+    fig.savefig(p, dpi=160)
+    plt.close(fig)
+    return p
+
+
 def fig_decisions(I: Inputs, dec: dict, out: Path) -> Path:
     plt = _mpl()
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(11, 4.4))
@@ -748,10 +916,27 @@ def md_tables(I, table, boot, dec, res, method, aggregate_only: bool) -> str:
                  f"{_f(r['process_rss_mb'], 0)} | {r['step0_B']:.5f} → {r['tuned_B']:.5f} ({r['tuned_update']}) | "
                  f"{r['overfit_reload_exact']} |")
     L.append("")
+    if I.ft_runs:
+        L.append("**Stronger fine-tune sweep** (extension after the brief's run; A wells, up to 256 gaps per well, "
+                 "batch 32, warm-up + cosine, eval on B every 100 updates, patience 10, ≤ 4,000 updates or 12 min; "
+                 "the best B evaluation wins; TTM trained on its blended two-sided output)")
+        L.append("")
+        L.append("| Model | Unfrozen | Learning rate | Trained weights | Updates | Minutes | Stop | B: pretrained → best "
+                 "(update) | Selected |")
+        L.append("|---|---|---|---|---|---|---|---|---|")
+        for arm, rec in I.ft_runs.items():
+            sel = rec["selected"]
+            for run in rec["runs"]:
+                L.append(f"| {'TTM-R3' if arm == 'ttm' else 'TSPulse'} | {run['scope']} | {run['lr']:g} | "
+                         f"{run['n_trainable']:,} | {run['updates_run']} | {run['train_minutes']:.1f} | "
+                         f"{run['stop_reason']} | {run['step0_metric']:.5f} → {_f(run['best_metric'], 5)} "
+                         f"({run['best_update']}) | "
+                         f"{'yes' if (run['scope'], run['lr']) == (sel['scope'], sel['lr']) else ''} |")
+        L.append("")
     L.append("| Row | k50 | k90 | Raw TTM 80 % coverage on D (well-weighted) | Fit s | Warm inference s (20 gaps) |")
     L.append("|---|---|---|---|---|---|")
     for r in table:
-        if r["row"] in GRANITE:
+        if r["row"] in GRANITE + FT_ROWS:
             raw = r["raw80_D"]
             L.append(f"| {r['label']} | {_f(r['k50'], 3)} | {_f(r['k90'], 3)} | "
                      f"{'–' if not raw else format(raw["well_weighted"], ".3f")} | {_f(r['fit_s'], 2)} | "
@@ -780,6 +965,10 @@ def build() -> dict:
             ("red_timestral", "black_timestral_target_only", "Timestral: + other logs − target-only"),
             ("black_ttm_r3_tuned", "black_timestral_target_only", "Density only: TTM-R3 tuned − Timestral"),
             ("black_ttm_r3_tuned", "red_timestral", "TTM-R3 tuned − Timestral + other logs")], "paired_timestral.png"))
+    if I.ft:
+        figures.append(fig_finetune(I, figs))
+        ftp = [(n, FT_BASE[n][0], f"{LABEL[n]} − frozen") for n in FT_ROWS if n in I.rows]
+        figures.append(fig_paired(I, boot, figs, ftp, "paired_finetune.png"))
     replay = {"generated_at": time.strftime("%Y-%m-%dT%H:%M:%S"), "test": C.TEST_NAME, "selected": I.selected,
               "headline_decision": method, "rows": table, "bootstrap": boot, "decisions": dec, "resources": res,
               "unavailable": I.unavailable, "hashes": H, "thirty_seconds": text,
@@ -791,6 +980,8 @@ def build() -> dict:
                          "<timestral-python>: WMB_RED_MODELS=timestral WMB_BLACK_TIMESTRAL=1 python -m benchmark.run "
                          "--model red_timestral,black_timestral_target_only --test rhob_gap50 --predictions npz --rerun",
                          "<timestral-python>: python -m workstreams.black_physics.granite timestral",
+                         "python -m workstreams.black_physics.granite finetune",
+                         "python -m workstreams.black_physics.granite finetune_score",
                          "python -m workstreams.black_physics.granite report"]}
     (out / "results_table.json").write_text(json.dumps(replay, indent=1, default=float), encoding="utf-8")
     tables = md_tables(I, table, boot, dec, res, method, aggregate_only=False)
@@ -804,7 +995,7 @@ def build() -> dict:
                     + f" | {s['p_pass'][method]:.2f} | {'accept' if s['p_pass'][method] >= thr else 'review'} |")
     local = (f"# Granite 50 m density gap: local report\n\nGenerated {replay['generated_at']} from frozen artifacts "
              f"(manifest frozen {I.manifest['frozen_at']}). Contains per-well rows: keep local.\n\n"
-             f"## 30-second result\n\n{text}\n\n## Tables\n\n{tables}\n\n## Per test gap (MAE, g/cm³)\n\n"
+             f"{explainer(I)}\n## 30-second result\n\n{text}\n\n## Tables\n\n{tables}\n\n## Per test gap (MAE, g/cm³)\n\n"
              + "\n".join(gaps) + "\n\n## Figures\n\n" + "\n".join(f"- `{p.name}`" for p in figures)
              + "\n\n## Hashes\n\n```json\n" + json.dumps(H, indent=1) + "\n```\n")
     (out / "REPORT.md").write_text(local, encoding="utf-8")
@@ -813,7 +1004,8 @@ def build() -> dict:
            f"depths or curve values. Test `{C.TEST_NAME}`: one hidden 50 m RHOB gap in each of the 20 FORCE 2020 test "
            f"wells (6,600 samples). Code hash `{H['code_hash']}`, config `{H['config_hash']}`, split `{H['split_hash']}`, "
            f"data `{H['data_hash']}`; predictions sha256 `{(H['predictions_npz_sha256'] or '')[:16]}`, decision sidecar "
-           f"`{(H['decision_sidecar_sha256'] or '')[:16]}` (local files).\n\n## 30-second result\n\n{text}\n\n"
+           f"`{(H['decision_sidecar_sha256'] or '')[:16]}` (local files).\n\n{explainer(I)}\n"
+           f"## 30-second result\n\n{text}\n\n"
            f"## Tables\n\n{tables}\n")
     (HERE / "RESULTS.md").write_text(agg, encoding="utf-8")
     from workstreams.black_physics.granite.pipeline import log

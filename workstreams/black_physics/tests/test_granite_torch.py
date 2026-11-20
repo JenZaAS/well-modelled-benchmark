@@ -99,3 +99,19 @@ def test_tuned_checkpoint_changes_only_the_head(arm):
     changed = [k for k in fs if not torch.equal(fs[k], ts[k])]
     assert changed and set(changed) <= set(head)
     assert all(any(h in f".{k}" for h in frozen.head_keys) for k in changed)
+
+
+@needs_ttm
+def test_finetune_blended_loss_scores_exactly_what_inference_produces(ttm):
+    from workstreams.black_physics.granite import finetune as FTN
+    from workstreams.black_physics.granite.backends import TTM_QUANTILES
+
+    w = _well()
+    a, b = 1200, 1530
+    pc = make_reconstructor(ttm).run([_task(w, a, b)])[0][0]
+    e = FTN.ttm_pair_examples({w.name: w}, [G._make_gap(w.name, "A", 0, w.depth, a, b)])[0]
+    with torch.no_grad():
+        loss = float(FTN.ttm_blended_loss(ttm, [e]))
+    d = e.y[None, :] - pc.q_raw
+    tau = np.array(TTM_QUANTILES)[:, None]
+    assert loss == pytest.approx(float(np.maximum(tau * d, (tau - 1) * d).mean()), rel=1e-5)

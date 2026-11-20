@@ -7,6 +7,8 @@
     python -m workstreams.black_physics.granite decide      # decision fits on C, recalibration on D, freeze manifest
     python -m workstreams.black_physics.granite final       # sealed test gaps: keyed predictions + decisions
     <timestral-python> -m workstreams.black_physics.granite timestral   # both Timestral rows, same gaps (CPU)
+    python -m workstreams.black_physics.granite finetune    # stronger fine-tune sweep (extension; see finetune.py)
+    python -m workstreams.black_physics.granite finetune_score   # its D bands, B/D rows and the test rows
     python -m workstreams.black_physics.granite report      # tables, paired bootstrap, figures (local)
     python -m workstreams.black_physics.granite all         # prepare .. decide (everything before the test)
 
@@ -691,7 +693,7 @@ def main(argv=None) -> int:
 
     ap = argparse.ArgumentParser(description="Granite 50 m density-gap experiment")
     ap.add_argument("stage", choices=["prepare", "train", "select", "calibrate", "decide", "freeze", "final",
-                                      "timestral", "report", "all", "fetch"])
+                                      "timestral", "finetune", "finetune_score", "report", "all", "fetch"])
     ap.add_argument("--arm", choices=["ttm", "tspulse"], help="train only this arm")
     a = ap.parse_args(argv)
     if a.stage == "fetch":
@@ -714,6 +716,12 @@ def main(argv=None) -> int:
         final()
     if a.stage == "timestral":
         timestral()
+    if a.stage == "finetune":
+        from workstreams.black_physics.granite import finetune as FTN
+        FTN.sweep((a.arm,) if a.arm else ("ttm", "tspulse"))
+    if a.stage == "finetune_score":
+        from workstreams.black_physics.granite import finetune as FTN
+        FTN.score()
     if a.stage == "report":
         from workstreams.black_physics.granite import report
         report.build()
