@@ -15,6 +15,22 @@ test("benchmark depth zoom anchors at pointer and scroll reaches both ends", () 
 
 const IDS = ["viewer", "benchmark"];
 
+test("model routes keep raw IDs and render safe, useful detail pages", () => {
+  for (const id of ["purple_tabum_v11", 'custom/<model> & "variant"']) {
+    assert.equal(B.parseModelHash(B.modelHash(id)), id);
+    assert.equal(B.parseTabHash(B.modelHash(id), IDS, null), "benchmark");
+  }
+  assert.equal(B.parseModelHash("#benchmark/model/%ZZ"), null);
+  assert.equal(B.parseModelHash("#benchmark/summary-all"), null);
+  const known = B.modelDetailHtml("purple_tabum_v11", "byproperty");
+  assert.match(known, /href="#benchmark\/byproperty"/);
+  assert.match(known, /tabUM v1.1/);
+  assert.match(known, /Input.*Method.*Output/);
+  const unknown = B.modelDetailHtml("red_<unknown>", "summary-rhob");
+  assert.doesNotMatch(unknown, /<unknown>/);
+  assert.match(unknown, /not documented/);
+});
+
 test("parseTabHash accepts only registered tab ids", () => {
   assert.equal(B.parseTabHash("#benchmark", IDS, "viewer"), "benchmark");
   assert.equal(B.parseTabHash("viewer", IDS, null), "viewer");
