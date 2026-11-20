@@ -72,7 +72,7 @@ runner's own score, as a cross-check.
 
 ## 30-second result
 
-We hid one real 50 m stretch of bulk density in each of the 20 FORCE test wells. The best fill came from Mistral's Timestral-5M, frozen, reading the other logs across the gap: 0.033 g/cm³ mean error, 45 % better than a straight line (0.061), better in 18 of 20 wells, 16 of 20 gaps within 0.05. From the density log alone the models tie: Timestral 0.047, IBM TTM-R3 0.048, TSPulse 0.049 (TTM − Timestral +0.0007, 95 % CI -0.0023 to +0.0045). So the gain is the other logs (-0.0135, 95 % CI -0.0221 to -0.0062), not the model. The brief's laptop fine-tune of the IBM heads (early-stopped after 75–125 updates, 5 s or less on a laptop GPU) changed TTM error by -0.0006 (95 % CI -0.0017 to +0.0004) and TSPulse by -0.0001. A stronger fine-tune afterwards (broader unfreezing, 8× more training gaps, longer schedule, chosen on B only): TTM-R3 head fine-tune (1.08 M weights trained, 1800 updates, 3.5 min) 0.047, -0.0010 vs frozen (95 % CI -0.0046 to +0.0028); TSPulse full fine-tune (1.07 M weights trained, 2900 updates, 2.7 min) 0.046, -0.0035 vs frozen (95 % CI -0.0070 to -0.0008). Gardner from sonic alone is worse than the line (0.100); corrected by the flank residual it reaches 0.056. Timestral's nominal 90 % band covers only 46 % of the hidden samples; the D-calibrated Granite bands cover 96 %. For each gap a small calibrated rule (Numeric logistic) says whether the TSPulse tuned fill is within 0.05 g/cm³: at p ≥ 0.80 it accepted 7 of 20 gaps with 0 false accepts and sent 13 to review; Brier 0.158 vs 0.261 for the base rate. A small verifier model (Decima-small) reading the same facts as text accepted 0 gaps (p_pass 0.47–0.53, Brier 0.239): it barely separates good from bad gaps.
+We hid one real 50 m stretch of bulk density in each of the 20 FORCE test wells. The best fill came from Mistral's Timestral-5M, frozen, reading the other logs across the gap: 0.033 g/cm³ mean error, 45 % better than a straight line (0.061), better in 18 of 20 wells, 16 of 20 gaps within 0.05. From the density log alone the models tie: Timestral 0.047, IBM TTM-R3 0.048, TSPulse 0.049 (TTM − Timestral +0.0007, 95 % CI -0.0023 to +0.0045). So the gain is the other logs (-0.0135, 95 % CI -0.0221 to -0.0062), not the model. The brief's laptop fine-tune of the IBM heads (early-stopped after 75–125 updates, 5 s or less on a laptop GPU) changed TTM error by -0.0006 (95 % CI -0.0017 to +0.0004) and TSPulse by -0.0001. A stronger fine-tune afterwards (broader unfreezing, 8× more training gaps, longer schedule, chosen on B only): TTM-R3 head fine-tune (1.08 M weights trained, 1800 updates, 3.5 min) 0.047, -0.0010 vs frozen (95 % CI -0.0046 to +0.0028); TSPulse full fine-tune (1.07 M weights trained, 2900 updates, 2.7 min) 0.046, -0.0035 vs frozen (95 % CI -0.0070 to -0.0008). Gardner from sonic alone is worse than the line (0.100); corrected by the flank residual it reaches 0.056. Timestral's nominal 90 % band covers only 46 % of the hidden samples; the D-calibrated Granite bands cover 96 %. For each gap a small calibrated rule (Numeric logistic) says whether the TSPulse tuned fill is within 0.05 g/cm³: at p ≥ 0.80 it accepted 7 of 20 gaps with 0 false accepts and sent 13 to review; Brier 0.158 vs 0.261 for the base rate. A small verifier model (Decima-small) reading the same facts as text accepted 0 gaps (p_pass 0.47–0.53, Brier 0.239): its probabilities hardly vary and on the 236 development gaps its ranking is near chance, so it never reaches the 0.80 bar. Refitted on each model's own fills, the same rule ranks gaps with test AUC 0.75–0.91; adding two gamma-ray features (GR is measured inside the gap) lowers its test Brier for 10 of 10 models.
 
 ## Tables
 
@@ -82,8 +82,8 @@ We hid one real 50 m stretch of bulk density in each of the 20 FORCE test wells.
 | TTM-R3 tuned | 0.0475 | 0.0475 (0.0475) | 0.0726 | -0.0057 | 16 | 20/20 | 13/20 | 0.96 (0.296) | 0.58 | 0.0804 |
 | TSPulse frozen | 0.0495 | 0.0495 (0.0495) | 0.0753 | -0.0030 | 13 | 20/20 | 13/20 | 0.96 (0.359) | 0.65 | 0.0789 |
 | TSPulse tuned ★ | 0.0494 | 0.0494 (0.0494) | 0.0749 | -0.0030 | 15 | 20/20 | 13/20 | 0.96 (0.356) | 0.65 | 0.0789 |
-| TTM-R3 head fine-tune | 0.0471 | 0.0471 | 0.0717 | -0.0030 | 15 | 20/20 | 13/20 | 0.96 (0.269) | 0.56 | 0.0774 |
-| TSPulse full fine-tune | 0.0460 | 0.0460 | 0.0718 | -0.0031 | 18 | 20/20 | 13/20 | 0.96 (0.344) | 0.66 | 0.0748 |
+| TTM-R3 head fine-tune | 0.0471 | 0.0471 (0.0471) | 0.0717 | -0.0030 | 15 | 20/20 | 13/20 | 0.96 (0.269) | 0.56 | 0.0774 |
+| TSPulse full fine-tune | 0.0460 | 0.0460 (0.0460) | 0.0718 | -0.0031 | 18 | 20/20 | 13/20 | 0.96 (0.344) | 0.66 | 0.0748 |
 | Linear interpolation | 0.0611 | 0.0611 (0.0611) | 0.0913 | 0.0000 | – | 20/20 | 8/20 | – | – | – |
 | Gardner (fixed) | 0.0995 | 0.0995 (0.0995) | 0.1170 | 0.0207 | 3 | 20/20 | 1/20 | 0.99 (0.507) | 0.51 | – |
 | Gardner + flank residual | 0.0563 | 0.0563 (0.0563) | 0.0861 | -0.0042 | 15 | 20/20 | 10/20 | – | – | – |
@@ -139,18 +139,37 @@ Timestral-5M rows: frozen weights `mistralai/Timestral-5M@bdd20cfc15a3fea0e4cb5c
 
 **Decisions** on the selected reconstruction (accept when p_pass ≥ 0.80; label = gap MAE ≤ 0.05)
 
-| Method | Test Brier | Accepted | Review | False accepts | Risk @25 % cov. | Risk @50 % cov. | Reliability bins (n: mean p → pass rate) | D Brier | C Brier |
-|---|---|---|---|---|---|---|---|---|---|
-| Prevalence | 0.261 | 0 | 20 | 0 | 0.35 | 0.35 | 0: –→–; 20: 0.47→0.65; 0: –→– | 0.244 | 0.250 |
-| Width-only logistic | 0.196 | 2 | 18 | 0 | 0.00 | 0.10 | 5: 0.13→0.40; 7: 0.55→0.43; 8: 0.75→1.00 | 0.154 | 0.180 |
-| Numeric logistic ◆ | 0.158 | 7 | 13 | 0 | 0.00 | 0.10 | 5: 0.18→0.20; 4: 0.52→0.75; 11: 0.81→0.82 | 0.150 | 0.138 |
-| Numeric + Gardner | 0.156 | 7 | 13 | 0 | 0.00 | 0.10 | 5: 0.17→0.20; 5: 0.55→0.60; 10: 0.83→0.90 | 0.152 | 0.138 |
-| Numeric (recal. D) | 0.161 | 7 | 13 | 0 | 0.00 | 0.10 | 5: 0.17→0.20; 6: 0.54→0.67; 9: 0.82→0.89 | 0.150 | 0.139 |
-| Numeric + Gardner (recal. D) | 0.159 | 7 | 13 | 0 | 0.00 | 0.10 | 5: 0.17→0.20; 7: 0.55→0.57; 8: 0.82→1.00 | 0.152 | 0.141 |
-| Decima-small raw | 0.239 | 0 | 20 | 0 | 0.20 | 0.10 | 0: –→–; 20: 0.51→0.65; 0: –→– | 0.243 | 0.256 |
-| Decima-small (recal. D) | 0.280 | 0 | 20 | 0 | 0.20 | 0.10 | 0: –→–; 20: 0.39→0.65; 0: –→– | 0.232 | 0.272 |
+| Method | Test Brier | Accepted | Review | False accepts | Risk @25 % cov. | Risk @50 % cov. | Reliability bins (n: mean p → pass rate) | D Brier | C Brier | D accepted (false) | Ranking AUC C / D / test |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Prevalence | 0.261 | 0 | 20 | 0 | 0.35 | 0.35 | 0: –→–; 20: 0.47→0.65; 0: –→– | 0.244 | 0.250 | 0/88 (0) | 0.50 / 0.50 / 0.50 |
+| Width-only logistic | 0.196 | 2 | 18 | 0 | 0.00 | 0.10 | 5: 0.13→0.40; 7: 0.55→0.43; 8: 0.75→1.00 | 0.154 | 0.180 | 4/88 (1) | 0.81 / 0.85 / 0.81 |
+| Numeric logistic ◆ | 0.158 | 7 | 13 | 0 | 0.00 | 0.10 | 5: 0.18→0.20; 4: 0.52→0.75; 11: 0.81→0.82 | 0.150 | 0.138 | 14/88 (2) | 0.89 / 0.86 / 0.86 |
+| Numeric + Gardner | 0.156 | 7 | 13 | 0 | 0.00 | 0.10 | 5: 0.17→0.20; 5: 0.55→0.60; 10: 0.83→0.90 | 0.152 | 0.138 | 15/88 (2) | 0.89 / 0.85 / 0.87 |
+| Numeric (recal. D) | 0.161 | 7 | 13 | 0 | 0.00 | 0.10 | 5: 0.17→0.20; 6: 0.54→0.67; 9: 0.82→0.89 | 0.150 | 0.139 | 11/88 (1) | 0.89 / 0.86 / 0.86 |
+| Numeric + Gardner (recal. D) | 0.159 | 7 | 13 | 0 | 0.00 | 0.10 | 5: 0.17→0.20; 7: 0.55→0.57; 8: 0.82→1.00 | 0.152 | 0.141 | 10/88 (1) | 0.89 / 0.85 / 0.87 |
+| Decima-small raw | 0.239 | 0 | 20 | 0 | 0.20 | 0.10 | 0: –→–; 20: 0.51→0.65; 0: –→– | 0.243 | 0.256 | 0/88 (0) | 0.48 / 0.62 / 0.82 |
+| Decima-small (recal. D) | 0.280 | 0 | 20 | 0 | 0.20 | 0.10 | 0: –→–; 20: 0.39→0.65; 0: –→– | 0.232 | 0.272 | 0/88 (0) | 0.48 / 0.62 / 0.82 |
 
-◆ headline rule: lowest D Brier among fitted methods (dev data only). Pass rates: C 0.49, D 0.40, test 0.65.
+◆ headline rule: lowest D Brier among fitted methods (dev data only). Pass rates: C 0.49, D 0.40, test 0.65. *Ranking AUC*: the chance that a passing gap gets a higher p_pass than a failing one (0.5 = chance, 1 = perfect). The rules are fitted on C, so AUC on D and test is held out. The recalibration's two numbers (intercept, slope) are fitted on D, so D's accepted/false counts for the recalibrated rules are slightly optimistic. Test has only 20 gaps.
+
+**A trust rule for every model** ([decide_any.py](decide_any.py); the same rule recipe, fitted on C and recalibrated on D for each model's own fills; numeric rule recalibrated on D, accept at p ≥ 0.80). Pass rate = share of that model's gaps within 0.05; a better model leaves fewer gaps to catch.
+
+| Model | Test mean well MAE | Test pass rate | Test accepted / review / false | Test Brier (base rate) | D pass rate | D accepted (false) | Ranking AUC C / D / test | **+ GR features:** test accepted (false) · Brier · AUC D / test | D accepted (false) | Own band used |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Timestral-5M + other logs | 0.0333 | 0.80 | 10 / 10 / 1 | 0.159 (0.169) | 0.59 | 31/88 (4) | 0.87 / 0.84 / 0.75 | 10 (0) · 0.118 · 0.86 / 0.88 | 25/88 (2) | P10-P90 |
+| TSPulse full fine-tune | 0.0460 | 0.65 | 6 / 14 / 0 | 0.179 (0.247) | 0.43 | 10/88 (1) | 0.81 / 0.85 / 0.84 | 6 (0) · 0.157 · 0.88 / 0.88 | 18/88 (2) | P05-P95 |
+| Timestral-5M target-only | 0.0469 | 0.70 | 8 / 12 / 0 | 0.177 (0.253) | 0.36 | 11/88 (2) | 0.90 / 0.89 / 0.86 | 5 (0) · 0.163 · 0.88 / 0.87 | 16/88 (3) | P10-P90 |
+| TTM-R3 head fine-tune | 0.0471 | 0.65 | 8 / 12 / 0 | 0.120 (0.269) | 0.40 | 15/88 (3) | 0.89 / 0.86 / 0.91 | 8 (0) · 0.090 · 0.89 / 0.96 | 17/88 (3) | P05-P95 |
+| TTM-R3 tuned | 0.0475 | 0.65 | 5 / 15 / 0 | 0.136 (0.255) | 0.40 | 11/88 (2) | 0.85 / 0.86 / 0.91 | 6 (0) · 0.114 · 0.88 / 0.95 | 16/88 (3) | P05-P95 |
+| TTM-R3 frozen | 0.0481 | 0.65 | 5 / 15 / 0 | 0.147 (0.261) | 0.40 | 11/88 (2) | 0.86 / 0.85 / 0.89 | 6 (0) · 0.125 · 0.86 / 0.92 | 13/88 (2) | P05-P95 |
+| TSPulse tuned | 0.0494 | 0.65 | 4 / 16 / 0 | 0.206 (0.261) | 0.40 | 4/88 (0) | 0.84 / 0.85 / 0.80 | 6 (0) · 0.185 · 0.86 / 0.85 | 12/88 (2) | P05-P95 |
+| TSPulse frozen | 0.0495 | 0.65 | 4 / 16 / 0 | 0.209 (0.264) | 0.40 | 6/88 (0) | 0.85 / 0.85 / 0.80 | 6 (0) · 0.188 · 0.85 / 0.85 | 12/88 (2) | P05-P95 |
+| Gardner + flank residual | 0.0563 | 0.50 | 6 / 14 / 1 | 0.204 (0.250) | 0.53 | 9/88 (3) | 0.92 / 0.75 / 0.81 | 4 (0) · 0.183 · 0.75 / 0.85 | 9/88 (1) | none |
+| Linear interpolation | 0.0611 | 0.40 | 0 / 20 / 0 | 0.142 (0.243) | 0.36 | 2/88 (0) | 0.87 / 0.81 / 0.90 | 1 (0) · 0.121 · 0.85 / 0.91 | 7/88 (0) | none |
+
+*+ GR features*: the same rule with two more inputs read from the gamma-ray log, which is measured inside the gap: how far GR inside the gap moves from GR on the flanks, and how much GR varies inside the gap (both log-scaled). A density-only fill cannot see a lithology change inside the gap; GR can.
+
+**Per-gap routing (negative result).** For each gap, take the fill of the model whose own rule is most confident (no truth used). Mean per-well MAE: D routed 0.0605 vs best single model 0.0539 (Timestral-5M + other logs); test routed 0.0378 vs best single model 0.0333 (Timestral-5M + other logs). Routing is worse on both. Each rule answers *is this gap easy for me?*, not *am I better than the others here?*; the probabilities are not comparable across models.
 
 **Training and resources** (head-only fine-tune on A wells, laptop GPU)
 
@@ -176,5 +195,5 @@ Timestral-5M rows: frozen weights `mistralai/Timestral-5M@bdd20cfc15a3fea0e4cb5c
 | TTM-R3 tuned | 0.216 | 0.736 | 0.800 | 2.03 | 0.062 |
 | TSPulse frozen | 0.047 | 0.180 | – | 1.78 | 0.035 |
 | TSPulse tuned | 0.047 | 0.178 | – | 1.80 | 0.058 |
-| TTM-R3 head fine-tune | 0.265 | 0.854 | – | – | 0.441 |
-| TSPulse full fine-tune | 0.042 | 0.172 | – | – | 0.031 |
+| TTM-R3 head fine-tune | 0.265 | 0.854 | – | – | 0.500 |
+| TSPulse full fine-tune | 0.042 | 0.172 | – | – | 0.032 |

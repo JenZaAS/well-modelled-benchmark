@@ -339,3 +339,39 @@ def test_finetune_schedule_warms_up_then_decays_to_the_floor():
     f = [FTN._lr_factor(s, FTN.FT) for s in range(FTN.FT.max_updates + 1)]
     assert f[0] == pytest.approx(1 / FTN.FT.warmup) and max(f) == pytest.approx(1.0)
     assert f[-1] == pytest.approx(FTN.FT.min_lr_frac) and min(f[FTN.FT.warmup:]) >= FTN.FT.min_lr_frac - 1e-12
+
+
+def test_decide_any_features_ignore_the_hidden_values_and_auc_counts_ties():
+    from workstreams.black_physics.granite import decide_any as DA
+
+    a, b = 1000, 1330
+    w1, w2 = well(3000), well(3000)
+    w2.curves["RHOB"][a:b] += 0.5                                   # change only the hidden truth
+    fill = np.full(b - a, 2.3) + np.linspace(0, 0.1, b - a)
+    g = np.full(b - a, 2.25)
+    f1 = DA.features(task_for(w1, a, b), fill, fill - 0.05, fill + 0.05, g)
+    f2 = DA.features(task_for(w2, a, b), fill, fill - 0.05, fill + 0.05, g)
+    assert f1 == f2
+    assert f1["pred_range"] == pytest.approx(0.1) and f1["band_width"] == pytest.approx(0.1)
+    assert f1["gardner_mad"] == pytest.approx(np.median(np.abs(fill - 2.25))) and f1["dtc_fraction"] == 1.0
+    assert f1["ctx_above_m"] == pytest.approx(DA.CTX * STEP, rel=1e-6)
+    up = w1.curves["RHOB"][a - DA.CTX:a]
+    dn = w1.curves["RHOB"][b:b + DA.CTX]
+    assert f1["flank_median_diff"] == pytest.approx(abs(np.median(up) - np.median(dn)))
+    no_band = DA.features(task_for(w1, a, b), fill, None, None, np.full(b - a, np.nan))
+    assert np.isnan(no_band["band_width"]) and np.isnan(no_band["gardner_mad"]) and no_band["dtc_fraction"] == 0.0
+    assert DA.auc([0.9, 0.8, 0.1, 0.2], [1, 1, 0, 0]) == 1.0
+    assert DA.auc([0.5, 0.5], [1, 0]) == 0.5
+    assert DA.auc([0.2, 0.9, 0.4], [1, 0, None]) == 0.0
+    assert DA.auc([0.3, 0.4], [1, 1]) is None
+
+
+def test_recalibration_survives_one_extreme_logit():
+    rng = np.random.default_rng(0)
+    z = rng.normal(0, 1.5, 83)
+    y = (rng.random(83) < 1 / (1 + np.exp(-z))).astype(float)
+    z[0], y[0] = -18.9, 0.0                       # one far-out gap, as a GR spike produced on D
+    r = DEC.fit_recalibration(z, y, np.ones(83), l2=1.0)
+    assert np.isfinite([r.a, r.b]).all() and abs(r.a) < 5 and 0 < r.b < 5
+    p = r.apply(z)
+    assert abs(p.mean() - y.mean()) < 0.1          # calibration-in-the-large holds on its own fitting set

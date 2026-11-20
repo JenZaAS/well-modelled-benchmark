@@ -72,9 +72,10 @@ def _sha(p: Path) -> str | None:
 
 
 def station_scores(name: str) -> dict | None:
+    from wmb.paths import results_root
     from wmb.predict_cache import result_dir
 
-    p = result_dir(REPO / "results", name, C.DATASET, C.TARGET, "gap_50", C.TEST_NAME) / "scores.json"
+    p = result_dir(results_root(), name, C.DATASET, C.TARGET, "gap_50", C.TEST_NAME) / "scores.json"
     return _load(p) if p.is_file() else None
 
 
@@ -275,13 +276,37 @@ def bootstrap_table(I: Inputs) -> list[dict]:
     return out
 
 
+def auc(p, y) -> float | None:
+    """Ranking quality: chance that a passing gap gets a higher p_pass than a failing one (0.5 = chance)."""
+    p, y = np.asarray(p, float), np.asarray([np.nan if v is None else v for v in y], float)
+    ok = np.isfinite(p) & np.isfinite(y)
+    pos, neg = p[ok & (y == 1)], p[ok & (y == 0)]
+    if not len(pos) or not len(neg):
+        return None
+    return float(((pos[:, None] > neg[None, :]).sum() + 0.5 * (pos[:, None] == neg[None, :]).sum())
+                 / (len(pos) * len(neg)))
+
+
 def decision_table(I: Inputs) -> dict:
-    out = {"test": {}, "C": I.decision["dev_scores"]["C"], "D": I.decision["dev_scores"]["D"]}
+    out = {"test": {}, "C": I.decision["dev_scores"]["C"], "D": I.decision["dev_scores"]["D"], "auc": {}}
     curves = I.final["risk_coverage"]
     for k, m in I.final["decision_scores"].items():
         out["test"][k] = {**m, "risk_at_25pct": DEC.risk_at_coverage(curves[k], 0.25),
                           "risk_at_50pct": DEC.risk_at_coverage(curves[k], 0.50)}
+    for k in I.final["decision_scores"]:
+        a = {"test": auc([s["p_pass"].get(k, np.nan) for s in I.sidecar], [s["label"] for s in I.sidecar])}
+        for g in ("C", "D"):
+            rows = I.dec_rows.get(g, [])
+            if rows and isinstance(rows[0].get("p"), dict) and k in rows[0]["p"]:
+                a[g] = auc([r["p"][k] for r in rows], [r["label"] for r in rows])
+        out["auc"][k] = a
     return out
+
+
+def any_table(I: Inputs) -> dict:
+    """Per-model trust rules from decide_any (local summary), when that step has run."""
+    p = I.W / "decision_any" / "summary.json"
+    return _load(p) if p.is_file() else {}
 
 
 def resources_table(I: Inputs) -> list[dict]:
@@ -453,7 +478,15 @@ def thirty_seconds(I: Inputs, table: list[dict], boot: list[dict], dec: dict, me
             f"20 gaps with {t['false_accepts']} false accepts and sent {t['review']} to review; Brier {t['brier']:.3f} vs "
             f"{dec['test']['prevalence']['brier']:.3f} for the base rate. A small verifier model (Decima-small) "
             f"reading the same facts as text accepted {dz['accepted']} gaps (p_pass {pz[0]:.2f}–{pz[1]:.2f}, Brier "
-            f"{dz['brier']:.3f}): it barely separates good from bad gaps.")
+            f"{dz['brier']:.3f}): its probabilities hardly vary and on the 236 development gaps its ranking is near "
+            f"chance, so it never reaches the 0.80 bar.")
+    anyt = any_table(I)
+    if len(anyt) > 1:
+        lower = sum(v["logs_cal"]["test"]["brier"] < v["test"]["brier"] for v in anyt.values())
+        tail += (f" Refitted on each model's own fills, the same rule ranks gaps with test AUC "
+                 f"{min(v['auc']['test']['numeric'] for v in anyt.values()):.2f}–"
+                 f"{max(v['auc']['test']['numeric'] for v in anyt.values()):.2f}; adding two gamma-ray features "
+                 f"(GR is measured inside the gap) lowers its test Brier for {lower} of {len(anyt)} models.")
     if all(n in r for n in TIMESTRAL):
         rt, to = r["red_timestral"], r["black_timestral_target_only"]
         b = {(x["a"], x["b"]): x for x in boot if x["set"] == "test"}
@@ -725,6 +758,57 @@ def fig_finetune(I: Inputs, out: Path) -> Path | None:
     return p
 
 
+def fig_decision_by_model(I: Inputs, out: Path) -> Path | None:
+    """Per model: what its own trust rule does on D (88 gaps) and on test (20), plus ranking AUC."""
+    anyt = any_table(I)
+    if not anyt:
+        return None
+    plt = _mpl()
+    models = sorted(anyt, key=lambda m: -anyt[m]["mean_well_mae"]["test"])
+    fig = plt.figure(figsize=(13, 0.42 * len(models) + 2.4))
+    gs = fig.add_gridspec(1, 3, width_ratios=[1, 1, 0.85], wspace=0.42, left=0.15, right=0.985, top=0.84, bottom=0.25)
+    axes = [fig.add_subplot(gs[0, 0])]
+    axes += [fig.add_subplot(gs[0, i], sharey=axes[0]) for i in (1, 2)]
+    y = np.arange(len(models))
+    for ax, g, title in ((axes[0], "D", "D wells: 88 gaps (recalibrated here)"), (axes[1], "test", "Test wells: 20 gaps")):
+        acc = np.array([anyt[m][g]["accepted"] - anyt[m][g]["false_accepts"] for m in models])
+        fa = np.array([anyt[m][g]["false_accepts"] for m in models])
+        rev = np.array([anyt[m][g]["review"] for m in models])
+        n = np.array([anyt[m][g]["n_gaps"] for m in models], float)
+        ax.barh(y, acc / n, color=GOOD, height=0.62, label="accepted, within tolerance")
+        ax.barh(y, fa / n, left=acc / n, color=CRIT, height=0.62, label="accepted, missed tolerance (false accept)")
+        ax.barh(y, rev / n, left=(acc + fa) / n, color=GRID, height=0.62, label="sent to review")
+        for i in range(len(models)):
+            ax.text(min((acc[i] + fa[i]) / n[i], 1) + 0.015, i, f"{acc[i] + fa[i]}/{int(n[i])}" +
+                    (f" ({fa[i]} false)" if fa[i] else ""), va="center", fontsize=7.5, color=INK2)
+        ax.set_xlim(0, 1)
+        ax.set_title(title, loc="left", fontsize=10)
+        ax.set_xlabel("Share of gaps")
+        ax.grid(axis="y", visible=False)
+    axes[0].set_yticks(y, [LABEL.get(m, m) for m in models])
+    plt.setp(axes[1].get_yticklabels(), visible=False)
+    plt.setp(axes[2].get_yticklabels(), visible=False)
+    axes[0].legend(loc="upper left", bbox_to_anchor=(0.0, -0.2), ncol=3, fontsize=8, frameon=False)
+    ax = axes[2]
+    marks = (("C", "numeric", MUTED, "o", "C (fitting set)", -0.24), ("D", "numeric", BLUE, "s", "D", -0.08),
+             ("test", "numeric", ORANGE, "D", "test", 0.08), ("D", "numeric_logs", AQUA, "^", "D, + GR features", 0.24))
+    for g, k, c, mk, lab, off in marks:
+        ax.scatter([anyt[m]["auc"][g].get(k) or np.nan for m in models], y + off, color=c, marker=mk, s=26, zorder=3,
+                   label=lab)
+    ax.axvline(0.5, color=AXIS, lw=1)
+    ax.set_xlim(0.45, 1.0)
+    ax.set_xlabel("Ranking AUC (0.5 = chance)")
+    ax.set_title("Does p_pass rank the gaps?", loc="left", fontsize=10)
+    ax.legend(loc="upper left", bbox_to_anchor=(0.0, -0.2), ncol=2, fontsize=8, frameon=False)
+    ax.grid(axis="y", visible=False)
+    fig.suptitle("A trust rule fitted on each model's own fills (fitted on C wells): accept at p ≥ 0.80, otherwise review",
+                 x=0.01, ha="left", fontsize=11, fontweight="bold")
+    p = out / "decision_by_model.png"
+    fig.savefig(p, dpi=160)
+    plt.close(fig)
+    return p
+
+
 def fig_decisions(I: Inputs, dec: dict, out: Path) -> Path:
     plt = _mpl()
     fig, (a1, a2) = plt.subplots(1, 2, figsize=(11, 4.4))
@@ -856,7 +940,7 @@ def md_tables(I, table, boot, dec, res, method, aggregate_only: bool) -> str:
                  f"{_f(r['wells_improved_vs_linear'])} | {sup} | {r['gaps_passing_tolerance']}/20 | {c90} | {c50} | "
                  f"{_f(r['B_mean_well_MAE'])} |")
     for k, why in I.unavailable.items():
-        L.append(f"| {LABEL[k]} | unavailable | | | | | | | | | {why} |")
+        L.append(f"| {LABEL.get(k, k)} | unavailable | | | | | | | | | {why} |")
     L.append("")
     L.append("★ selected before the test on B (lowest B mean well-level MAE). Test wells hold one gap each, so per-well "
              "MAE = gap MAE. Coverage is well-weighted over measured gap samples; Granite bands are D-calibrated, "
@@ -892,18 +976,66 @@ def md_tables(I, table, boot, dec, res, method, aggregate_only: bool) -> str:
     L.append("**Decisions** on the selected reconstruction (accept when p_pass ≥ 0.80; label = gap MAE ≤ 0.05)")
     L.append("")
     L.append("| Method | Test Brier | Accepted | Review | False accepts | Risk @25 % cov. | Risk @50 % cov. | "
-             "Reliability bins (n: mean p → pass rate) | D Brier | C Brier |")
-    L.append("|---|---|---|---|---|---|---|---|---|---|")
+             "Reliability bins (n: mean p → pass rate) | D Brier | C Brier | D accepted (false) | Ranking AUC C / D / test |")
+    L.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
     for k, m in dec["test"].items():
         rel = "; ".join(f"{b['n']}: {_f(b['mean_p'], 2)}→{_f(b['pass_rate'], 2)}" for b in m["reliability"])
+        a = dec["auc"].get(k, {})
+        dd = dec["D"].get(k, {})
         L.append(f"| {METHOD_LABEL.get(k, k)}{' ◆' if k == method else ''} | {_f(m['brier'], 3)} | {m['accepted']} | "
                  f"{m['review']} | {m['false_accepts']} | {_f(m['risk_at_25pct'], 2)} | {_f(m['risk_at_50pct'], 2)} | "
-                 f"{rel} | {_f(dec['D'].get(k, {}).get('brier'), 3)} | {_f(dec['C'].get(k, {}).get('brier'), 3)} |")
+                 f"{rel} | {_f(dd.get('brier'), 3)} | {_f(dec['C'].get(k, {}).get('brier'), 3)} | "
+                 f"{dd.get('accepted', '–')}/{dd.get('n_gaps', '–')} ({dd.get('false_accepts', '–')}) | "
+                 f"{_f(a.get('C'), 2)} / {_f(a.get('D'), 2)} / {_f(a.get('test'), 2)} |")
     L.append("")
     L.append(f"◆ headline rule: lowest D Brier among fitted methods (dev data only). Pass rates: C "
              f"{I.decision['pass_rate']['C']:.2f}, D {I.decision['pass_rate']['D']:.2f}, test "
-             f"{dec['test']['prevalence']['prevalence']:.2f}.")
+             f"{dec['test']['prevalence']['prevalence']:.2f}. *Ranking AUC*: the chance that a passing gap gets a "
+             "higher p_pass than a failing one (0.5 = chance, 1 = perfect). The rules are fitted on C, so AUC on D "
+             "and test is held out. The recalibration's two numbers (intercept, slope) are fitted on D, so D's "
+             "accepted/false counts for the recalibrated rules are slightly optimistic. Test has only 20 gaps.")
     L.append("")
+    anyt = any_table(I)
+    if anyt:
+        L.append("**A trust rule for every model** ([decide_any.py](decide_any.py); the same rule recipe, fitted on "
+                 "C and recalibrated on D for each model's own fills; numeric rule recalibrated on D, accept at "
+                 "p ≥ 0.80). Pass rate = share of that model's gaps within 0.05; a better model leaves fewer gaps to "
+                 "catch.")
+        L.append("")
+        L.append("| Model | Test mean well MAE | Test pass rate | Test accepted / review / false | Test Brier (base rate) "
+                 "| D pass rate | D accepted (false) | Ranking AUC C / D / test | **+ GR features:** test accepted "
+                 "(false) · Brier · AUC D / test | D accepted (false) | Own band used |")
+        L.append("|---|---|---|---|---|---|---|---|---|---|---|")
+        for m in sorted(anyt, key=lambda m: anyt[m]["mean_well_mae"]["test"]):
+            s = anyt[m]
+            t, d, au = s["test"], s["D"], s["auc"]
+            lg = s.get("logs_cal", {})
+            lt, ld = lg.get("test", {}), lg.get("D", {})
+            L.append(f"| {LABEL.get(m, m)} | {s['mean_well_mae']['test']:.4f} | {s['pass_rate']['test']:.2f} | "
+                     f"{t['accepted']} / {t['review']} / {t['false_accepts']} | {_f(t['brier'], 3)} "
+                     f"({_f(s['brier_test']['prevalence'], 3)}) | {s['pass_rate']['D']:.2f} | "
+                     f"{d['accepted']}/{d['n_gaps']} ({d['false_accepts']}) | "
+                     f"{_f(au['C']['numeric'], 2)} / {_f(au['D']['numeric'], 2)} / {_f(au['test']['numeric'], 2)} | "
+                     f"{lt.get('accepted', '–')} ({lt.get('false_accepts', '–')}) · {_f(lt.get('brier'), 3)} · "
+                     f"{_f(au['D'].get('numeric_logs'), 2)} / {_f(au['test'].get('numeric_logs'), 2)} | "
+                     f"{ld.get('accepted', '–')}/{ld.get('n_gaps', '–')} ({ld.get('false_accepts', '–')}) | "
+                     f"{s.get('band') or 'none'} |")
+        L.append("")
+        L.append("*+ GR features*: the same rule with two more inputs read from the gamma-ray log, which is measured "
+                 "inside the gap: how far GR inside the gap moves from GR on the flanks, and how much GR varies "
+                 "inside the gap (both log-scaled). A density-only fill cannot see a lithology change inside the "
+                 "gap; GR can.")
+        L.append("")
+        rp = I.W / "decision_any" / "routing.json"
+        if rp.is_file():
+            ro = _load(rp)
+            L.append("**Per-gap routing (negative result).** For each gap, take the fill of the model whose own rule "
+                     "is most confident (no truth used). Mean per-well MAE: " + "; ".join(
+                         f"{g} routed {ro[g]['routed']:.4f} vs best single model {ro[g]['best_single'][1]:.4f} "
+                         f"({LABEL.get(ro[g]['best_single'][0], ro[g]['best_single'][0])})" for g in ("D", "test")) +
+                     ". Routing is worse on both. Each rule answers *is this gap easy for me?*, not *am I better than "
+                     "the others here?*; the probabilities are not comparable across models.")
+            L.append("")
     L.append("**Training and resources** (head-only fine-tune on A wells, laptop GPU)")
     L.append("")
     L.append("| Arm | Trainable / total | Examples (wells) | Microbatch × accum | s/update | Updates | Minutes | Stop | "
@@ -965,6 +1097,8 @@ def build() -> dict:
             ("red_timestral", "black_timestral_target_only", "Timestral: + other logs − target-only"),
             ("black_ttm_r3_tuned", "black_timestral_target_only", "Density only: TTM-R3 tuned − Timestral"),
             ("black_ttm_r3_tuned", "red_timestral", "TTM-R3 tuned − Timestral + other logs")], "paired_timestral.png"))
+    if any_table(I):
+        figures.append(fig_decision_by_model(I, figs))
     if I.ft:
         figures.append(fig_finetune(I, figs))
         ftp = [(n, FT_BASE[n][0], f"{LABEL[n]} − frozen") for n in FT_ROWS if n in I.rows]
@@ -975,10 +1109,10 @@ def build() -> dict:
               "replay": ["python -m workstreams.black_physics.granite all",
                          "WMB_BLACK_GRANITE=1 python -m benchmark.run --model black_ttm_r3_frozen,black_ttm_r3_tuned,"
                          "black_tspulse_frozen,black_tspulse_tuned,black_linear_gap,black_gardner_flank_resid,"
-                         "black_gardner_fixed --test rhob_gap50 --predictions npz --rerun",
+                         "black_gardner_fixed --test rhob_gap50 --rerun",
                          "python -m workstreams.black_physics.granite final",
                          "<timestral-python>: WMB_RED_MODELS=timestral WMB_BLACK_TIMESTRAL=1 python -m benchmark.run "
-                         "--model red_timestral,black_timestral_target_only --test rhob_gap50 --predictions npz --rerun",
+                         "--model red_timestral,black_timestral_target_only --test rhob_gap50 --rerun",
                          "<timestral-python>: python -m workstreams.black_physics.granite timestral",
                          "python -m workstreams.black_physics.granite finetune",
                          "python -m workstreams.black_physics.granite finetune_score",

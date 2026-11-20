@@ -53,8 +53,105 @@ On the station test `rhob_gap50` (one hidden 50 m gap in each of the 20 FORCE 20
 - **Decision rule.** The decision layer sits on the selected Granite row, as the brief specifies, not on
   Timestral. A numeric logistic rule decides from gap features whether the fill is within 0.05 g/cm³:
   - At p ≥ 0.80 it accepted 7 of 20 test gaps with 0 false accepts and sent 13 to review.
-  - Its Brier score is 0.158, against 0.261 for the base rate.
+  - Its Brier score is 0.158, against 0.261 for the base rate. It ranks gaps well (AUC 0.86 on D and on test), but
+    on the 88 D gaps 2 of its 14 accepts missed the tolerance.
+  - **Extension:** the same rule now runs for every model ([decide_any.py](decide_any.py)). Timestral + logs is
+    also the easiest to trust: it accepts 10 of 20 test gaps and 31 of 88 D gaps. Adding two gamma-ray features
+    (GR is measured inside the gap) improves the rule for every model. Details in
+    [The decision layer](#the-decision-layer-what-it-found-and-how-to-take-it-further).
 - **Decima-small.** Reading the same facts as text, it gave p_pass of 0.47–0.53 for every gap and accepted none.
+  On the 236 development gaps its ranking is near chance (AUC 0.48 on C, 0.62 on D).
+
+## The decision layer: what it found and how to take it further
+
+**What it does.** A filled gap goes to one of two places:
+- **accept**: use the fill as it is;
+- **review**: a petrophysicist looks at it.
+
+For each gap, before anyone sees the hidden density, a small logistic rule estimates **p_pass**: the probability that
+the fill's mean absolute error over the gap is at most 0.05 g/cm³. At p_pass ≥ 0.80 the gap is accepted; otherwise
+it goes to review. The rule never sees the hidden values. It reads only these features:
+
+| Feature | What it measures | Why it can matter |
+|---|---|---|
+| Flank variability / band width | How much density varies on the measured flanks (TTM: its own P10–P90 width) | Busy rock is harder to fill |
+| Flank-median difference | The density level above the gap minus the level below | A rock boundary somewhere inside the gap |
+| Predicted range | How much the fill itself moves inside the gap | |
+| Context above / below | Metres of measured density next to the gap | Less context gives less to go on |
+| Gardner disagreement, DTC fraction | Distance between the fill and a density estimated from sonic inside the gap | An independent check from another log |
+| GR shift, GR spread (new, in `decide_any`) | How far gamma ray inside the gap moves from gamma ray on the flanks; how much it varies inside | A change of rock type that a density-only fill cannot see |
+
+**How it is fitted.**
+- The rules are fitted on the C wells (20 wells, 148 gaps), with equal weight per well.
+- Two recalibration numbers (intercept and slope) are then fitted on the D wells (12 wells, 88 gaps).
+- The 20 test gaps are used once.
+
+On the selected row (TSPulse tuned) the numeric rule leans on two features (standardised coefficients):
+- flank variability −1.8;
+- flank-median difference −1.4.
+
+Context length barely matters. The D recalibration is close to identity (intercept −0.13, slope 0.97), so the rule
+fitted on C was already calibrated on wells it had not seen.
+
+**What it found.**
+- **It ranks gaps well, and the 0.80 bar makes it cautious.** On the selected row the AUC is 0.86 on D and on test.
+  AUC is the chance that a gap that passes gets a higher p_pass than one that fails; 0.5 is chance. The rule
+  accepts 7 of 20 test gaps (0 false) and 11–14 of 88 D gaps (1–2 false). A false accept is a gap accepted whose
+  fill missed the tolerance.
+- **The Gardner features add nothing here** (AUC 0.85–0.87 with or without them).
+- **Decima-small adds nothing.** Its probabilities stay between 0.47 and 0.53. Its test AUC of 0.82 comes from 20
+  gaps and near-flat probabilities, and on the 236 development gaps it is near chance.
+- **A rule for every model ([decide_any.py](decide_any.py)).** The same recipe was refitted on each of the ten
+  models' own fills for the C, D and test gaps.
+  - Ranking AUC is 0.75–0.91 on test and 0.75–0.89 on D.
+  - **Timestral + logs is the easiest model to trust as well as the most accurate.** 80 % of its test gaps are
+    within tolerance. Its rule accepts 31 of 88 D gaps (4 false) and 10 of 20 test gaps (1 false). On D that is
+    about twice what any density-only model's rule accepts (at most 15).
+  - Among density-only rows, the TTM head fine-tune has the most useful rule: 8 of 20 test gaps accepted with
+    0 false, Brier 0.120 against a base rate of 0.269.
+- **The other logs help the trust rule too.** Adding the two GR features lowers the test Brier for all ten models,
+  by 0.014–0.041.
+  - It raises test AUC for all ten, and D AUC for seven (at two decimals).
+  - Timestral + logs, which already reads GR for its fill, still gains: Brier 0.159 → 0.118, 10 of 20 test gaps
+    accepted with 0 false, and 25 of 88 D gaps with 2 false.
+  - TTM head fine-tune with GR: test AUC 0.96, Brier 0.090.
+  - Only two features from one other log were tried, defined before any results were seen. They were put on a log
+    scale after one D gap with an extreme GR spread broke the fit; that change was made before any scores were
+    compared.
+- **Per-gap routing does not work (negative result).** For each gap, I took the fill of the model whose own rule was
+  most confident. Over all ten models that was worse than Timestral + logs alone, on D (0.0605 against 0.0539) and
+  on test (0.0378 against 0.0333). Each rule answers "is this gap easy for me?", not "am I better than the others
+  here?", so the probabilities cannot be compared across models.
+
+**Taking it further.** Ordered by value for effort:
+
+1. **Bring your own model: done.** `decide_any` needs only what any station contender returns, so a new model gets
+   a trust rule with two commands:
+   ```
+   <model's python> -m workstreams.black_physics.granite.decide_any predict --model <id>   # C, D and test fills
+   python -m workstreams.black_physics.granite.decide_any decide                            # rules, metrics, sidecar
+   ```
+   It writes, per model, a keyed test sidecar (`gap_id`, well, start/end MD, features, p_pass, decision) next to
+   the rules and metrics.
+2. **Trust columns on the scoreboard.** Accept rate, false-accept rate on D, Brier against the base rate, and D
+   AUC are one row per model, like MAE.
+   - Proposal: `benchmark.run` (or `decide_any`) writes an optional `decision.json` next to `scores.json`, and
+     the scoreboard shows it when present.
+   - This needs a small change to `benchmark/` and `wmb.viewer`, which are shared code, so it is not made here.
+3. **Accept/review badges in the viewer.** The sidecar already carries well, `start_md` and `end_md`, which is
+   what the viewer's gap overlay uses. A badge and a p_pass tooltip on each gap would show, on the track, which
+   fills to trust. This is also shared viewer code, so it is a proposal.
+4. **More of the other logs in the rule.** GR helped every model. The next candidates are NPHI, DTC and PEF shifts
+   inside the gap, and a fill-vs-Gardner disagreement weighted by DTC quality.
+5. **Choose the bar by cost, not 0.80.** The risk–coverage curves give the false-accept rate at every coverage. A
+   review costs analyst time and a wrong fill costs a bad porosity estimate, and the bar should follow from that
+   ratio.
+6. **For routing, learn a comparison, not confidence.** A rule fitted on C to predict which of two models has the
+   lower error on a gap, using both fills' features, is the right tool. Comparing the two models' own p_pass
+   values is not.
+7. **More development gaps.** The rule is fitted on 148 gaps and checked on 88, and test has only 20. Several
+   non-overlapping gaps per well would tighten the false-accept estimates, which are the number an operator cares
+   about.
 
 ## Commands
 
@@ -64,18 +161,29 @@ From the repository root, with the Granite environment's Python (see *Environmen
 python -m workstreams.black_physics.granite fetch        # pinned TTM-R3 and TSPulse snapshots into the HF cache
 python -m workstreams.black_physics.granite all          # prepare, train, select, calibrate, decide (+ freeze)
 WMB_BLACK_GRANITE=1 python -m benchmark.check_test rhob_gap50
-WMB_BLACK_GRANITE=1 python -m benchmark.check_model black_ttm_r3_tuned        # likewise for the other five IDs
-WMB_BLACK_GRANITE=1 python -m benchmark.run --model black_ttm_r3_frozen,black_ttm_r3_tuned,black_tspulse_frozen,black_tspulse_tuned,black_linear_gap,black_gardner_flank_resid,black_gardner_fixed --test rhob_gap50 --predictions npz --rerun
+WMB_BLACK_GRANITE=1 python -m benchmark.check_model black_ttm_r3_tuned        # likewise for the other seven IDs
+WMB_BLACK_GRANITE=1 python -m benchmark.run --model black_ttm_r3_frozen,black_ttm_r3_tuned,black_ttm_r3_ft,black_tspulse_frozen,black_tspulse_tuned,black_tspulse_ft,black_linear_gap,black_gardner_flank_resid,black_gardner_fixed --test rhob_gap50 --rerun
 python -m workstreams.black_physics.granite final        # sealed test gaps once: keyed predictions + decision sidecar
 # Timestral environment (see Environments), HF_HOME=<cache_dir>/hf, HF_HUB_OFFLINE=1:
-WMB_RED_MODELS=timestral WMB_BLACK_TIMESTRAL=1 <timestral-python> -m benchmark.run --model red_timestral,black_timestral_target_only --test rhob_gap50 --predictions npz --rerun
+WMB_RED_MODELS=timestral WMB_BLACK_TIMESTRAL=1 <timestral-python> -m benchmark.run --model red_timestral,black_timestral_target_only --test rhob_gap50 --rerun
 <timestral-python> -m workstreams.black_physics.granite timestral   # both Timestral rows on the same keyed gaps
 python -m workstreams.black_physics.granite finetune       # stronger fine-tune sweep (extension, ~1 h GPU)
-python -m workstreams.black_physics.granite finetune_score # its D bands, B/D rows and the test rows
+python -m workstreams.black_physics.granite finetune_score # its D bands, B/D rows, test rows and manifest_ft.json
+python -m workstreams.black_physics.granite.decide_any predict --model <ids>   # per model, in its own env: C, D, test fills
+python -m workstreams.black_physics.granite.decide_any decide                  # a trust rule per model (NumPy only)
 python -m workstreams.black_physics.granite report       # tables, bootstrap, figures, 30-second text, RESULTS.md
 python -m pytest -q workstreams/black_physics/tests/test_granite.py               # NumPy-only (any env)
 python -m pytest -q workstreams/black_physics/tests/test_granite_torch.py         # real networks (Granite env)
 ```
+
+**In the viewer.** All eleven rows of this experiment are station contenders. The two fine-tuned rows
+(`black_ttm_r3_ft`, `black_tspulse_ft`) load their checkpoint and D bands through `manifest_ft.json`, which also
+checks each checkpoint's SHA-256. After the `benchmark.run` lines above, `python -m wmb.viewer --launch` shows
+them under the `rhob_gap50` test, with filled curves and bands, from any environment.
+- Live prediction inside the viewer runs the model in the viewer's own process. For that, launch it from the
+  Granite environment with `WMB_BLACK_GRANITE=1`, or from the Timestral one with
+  `WMB_RED_MODELS=timestral WMB_BLACK_TIMESTRAL=1`.
+- Without those flags the rows are still shown, but cannot be re-run from the viewer.
 
 Each stage can be run on its own: `prepare`, `train [--arm ttm|tspulse]`, `select`, `calibrate`, `decide`,
 `freeze`. Every stage appends to `<work_root>/black_granite/pipeline.log`.
@@ -161,6 +269,7 @@ share them deliberately.
 | `figures/paired_finetune.png` | Per well: stronger fine-tune − pretrained, both models | "Did it help on unseen wells?" |
 | `figures/decisions_risk_reliability.png` | Risk–coverage curves and 3-bin reliability for the rules and Decima | The decision story |
 | `figures/coverage.png` | Observed 50 % / 90 % coverage and band width per row | Uncertainty honesty |
+| `figures/decision_by_model.png` | Each model's own trust rule: accepted, false accepts and review on D and test, and ranking AUC with and without the GR features | Trust is per model; the other logs help the rule too |
 | `figures/decision_coefficients.png` | What the numeric + Gardner rule weighs | Explaining the rule |
 | `figures/training_curves.png` | B metric and training loss over updates | Appendix |
 | `figures/extension_vs_linear.png` | Per gap: Gardner + flank residual and the selected row against the line | Physics extension |
@@ -195,6 +304,7 @@ The 30-second text is at the top of [RESULTS.md](RESULTS.md); `report` regenerat
 | [train.py](train.py) | Examples, losses, overfit/reload, step measurement, time-boxed head training |
 | [calibrate.py](calibrate.py) | Equal-well-weighted empirical bands |
 | [features.py](features.py), [decision.py](decision.py) | Gap features and text state; logistic rules, recalibration, decision metrics, risk–coverage |
+| [decide_any.py](decide_any.py) | The decision layer for any registered contender: keyed C/D/test fills, generic features (incl. GR), rules, recalibration, AUC, per-gap routing, a keyed sidecar |
 | [decima_score.py](decima_score.py) | Stand-alone Decima-small scorer for its own CPU environment (`python -I`) |
 | [artifacts.py](artifacts.py) | Manifest identity, stale-artifact checks, variant loading for the station wrappers |
 | [pipeline.py](pipeline.py), [report.py](report.py) | Stages and the step-8 report |

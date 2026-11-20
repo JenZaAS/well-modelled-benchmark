@@ -48,14 +48,23 @@ def fit_logistic(X, y, w=None, l2: float = 1.0, prior=None, iters: int = 100) ->
     prior = np.zeros(k) if prior is None else np.asarray(prior, float)
     P = np.eye(k) * l2
     P[0, 0] = 0.0
+    def loss(b):
+        z = X @ b
+        return float(np.sum(w * (np.logaddexp(0.0, z) - y * z)) + 0.5 * (b - prior) @ P @ (b - prior))
+
     beta = prior.copy()
+    cur = loss(beta)
     for _ in range(iters):
         p = _sigmoid(X @ beta)
         g = X.T @ (w * (p - y)) + P @ (beta - prior)
         Hm = (X * (w * p * (1 - p))[:, None]).T @ X + P + 1e-9 * np.eye(k)
         step = np.linalg.solve(Hm, g)
-        beta -= step
-        if np.abs(step).max() < 1e-10:
+        t = 1.0                     # step halving: a full Newton step can overshoot when some |logit| is very large
+        while t > 1e-6 and loss(beta - t * step) > cur + 1e-12:
+            t *= 0.5
+        beta = beta - t * step
+        cur = loss(beta)
+        if np.abs(t * step).max() < 1e-10:
             break
     return beta
 
