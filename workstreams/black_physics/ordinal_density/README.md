@@ -161,8 +161,8 @@ and a fine remainder. Timestral had the lower C error at both scales: broad 0.03
 against 0.030. So "broad from one model, fine from the other" is Timestral alone, and the test was not scored. On D,
 Timestral alone (0.054) also beats the equal average of the two fills (0.060) and TSPulse (0.071).
 
-**Figures** (in the run folder; not committed because they show FORCE well data, which is shareable with the
-credit line they carry):
+**Figures** from run `rhob_gap50-5a53a2cd66`, committed in [figures/](figures/). They show FORCE 2020 well data,
+which is shareable with the credit line each figure carries:
 
 - `fig_pitch_frame1.png`, `fig_pitch_frame2.png`: the two pitch frames.
 - `fig_scoreboard.png`: test RPS of every head, raw and calibrated, with the matched Decima panel.

@@ -11,7 +11,8 @@ hidden, what each row sees (including what the "other logs" are), how wells are 
 - All stages ran on a laptop (Quadro T1000 4 GB, Windows): prepare, train, select, calibrate, decide, freeze, the
   station runs, final, timestral, finetune, finetune_score and report.
 - Aggregate results are in [RESULTS.md](RESULTS.md).
-- Per-gap rows, figures and checkpoints are local under `<work_root>/black_granite/` and are not committed.
+- The report figures are committed in [figures/](figures/) (they show measured FORCE 2020 curves; credit line in
+  Step 8). Per-gap rows, `REPORT.md` and checkpoints stay local under `<work_root>/black_granite/`.
 
 ## Result in one paragraph
 
@@ -288,8 +289,11 @@ run takes about 3.5 minutes on CPU, and `timestral` about 2 minutes.
 
 ## Step 8: material to choose from
 
-All files are in `<work_root>/black_granite/report/`. Figures show measured FORCE curves, so keep them local or
-share them deliberately.
+The figures are committed in [figures/](figures/), copied from `<work_root>/black_granite/report/figures/`;
+`REPORT.md` stays local in `<work_root>/black_granite/report/`. The figures show measured FORCE 2020 curves, which
+may be shared with this credit line:
+
+> Data: FORCE 2020 well-log and lithofacies dataset (Bormann, Aursand, Dilib, Manral and Dischington 2020, Zenodo, doi:10.5281/zenodo.4351156; logs NLOD 2.0, labels CC BY 4.0). Credit FORCE and the Norwegian Offshore Directorate (Sodir).
 
 | File | What it shows | Good for |
 | --- | --- | --- |
