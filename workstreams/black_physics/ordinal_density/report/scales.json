@@ -1,0 +1,53 @@
+{
+ "sigma_m": 2.0,
+ "truncate_m": 6.0,
+ "C_component_MAE": {
+  "red_tspulse_finetune": {
+   "broad": 0.04238722435240848,
+   "fine": 0.03020738491664099
+  },
+  "red_timestral": {
+   "broad": 0.03401453252118642,
+   "fine": 0.025581885950760823
+  }
+ },
+ "broad_from": "red_timestral",
+ "fine_from": "red_timestral",
+ "D": {
+  "single:red_tspulse_finetune": 0.07134845357986426,
+  "single:red_timestral": 0.05388783742741884,
+  "equal_average": 0.06005040260733755,
+  "hybrid": 0.05388783742741884,
+  "hybrid_vs": {
+   "single:red_tspulse_finetune": {
+    "diff": -0.017460616152445412,
+    "ci95": [
+     -0.023637781824703767,
+     -0.011660151792241934
+    ],
+    "wells_lower": 11,
+    "n_wells": 12
+   },
+   "single:red_timestral": {
+    "diff": 0.0,
+    "ci95": [
+     0.0,
+     0.0
+    ],
+    "wells_lower": 0,
+    "n_wells": 12
+   },
+   "equal_average": {
+    "diff": -0.006162565179918721,
+    "ci95": [
+     -0.0088685412904594,
+     -0.003486535066556947
+    ],
+    "wells_lower": 11,
+    "n_wells": 12
+   }
+  }
+ },
+ "advance_to_test": false,
+ "verdict": "Timestral-5M + other logs has the lower C error at both scales, so the hybrid is that model alone; the test was not scored"
+}

@@ -1,0 +1,165 @@
+{
+  "arm": "ttm",
+  "trainable": [
+    "residual_forecaster.head.base_forecast_block.bias",
+    "residual_forecaster.head.base_forecast_block.weight",
+    "residual_forecaster.multi_quantile_head_block.dec_flat_to_hidden.bias",
+    "residual_forecaster.multi_quantile_head_block.dec_flat_to_hidden.weight",
+    "residual_forecaster.multi_quantile_head_block.dec_tok_proj.bias",
+    "residual_forecaster.multi_quantile_head_block.dec_tok_proj.weight",
+    "residual_forecaster.multi_quantile_head_block.dw.bias",
+    "residual_forecaster.multi_quantile_head_block.dw.weight",
+    "residual_forecaster.multi_quantile_head_block.inorm.bias",
+    "residual_forecaster.multi_quantile_head_block.inorm.weight",
+    "residual_forecaster.multi_quantile_head_block.pw1.bias",
+    "residual_forecaster.multi_quantile_head_block.pw1.weight",
+    "residual_forecaster.multi_quantile_head_block.pw2.bias",
+    "residual_forecaster.multi_quantile_head_block.pw2.weight",
+    "trend_forecaster.head.base_forecast_block.bias",
+    "trend_forecaster.head.base_forecast_block.weight",
+    "trend_forecaster.multi_quantile_head_block.dec_flat_to_hidden.bias",
+    "trend_forecaster.multi_quantile_head_block.dec_flat_to_hidden.weight",
+    "trend_forecaster.multi_quantile_head_block.dec_tok_proj.bias",
+    "trend_forecaster.multi_quantile_head_block.dec_tok_proj.weight",
+    "trend_forecaster.multi_quantile_head_block.dw.bias",
+    "trend_forecaster.multi_quantile_head_block.dw.weight",
+    "trend_forecaster.multi_quantile_head_block.inorm.bias",
+    "trend_forecaster.multi_quantile_head_block.inorm.weight",
+    "trend_forecaster.multi_quantile_head_block.pw1.bias",
+    "trend_forecaster.multi_quantile_head_block.pw1.weight",
+    "trend_forecaster.multi_quantile_head_block.pw2.bias",
+    "trend_forecaster.multi_quantile_head_block.pw2.weight"
+  ],
+  "n_trainable": 1080478,
+  "n_parameters": 3157904,
+  "n_examples": 3176,
+  "n_wells": 54,
+  "device": "cuda",
+  "overfit_reload": {
+    "steps": 40,
+    "first_loss": 0.16553077101707458,
+    "last_loss": 0.018074803054332733,
+    "loss_dropped": true,
+    "eval_loss_trained": 0.019694803282618523,
+    "eval_loss_reset": 0.16566349565982819,
+    "eval_loss_reloaded": 0.019694803282618523,
+    "reload_exact": true
+  },
+  "measure": [
+    {
+      "microbatch": 1,
+      "accumulation": 8,
+      "s_per_update": 0.4417,
+      "ok": true,
+      "peak_allocated_mb": 46.9,
+      "peak_reserved_mb": 50.0,
+      "process_rss_mb": 1895.4
+    },
+    {
+      "microbatch": 2,
+      "accumulation": 4,
+      "s_per_update": 0.2299,
+      "ok": true,
+      "peak_allocated_mb": 46.9,
+      "peak_reserved_mb": 52.0,
+      "process_rss_mb": 1895.4
+    },
+    {
+      "microbatch": 4,
+      "accumulation": 2,
+      "s_per_update": 0.1216,
+      "ok": true,
+      "peak_allocated_mb": 46.9,
+      "peak_reserved_mb": 52.0,
+      "process_rss_mb": 1943.5
+    },
+    {
+      "microbatch": 8,
+      "accumulation": 1,
+      "s_per_update": 0.0614,
+      "ok": true,
+      "peak_allocated_mb": 46.9,
+      "peak_reserved_mb": 54.0,
+      "process_rss_mb": 1948.8
+    }
+  ],
+  "microbatch": 8,
+  "accumulation": 1,
+  "eval_s_first": 0.98,
+  "first_update_grads": {
+    "trend_forecaster": {
+      "tensors": 14,
+      "finite": true,
+      "abs_sum": 4.200891467827432
+    },
+    "residual_forecaster": {
+      "tensors": 14,
+      "finite": true,
+      "abs_sum": 3.1707939447289846
+    }
+  },
+  "train_minutes": 0.084,
+  "updates_run": 75,
+  "train_peak_allocated_mb": 87.4,
+  "train_peak_reserved_mb": 126.0,
+  "process_rss_mb": 1987.5,
+  "history": [
+    {
+      "update": 0,
+      "minutes": 0.0,
+      "train_loss": null,
+      "B_metric": 0.07985559767449009,
+      "best": true
+    },
+    {
+      "update": 25,
+      "minutes": 0.024,
+      "train_loss": 0.033582204505801204,
+      "B_metric": 0.08091784073418762,
+      "best": false
+    },
+    {
+      "update": 50,
+      "minutes": 0.053,
+      "train_loss": 0.035997935608029365,
+      "B_metric": 0.08041857935417024,
+      "best": false
+    },
+    {
+      "update": 75,
+      "minutes": 0.079,
+      "train_loss": 0.03398225381970406,
+      "B_metric": 0.08060603594938032,
+      "best": false
+    }
+  ],
+  "best_overall_update": 0,
+  "best_overall_metric": 0.07985559767449009,
+  "best_update": 50,
+  "best_metric": 0.08041857935417024,
+  "step0_won": true,
+  "step0_metric": 0.07985559767449009,
+  "stop_reason": "no improvement in 3 evaluations",
+  "truncated": false,
+  "caps": {
+    "max_updates": 300,
+    "max_minutes": 45.0
+  },
+  "best_head_max_abs_change": 0.010569476522505283,
+  "first_load_s": 20.64,
+  "head_file": "checkpoints\\ttm_tuned_best.pt",
+  "head_sha256": "dc6a6c2b50cc554346df3bfd86fa68da866dacfeb7c01577bb97fa686dfddb14",
+  "versions": {
+    "torch": "2.10.0+cu126",
+    "cuda": "12.6",
+    "device": "Quadro T1000 with Max-Q Design",
+    "transformers": "4.57.6",
+    "granite-tsfm": "0.3.13.dev6+g31fa2f015",
+    "numpy": "2.5.5"
+  },
+  "config_hash": "00bafc81acb0bec0",
+  "git": {
+    "commit": "370af9d36cd7c1c5287f8503cfd4132e28d6c50b",
+    "black_physics_dirty": true
+  }
+}

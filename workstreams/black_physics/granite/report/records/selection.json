@@ -1,0 +1,104 @@
+{
+  "selected": "black_tspulse_tuned",
+  "rule": "lowest B mean well-level MAE among rows with full eligible-gap predictions; exact ties: frozen first, then faster warmed inference",
+  "rows": {
+    "black_ttm_r3_frozen": {
+      "summary": {
+        "gaps": 91,
+        "complete_gaps": 91,
+        "completeness": 1.0,
+        "fill_fraction": 1.0,
+        "pooled_MAE": 0.07973048473575026,
+        "pooled_RMSE": 0.12381414972536761,
+        "mean_well_MAE": 0.07985559767449009,
+        "wells": 12,
+        "status_counts": {
+          "two_sided": 71,
+          "one_sided_above": 11,
+          "one_sided_below": 6,
+          "fallback_interp": 3
+        }
+      },
+      "timing": {
+        "load_s": 0.203,
+        "first_inference_s": 0.264,
+        "warm_inference_s": 0.148,
+        "n_tasks": 91
+      }
+    },
+    "black_ttm_r3_tuned": {
+      "summary": {
+        "gaps": 91,
+        "complete_gaps": 91,
+        "completeness": 1.0,
+        "fill_fraction": 1.0,
+        "pooled_MAE": 0.0803271789157367,
+        "pooled_RMSE": 0.12423564982862918,
+        "mean_well_MAE": 0.08041857935417024,
+        "wells": 12,
+        "status_counts": {
+          "two_sided": 71,
+          "one_sided_above": 11,
+          "one_sided_below": 6,
+          "fallback_interp": 3
+        }
+      },
+      "timing": {
+        "load_s": 0.311,
+        "first_inference_s": 0.16,
+        "warm_inference_s": 0.154,
+        "n_tasks": 91
+      }
+    },
+    "black_tspulse_frozen": {
+      "summary": {
+        "gaps": 91,
+        "complete_gaps": 91,
+        "completeness": 1.0,
+        "fill_fraction": 1.0,
+        "pooled_MAE": 0.07888048402943874,
+        "pooled_RMSE": 0.12338026894140326,
+        "mean_well_MAE": 0.07891496948161929,
+        "wells": 12,
+        "status_counts": {
+          "two_sided": 89,
+          "one_sided_below": 1,
+          "one_sided_above": 1
+        }
+      },
+      "timing": {
+        "load_s": 0.072,
+        "first_inference_s": 0.074,
+        "warm_inference_s": 0.068,
+        "n_tasks": 91
+      }
+    },
+    "black_tspulse_tuned": {
+      "summary": {
+        "gaps": 91,
+        "complete_gaps": 91,
+        "completeness": 1.0,
+        "fill_fraction": 1.0,
+        "pooled_MAE": 0.07881641547509549,
+        "pooled_RMSE": 0.12310614263447434,
+        "mean_well_MAE": 0.07885001880816526,
+        "wells": 12,
+        "status_counts": {
+          "two_sided": 89,
+          "one_sided_below": 1,
+          "one_sided_above": 1
+        }
+      },
+      "timing": {
+        "load_s": 0.074,
+        "first_inference_s": 0.064,
+        "warm_inference_s": 0.064,
+        "n_tasks": 91
+      }
+    }
+  },
+  "git": {
+    "commit": "370af9d36cd7c1c5287f8503cfd4132e28d6c50b",
+    "black_physics_dirty": true
+  }
+}
