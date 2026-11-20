@@ -5,6 +5,34 @@ const Q = require("../viewer/benchmark_quality.js");
 
 const IDS = ["viewer", "benchmark", "prediction"];
 
+test("comparison scale only compresses an isolated maximum", () => {
+  for (const values of [[], [NaN, null, Infinity, 0], [1], [1, 4], [1, 9, 9]]) {
+    const scale = Q.comparisonScale(values);
+    assert.equal(scale.knee, null);
+    assert.equal(scale.fraction(0), 0);
+  }
+  assert.equal(Q.comparisonScale([1, 2, 4]).fraction(2), 0.5);
+  const scale = Q.comparisonScale([100, 4, 5, 6]);
+  assert.equal(scale.knee, 6);
+  assert.equal(scale.fraction(6), 0.8);
+  assert.equal(scale.fraction(100), 1);
+  const mapped = [0, 4, 5, 6, 7, 100].map(scale.fraction);
+  assert.ok(mapped.slice(1).every((v, i) => v > mapped[i]));
+});
+
+test("comparison views disclose compressed axes without changing scores", () => {
+  const rows = [4, 5, 6, 100].map((MAE, i) => ({ contender: `model${i}`, target: "DTC", MAE,
+    interval_width_90: i + 1, cover_90: 0.9 }));
+  const run = { rows, props: ["DTC"], models: rows.map((r) => r.contender) };
+  const colorOf = () => "#000";
+  const html = B.summaryHtml(B.propertyItems(run, "DTC"), { prop: "DTC", colorOf });
+  assert.match(html, /Error: scale compressed above 6/);
+  assert.match(html, /MAE \(vertical\): scale compressed above 6/);
+  assert.doesNotMatch(html, /Width.*?: scale compressed above/);
+  assert.match(html, /MAE 100, width 4/);
+  assert.match(B.byPropertyHtml(run, colorOf), /Error: scale compressed above 6/);
+});
+
 test("tab hash: sub-views resolve to the tab, view helper parses them", () => {
   assert.equal(B.parseTabHash("#benchmark/summary-rhob", IDS, "viewer"), "benchmark");
   assert.equal(B.parseBenchmarkView("#benchmark/summary-rhob"), "summary-rhob");

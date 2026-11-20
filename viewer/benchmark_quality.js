@@ -187,8 +187,23 @@
     });
   }
 
+  // Keep the cluster linear; only an isolated maximum gets a compressed tail.
+  function comparisonScale(values, domainMax = 0) {
+    const sorted = values.filter((v) => Number.isFinite(v) && v > 0).sort((a, b) => a - b);
+    const peak = sorted[sorted.length - 1] || 0;
+    const next = sorted[sorted.length - 2];
+    const max = Math.max(domainMax, peak) || 1;
+    const knee = peak > 4 * next ? next : null;
+    function fraction(value) {
+      if (!Number.isFinite(value) || value <= 0) return 0;
+      if (knee === null) return Math.min(1, value / max);
+      return value <= knee ? 0.8 * (value / knee) : Math.min(1, 0.8 + 0.2 * ((value - knee) / (max - knee)));
+    }
+    return { max, knee, fraction };
+  }
+
   return {
-    EPS, COLORS, WORDS, THRESHOLDS, TARGET_COVERAGE, CAL_SCALE, CAL_TARGET_FRAC, BASELINE_MODEL,
+    comparisonScale, EPS, COLORS, WORDS, THRESHOLDS, TARGET_COVERAGE, CAL_SCALE, CAL_TARGET_FRAC, BASELINE_MODEL,
     SPEED_AXIS, SPEED_ZONES, PROPERTIES, PROPERTY_NAMES, UNITS, ALL_UNIT,
     unitOf, classifyAccuracy, classifyCalibration, classifySharpness, speedZone, speedZoneName,
     calibrationWord, calibrationWordAll, calScaleFrac, calClosenessFrac, speedFrac, formatSeconds,

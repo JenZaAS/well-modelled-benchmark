@@ -433,7 +433,9 @@
   function track(frac, cls) {
     return `<span class="bm-track"><b class="${cls || "muted"}" style="width:${(frac * 100).toFixed(1)}%"></b></span>`;
   }
-  function magnitude(value, max) { return max > 0 ? Math.max(0.05, value / max) : 0; }
+  function scaleNote(scale, label) {
+    return scale.knee == null ? "" : `<div class="bm-cap-note">${label}: scale compressed above ${tickText(scale.knee)} (last 20% of axis).</div>`;
+  }
   function metricRow(i, ctx, rank, cls, value, visual, qualifier, note) {
     return `<div class="bm-r"><div class="bm-r-head">${ranked(rank)}<span class="bm-nm">${dot(ctx.colorOf(i.id))}${esc(itemName(i))}${familyBadge(i.id)}</span>` +
       `<small>${esc(value)}</small></div><div class="bm-r-track${qualifier != null ? " bm-cal-row" : ""}">` +
@@ -450,9 +452,9 @@
 
   function cardAccuracy(items, ctx) {
     const rows = items.filter((i) => i.acc != null).sort((a, b) => a.acc - b.acc);
-    const max = rows.length ? rows[rows.length - 1].acc : 0;
+    const scale = Q.comparisonScale(rows.map((i) => i.acc));
     const body = rows.map((i) => metricRow(i, ctx, i.accRank, i.accClass, withUnit(i.acc, ctx.prop, ctx.all),
-      track(magnitude(i.acc, max), i.accClass))).join("");
+      track(scale.fraction(i.acc), i.accClass))).join("") + scaleNote(scale, "Error");
     return card("Accuracy: average error", "\u2193 Lower is better", ctx.all ? "1.0\u00D7 = Linear template" : "shortest bar wins",
       body || '<p class="na">No accuracy scores.</p>');
   }
@@ -475,11 +477,11 @@
   function cardSharpness(items, ctx) {
     const rows = items.filter((i) => i.width != null).sort((a, b) =>
       Number(!a.sharpClass || a.sharpClass === "muted") - Number(!b.sharpClass || b.sharpClass === "muted") || a.width - b.width);
-    const max = Math.max(0, ...rows.map((i) => i.width));
+    const scale = Q.comparisonScale(rows.map((i) => i.width));
     let rank = 0;
     const body = rows.map((i) => metricRow(i, ctx, i.sharpClass && i.sharpClass !== "muted" && !i.partial ? ++rank : null,
-      i.sharpClass, withUnit(i.width, ctx.prop, ctx.all, true), track(magnitude(i.width, max), i.sharpClass),
-      null, i.sharpClass === "muted" ? SHARP_MUTED : !i.sharpClass ? "No calibration score" : "")).join("");
+      i.sharpClass, withUnit(i.width, ctx.prop, ctx.all, true), track(scale.fraction(i.width), i.sharpClass),
+      null, i.sharpClass === "muted" ? SHARP_MUTED : !i.sharpClass ? "No calibration score" : "")).join("") + scaleNote(scale, "Width");
     return card("Sharpness: width of the 90% uncertainty band", "\u2193 Narrower is better", "only if calibrated",
       body || '<p class="na">No interval widths.</p>');
   }
@@ -564,14 +566,21 @@
     if (!pts.length) return '<p class="na">No models with both accuracy and interval width.</p>';
     const W = 850, H = 260, m = { l: 62, r: 22, t: 18, b: 39 };
     const ext = scatterExtent(pts, !!ctx.all);
-    const xmax = ext.xmax, ymax = ext.ymax;
-    const sx = (v) => m.l + (v / xmax) * (W - m.l - m.r);
-    const sy = (v) => H - m.b - (v / ymax) * (H - m.t - m.b);
+    const widths = pts.map((p) => p.width), errors = pts.map((p) => p.acc);
+    // In relative mode a single extreme axis must not stretch the other axis too.
+    const split = ctx.all && [widths, errors].some((vs) => Q.comparisonScale(vs).knee != null);
+    const xScale = Q.comparisonScale(widths, split ? Math.max(2, ...widths.map((v) => v * 1.05)) : ext.xmax);
+    const yScale = Q.comparisonScale(errors, split ? Math.max(2, ...errors.map((v) => v * 1.05)) : ext.ymax);
+    const xmax = xScale.max, ymax = yScale.max;
+    const sx = (v) => m.l + xScale.fraction(v) * (W - m.l - m.r);
+    const sy = (v) => H - m.b - yScale.fraction(v) * (H - m.t - m.b);
+    const ticks = (s, n) => s.knee == null ? niceTicks(s.max, n)
+      : [...Array.from({ length: n + 1 }, (_, i) => s.knee * (i / n)), s.max];
     const unit = ctx.all ? "\u00D7 baseline" : Q.unitOf(ctx.prop);
     const measure = (label) => unit ? `${label} (${unit})` : label;
-    const grid = niceTicks(xmax, 5).map((v) => `<line x1="${sx(v).toFixed(1)}" y1="${m.t}" x2="${sx(v).toFixed(1)}" y2="${H - m.b}" stroke="#eceeed"/>` +
+    const grid = ticks(xScale, 5).map((v) => `<line x1="${sx(v).toFixed(1)}" y1="${m.t}" x2="${sx(v).toFixed(1)}" y2="${H - m.b}" stroke="#eceeed"/>` +
       `<text x="${sx(v).toFixed(1)}" y="${H - m.b + 15}" text-anchor="middle" font-size="10" fill="#5c5c5c">${tickText(v)}</text>`).join("") +
-      niceTicks(ymax, 4).map((v) => `<line x1="${m.l}" y1="${sy(v).toFixed(1)}" x2="${W - m.r}" y2="${sy(v).toFixed(1)}" stroke="#eceeed"/>` +
+      ticks(yScale, 4).map((v) => `<line x1="${m.l}" y1="${sy(v).toFixed(1)}" x2="${W - m.r}" y2="${sy(v).toFixed(1)}" stroke="#eceeed"/>` +
         `<text x="${m.l - 8}" y="${(sy(v) + 3).toFixed(1)}" text-anchor="end" font-size="10" fill="#5c5c5c">${tickText(v)}</text>`).join("");
     const g = Q.COLORS.good, r = Q.COLORS.poor;
     const x0 = sx(0), x1 = sx(1), x2 = sx(xmax), y0 = sy(0), y1 = sy(1), y2 = sy(ymax);
@@ -607,7 +616,7 @@
         ? `<circle cx="${x}" cy="${y}" r="14" fill="${g.fg}" opacity=".18"/><circle cx="${x}" cy="${y}" r="10.5" fill="none" stroke="${c}" stroke-width="2.5"/>`
         : `<circle cx="${x}" cy="${y}" r="10.5" fill="none" stroke="${p.calClass ? r.fg : "#8B929A"}" stroke-width="2" stroke-dasharray="3 2.5"/>`;
       const right = x + 17 + label.length * 7 < W - m.r;
-      return `<g><title>${esc(name)}: ${p.calClass ? `calibration ${p.calClass}` : "no calibration score"}</title>${ring}` +
+      return `<g><title>${esc(name)}: MAE ${tickText(p.acc)}, width ${tickText(p.width)}; ${p.calClass ? `calibration ${p.calClass}` : "no calibration score"}</title>${ring}` +
         `<circle cx="${x}" cy="${y}" r="6.5" fill="${c}" stroke="#fff" stroke-width="1.5"/>` +
         `<text x="${x + (right ? 17 : -17)}" y="${y + 4}" text-anchor="${right ? "start" : "end"}" font-size="12" font-weight="700" fill="#1A1E23">${esc(label)}</text></g>`;
     }).join("");
@@ -624,7 +633,8 @@
       `<rect x="${m.l}" y="${m.t}" width="${W - m.l - m.r}" height="${H - m.t - m.b}" fill="#fafbfa" stroke="#d5d5d3"/>` +
       `${wash}${quadrants}${grid}${base}${frontLine}${better}${marks}` +
       `<text x="${(m.l + (W - m.l - m.r) / 2).toFixed(1)}" y="${H - 10}" text-anchor="middle" font-size="11" fill="#333">${esc(xt)}</text>` +
-      `<text transform="translate(14 ${(m.t + (H - m.t - m.b) / 2).toFixed(1)}) rotate(-90)" text-anchor="middle" font-size="11" fill="#333">${esc(yt)}</text></svg>`;
+      `<text transform="translate(14 ${(m.t + (H - m.t - m.b) / 2).toFixed(1)}) rotate(-90)" text-anchor="middle" font-size="11" fill="#333">${esc(yt)}</text></svg>` +
+      scaleNote(xScale, "Width (horizontal)") + scaleNote(yScale, "MAE (vertical)");
   }
 
   function scatterLegend() {
@@ -662,16 +672,16 @@
       `<h4>Key</h4>${scatterLegend()}</aside></div>`;
   }
 
-  function byPropertyCell(it, prop, colMax) {
+  function byPropertyCell(it, prop, scales) {
     if (!it) return '<td class="bm-cell na">–</td>';
     const line = (label, cls, visual, value, rank, note) =>
       `<div class="bm-ln"><b>${label}</b>${rank ? ranked(rank) : "<span></span>"}${visual}` +
       `${chip(cls, Q.WORDS[cls || "muted"])}<small>${esc(value)}${note ? `<i>${esc(note)}</i>` : ""}</small></div>`;
-    const acc = line("Accuracy", it.accClass, it.acc == null ? "<span></span>" : track(magnitude(it.acc, colMax.acc), it.accClass),
+    const acc = line("Accuracy", it.accClass, it.acc == null ? "<span></span>" : track(scales.acc.fraction(it.acc), it.accClass),
       withUnit(it.acc, prop), it.accRank);
     const cal = line("Calibration", it.calClass, it.cover == null ? "<span></span>" : calTrack(it.cover, it.calClass),
       it.cover == null ? "\u2013" : `${(it.cover * 100).toFixed(0)}%`, null, Q.calibrationWord(it.cover, it.calClass));
-    const sharp = line("Sharpness", it.sharpClass, it.width == null ? "<span></span>" : track(magnitude(it.width, colMax.width), it.sharpClass),
+    const sharp = line("Sharpness", it.sharpClass, it.width == null ? "<span></span>" : track(scales.width.fraction(it.width), it.sharpClass),
       it.sharpClass === "muted" ? "\u2013" : withUnit(it.width, prop, false, true), null,
       it.sharpClass === "muted" ? "doesn\u2019t count" : it.width != null && !it.sharpClass ? "no calibration" : "");
     const speed = `<div class="bm-ln bm-ln-speed"><b>Speed</b>${chip(it.speedClass, it.speedClass ? Q.speedZoneName(it.speedClass) : Q.WORDS.muted)}` +
@@ -682,17 +692,19 @@
   function byPropertyHtml(run, colorOf) {
     const perProp = {};
     for (const p of run.props) perProp[p] = propertyItems(run, p);
+    const scales = Object.fromEntries(run.props.map((p) => [p, {
+      acc: Q.comparisonScale(perProp[p].map((i) => i.acc)), width: Q.comparisonScale(perProp[p].map((i) => i.width)),
+    }]));
     const models = run.models.slice().sort((a, b) => (a === Q.BASELINE_MODEL ? -1 : b === Q.BASELINE_MODEL ? 1 : a.localeCompare(b)));
     const head = run.props.map((p) => {
       const f = propertyFacts(run, p);
       const facts = [Q.unitOf(p), f.wells != null ? `${f.wells} wells` : "", f.samples != null ? `${Math.round(f.samples).toLocaleString("en-GB")} samples` : ""].filter(Boolean).join(" \u00B7 ");
       return `<th scope="col"><b>${esc(p)}</b>${Q.PROPERTY_NAMES[p] ? ` <span class="na">\u00B7 ${esc(Q.PROPERTY_NAMES[p])}</span>` : ""}` +
-        `${facts ? `<div class="na">${esc(facts)}</div>` : ""}</th>`;
+        `${facts ? `<div class="na">${esc(facts)}</div>` : ""}${scaleNote(scales[p].acc, "Error")}${scaleNote(scales[p].width, "Width")}</th>`;
     }).join("");
     const body = models.map((m) => `<tr><th class="bm-model" scope="row">${dot(colorOf(m))}${esc(modelName(m))}${familyBadge(m)}</th>` + run.props.map((p) => {
       const col = perProp[p];
-      const max = (k) => Math.max.apply(null, col.map((i) => i[k]).filter((v) => v != null).concat([0]));
-      return byPropertyCell(col.find((i) => i.id === m), p, { acc: max("acc"), width: max("width") });
+      return byPropertyCell(col.find((i) => i.id === m), p, scales[p]);
     }).join("") + "</tr>").join("");
     return `<div class="bm-grid-wrap"><table class="bm-grid"><thead><tr><th scope="col">Model</th>${head}</tr></thead>` +
       `<tbody>${body}</tbody></table></div>`;
