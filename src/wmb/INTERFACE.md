@@ -12,6 +12,7 @@ and keep old names working until everyone has pulled.
 | `wmb.contract` | `Task`, `validate_prediction`, `task_input_columns`, `TARGET_CURVES`, `GAP_LENGTHS_M` | What a model receives and must return; see `docs/benchmark.md` |
 | `wmb.scoring` | `regression_scores`, `classification_scores`, `crps_gaussian`, `gaussian_interval`, `timer` | Metric names and definitions as in `docs/metrics.md` |
 | `wmb.splits` | `well_split`, `official_split`, `gap_mask`, `place_gap`, `gap_seed` | Split by whole wells; same seed, same split |
+| `wmb.prediction_files` | `FORMATS`, `DEFAULT_FORMAT`, `resolve_format`, `write`, `read_npz_well`, `json_values` | Viewer prediction files (`predictions.json` / `predictions.npz`) hold the same values rounded to 4 decimals and read back as identical JSON; not part of scoring |
 | `wmb.paths` | `data_root()`, `get_dataset_path(name)`, `work_root()`, `results_root()` | Data from `data_paths.local.yaml` (see `docs/SETUP_DATA_PATHS.md`) |
 | `wmb.datasets` | `load_force2020(root=None, splits=None)`, `load_canonical_spec()`, `python -m wmb.datasets --check force2020` | Canonical curve names, metres MD, NaN for sentinels; guardrail flags on `Well.meta`; check never repairs files |
 | `wmb.onboarding` | `python -m wmb.onboarding [--status] [--redo [NAME]]` | Re-runnable; state in gitignored `.wmb/onboarding_state.json`; `ONBOARDING_VERSION` + `CHANGELOG` |

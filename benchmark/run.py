@@ -5,6 +5,10 @@ Examples:
     python -m benchmark.run --dataset synthetic --target RHOB
     python -m benchmark.run --model template_linear --dataset synthetic --scenario all --target all
     python -m benchmark.run --dataset force2020 --target DTS --contenders black_gardner,blue_gbt
+    python -m benchmark.run --model template_linear --test all --predictions npz
+
+Each scored run also writes a prediction file for the viewer: predictions.json (default) or predictions.npz
+(--predictions npz, or WMB_PREDICTIONS_FORMAT=npz); see wmb.prediction_files.
 
 Tasks come from benchmark.make_tasks (synthetic, force2020). Other datasets (a folder with wells.json)
 keep the older well-split behaviour for the missing_curve scenario.
@@ -21,8 +25,6 @@ import subprocess
 import sys
 import time
 import traceback
-from pathlib import Path
-from tempfile import TemporaryDirectory
 
 import numpy as np
 import pandas as pd
@@ -32,6 +34,7 @@ from benchmark import test_def as td
 from benchmark.registry import REPO, discover  # noqa: F401  (also puts src/ on sys.path)
 from wmb.aliases import canonical_model
 from wmb import paths, predict_cache, scoring, splits
+from wmb import prediction_files as pf
 from wmb.contender import Prediction
 from wmb.contract import GAP_LENGTHS_M, SCENARIO_MISSING, TARGET_CURVES, Task, validate_prediction
 from wmb.curves import CORE
@@ -111,47 +114,13 @@ def _write(out, name: str, payload: dict) -> None:
     (out / name).write_text(json.dumps(payload, indent=2, default=str))
 
 
-def _arr(v, nd: int = 4):
-    """Rounded list with NaN/inf as null (valid JSON); None stays None."""
-    if v is None:
-        return None
-    a = np.asarray(v, float)
-    return [round(float(x), nd) if np.isfinite(x) else None for x in a]
-
-
-def _gap_intervals(depth: np.ndarray, mask: np.ndarray) -> list[list[float]]:
-    """[top, bottom] depth of each contiguous run of predict_mask."""
-    out, start = [], None
-    for i, m in enumerate(np.asarray(mask, bool)):
-        if m and start is None:
-            start = i
-        if start is not None and (not m or i == len(mask) - 1):
-            end = i if m else i - 1
-            out.append([round(float(depth[start]), 4), round(float(depth[end]), 4)])
-            start = None
-    return out
+_arr = pf.json_values              # rounded list, NaN/inf -> None (kept for existing callers)
+_gap_intervals = pf.gap_intervals
 
 
 def prediction_payload(base: dict, key: str, tasks: list[Task], preds: list[Prediction], truth: dict) -> dict:
-    """Compact per-well arrays for the viewer's Benchmark tab (results/.../predictions.json); not part of scoring."""
-    seen: dict[str, int] = {}
-    wells = []
-    for t, p in zip(tasks, preds):
-        k = seen.get(t.well_id, 0)
-        seen[t.well_id] = k + 1
-        has_band = p.p05 is not None and p.p95 is not None
-        wells.append({
-            "key": t.well_id if k == 0 else f"{t.well_id}#{k}", "well_id": t.well_id,
-            "depth": _arr(t.depth), "true": _arr(truth[(t.well_id, t.target)]), "p50": _arr(p.p50),
-            "p05": _arr(p.p05) if has_band else None, "p95": _arr(p.p95) if has_band else None,
-            "std": None if has_band else _arr(p.std),
-            "gaps": _gap_intervals(t.depth, t.predict_mask),
-            "context": {curve: _arr(values) for curve in ("GR", "CALI", "RDEP")
-                        if curve != t.target and (values := truth.get((t.well_id, curve))) is not None
-                        and np.isfinite(values).any()},
-        })
-    return {"contender": base.get("contender"), "test": base.get("test"), "dataset": base["dataset"],
-            "target": base["target"], "scenario": key, "wells": wells}
+    """Per-well arrays for the viewer's Benchmark tab (results/.../predictions.json); not part of scoring."""
+    return pf.json_payload(base, key, tasks, preds, truth)
 
 
 def _fail(row: dict, out, exc: Exception, classic: bool = True) -> dict:
@@ -159,7 +128,7 @@ def _fail(row: dict, out, exc: Exception, classic: bool = True) -> dict:
     _write(out, "failure.json", {k: row.get(k) for k in ("contender", "test", "dataset", "target", "scenario", "error")}
            | {"traceback": traceback.format_exc(limit=4)})
     (out / "scores.json").unlink(missing_ok=True)  # a failed rerun must not leave a stale scoreboard row
-    (out / "predictions.json").unlink(missing_ok=True)
+    pf.remove(out)
     if classic and row["scenario"] == SCENARIO_MISSING:
         (out.parent / "scores.json").unlink(missing_ok=True)
     return row
@@ -195,11 +164,12 @@ def _scenario_cache_keys(model, tasks: list[Task], base: dict, thash: str, mhash
 
 
 def run_scenario(model, tasks: list[Task], truth: dict, base: dict, out_root, timings: dict,
-                 per_test: bool = False, force: bool = False, train=None) -> dict:
+                 per_test: bool = False, force: bool = False, train=None, predictions_format: str | None = None) -> dict:
     """Predict, validate and score one (model, target, scenario). Returns the result row (with `error` on failure).
 
     per_test writes under .../<scenario>/<test>/ and leaves the classic .../<scenario>/scores.json alone.
     When train is supplied, fit only on a miss and cache each prediction. `force` bypasses reads.
+    predictions_format: "json" or "npz" for the viewer's prediction file; None = $WMB_PREDICTIONS_FORMAT, else json.
     """
     key = tasks[0].scenario_key
     row = {**git_info(), **base, "scenario": key, "n_tasks": len(tasks), **timings}
@@ -259,29 +229,25 @@ def run_scenario(model, tasks: list[Task], truth: dict, base: dict, out_root, ti
         return _fail(row, out, exc, classic=not per_test)
     (out / "failure.json").unlink(missing_ok=True)
     _write(out, "scores.json", row)
-    prediction_path = out / "predictions.json"
     try:  # viewer-only extra; never let it fail a scored run
-        prediction_path.unlink(missing_ok=True)
-        with TemporaryDirectory(dir=out) as tmp:
-            staged = Path(tmp) / prediction_path.name
-            staged.write_text(json.dumps(
-                prediction_payload({**base, "contender": model.name}, key, tasks, preds, truth),
-                separators=(",", ":"), allow_nan=False,
-            ))
-            staged.replace(prediction_path)
+        pf.write(out, pf.resolve_format(predictions_format), {**base, "contender": model.name}, key, tasks, preds, truth,
+                 json_builder=prediction_payload)
     except (OSError, ValueError, TypeError) as exc:
-        print(f"warning: predictions.json not written for {model.name}/{key}: {exc}", file=sys.stderr)
+        pf.remove(out)
+        print(f"warning: prediction file not written for {model.name}/{key}: {exc}", file=sys.stderr)
     if key == SCENARIO_MISSING and not per_test:  # older layout, kept for existing readers
         _write(out.parent, "scores.json", row)
     return row
 
 
 def run_model(name: str, factory, train, test_tasks: list[Task], truth: dict, target: str, scenarios: list[str],
-              dataset: str, out_root, test_name=None, per_test: bool = False, force: bool = False) -> list[dict]:
+              dataset: str, out_root, test_name=None, per_test: bool = False, force: bool = False,
+              predictions_format: str | None = None) -> list[dict]:
     """All selected scenarios of one target for one model. Failures are returned as rows with `error`.
 
     test_name: callable (target, scenario_key) -> test name; default is the shipped def that matches, else a generated name.
     per_test: write under .../<scenario>/<test>/ (the --test layout). force: ignore the prediction cache.
+    predictions_format: viewer prediction file format, see run_scenario.
     """
     test_name = test_name or (lambda tg, k: td.generated_def(dataset, tg, k).name)
     by_key = {k: [t for t in test_tasks if t.target == target and t.scenario_key == k] for k in scenarios}
@@ -309,7 +275,7 @@ def run_model(name: str, factory, train, test_tasks: list[Task], truth: dict, ta
                 "hardware": hardware(), "machine": f"{platform.processor() or platform.machine()} / {platform.system()}",
                 "run_at": time.strftime("%Y-%m-%dT%H:%M:%S%z")}
         rows.append(run_scenario(model, ts, truth, base, out_root, {k_: round(v, 4) for k_, v in timings.items()},
-                                 per_test=per_test, force=force, train=train))
+                                 per_test=per_test, force=force, train=train, predictions_format=predictions_format))
     return rows
 
 
@@ -339,8 +305,12 @@ def _write_runs(out_root, rows: list[dict], tag: str) -> None:
     pd.DataFrame([{k: v for k, v in r.items() if k != "hardware"} for r in rows]).to_csv(runs / f"{stem}.csv", index=False)
 
 
-def run_tests(defs: list[td.TestDef], found: dict, names: list[str], cache, out_root, force: bool = False, skip_missing: bool = False) -> list[dict]:
-    """Run each test def for every named model (fresh fit per def). A def that cannot run yields error rows."""
+def run_tests(defs: list[td.TestDef], found: dict, names: list[str], cache, out_root, force: bool = False, skip_missing: bool = False,
+              predictions_format: str | None = None) -> list[dict]:
+    """Run each test def for every named model (fresh fit per def). A def that cannot run yields error rows.
+
+    predictions_format: viewer prediction file format ("json" / "npz"), see run_scenario.
+    """
     loaded: dict = {}
     rows = []
     for d in defs:
@@ -373,7 +343,7 @@ def run_tests(defs: list[td.TestDef], found: dict, names: list[str], cache, out_
             if n not in found:
                 print(f"unknown contender: {n}", file=sys.stderr); continue
             got = run_model(n, found[n], train, tasks, truth, d.target, [key], d.dataset, out_root, lambda *_: d.name,
-                            per_test=True, force=force)
+                            per_test=True, force=force, predictions_format=predictions_format)
             if not got:
                 print(f"  {n:24s} skipped (target not supported or no test tasks)")
             _print_rows(n, got)
@@ -393,7 +363,14 @@ def main(argv=None) -> int:
     ap.add_argument("--rerun", "--force", dest="rerun", action="store_true", help="ignore cached predictions and recompute")
     ap.add_argument("--list", action="store_true", help="list contenders and exit")
     ap.add_argument("--list-tests", action="store_true", help="list the runnable test definitions and exit")
+    ap.add_argument("--predictions", choices=pf.FORMATS,
+                    help=f"prediction file for the viewer: json (readable) or npz (smaller, faster); "
+                         f"default ${pf.ENV_VAR}, else {pf.DEFAULT_FORMAT}")
     a = ap.parse_args(argv)
+    try:
+        fmt = pf.resolve_format(a.predictions)
+    except ValueError as exc:
+        ap.error(str(exc))
 
     if a.list:
         print("Contenders:"); discover(verbose=True); return 0
@@ -417,7 +394,8 @@ def main(argv=None) -> int:
         found = discover()
         names = list(found) if a.contenders == "all" else [canonical_model(n) for n in a.contenders.split(",")]
         out_root = paths.results_root()
-        rows = run_tests(defs, found, names, a.cache, out_root, force=a.rerun, skip_missing=(a.test == "all"))
+        rows = run_tests(defs, found, names, a.cache, out_root, force=a.rerun, skip_missing=(a.test == "all"),
+                         predictions_format=fmt)
         if rows:
             _write_runs(out_root, rows, next(iter({d.dataset for d in defs})) if len({d.dataset for d in defs}) == 1 else "tests")
         print(f"scores written under {out_root}")
@@ -459,7 +437,8 @@ def main(argv=None) -> int:
             print(f"unknown contender: {n}", file=sys.stderr); continue
         got = []
         for target in targets:
-            got += run_model(n, found[n], train, tasks, truth, target, scenarios, a.dataset, out_root, force=a.rerun)
+            got += run_model(n, found[n], train, tasks, truth, target, scenarios, a.dataset, out_root, force=a.rerun,
+                             predictions_format=fmt)
         if not got:
             print(f"  {n:24s} skipped (target not supported or no test tasks for {a.target}/{a.scenario})")
         _print_rows(n, got)

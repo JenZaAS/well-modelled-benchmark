@@ -380,10 +380,11 @@ _SEGMENT_OK = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]*$")
 
 def load_benchmark_prediction(contender: str, dataset: str, target: str, scenario: str, well: str,
                               root: Path | None = None, test: str = "") -> dict[str, Any]:
-    """One well from results/<contender>/<dataset>/<target>/<scenario>[/<test>]/predictions.json.
+    """One well from results/<contender>/<dataset>/<target>/<scenario>[/<test>]/predictions.json or predictions.npz.
 
     Looks in per-test folders first (when `test` is given), then the older layout without it.
-    Within each layout, the requested id takes precedence over its aliases.
+    Within each layout, the requested id takes precedence over its aliases. In a folder with both
+    formats the newer file wins; both return the same JSON (see wmb.prediction_files).
     FileNotFoundError if neither exists.
     """
     from wmb import paths
@@ -395,22 +396,34 @@ def load_benchmark_prediction(contender: str, dataset: str, target: str, scenari
             test and (not _SEGMENT_OK.fullmatch(test) or ".." in test)):
         raise ValueError("contender, dataset, target, scenario and test must be plain names")
     root = Path(root) if root is not None else paths.results_root()
+
+    def prediction_file(parts: list[str]) -> Path | None:
+        found = [f for f in (safe_under(root, "/".join([*parts, n])) for n in ("predictions.json", "predictions.npz")) if f]
+        return max(found, key=lambda f: f.stat().st_mtime) if found else None
+
     found = None
     model = canonical_model(contender)
     names = dict.fromkeys([contender, model, *legacy_model_names(model)])
     for suffix in ([test], []) if test else ([],):
         for name in names:
             parts = [name, *segments, *suffix]
-            found = safe_under(root, "/".join([*parts, "predictions.json"]))
+            found = prediction_file(parts)
             if found is not None:
                 break
             if safe_under(root, "/".join([*parts, "scores.json"])):
                 kind = "test" if suffix else "run"
-                raise FileNotFoundError(f"no predictions.json for this {kind}; re-run benchmark.run to write it")
+                raise FileNotFoundError(f"no predictions.json or predictions.npz for this {kind}; re-run benchmark.run to write it")
         if found is not None:
             break
     if found is None:
-        raise FileNotFoundError("no predictions.json for this run; re-run benchmark.run to write it")
+        raise FileNotFoundError("no predictions.json or predictions.npz for this run; re-run benchmark.run to write it")
+    if found.suffix == ".npz":  # numpy only when needed: the viewer itself runs without it
+        from wmb import prediction_files
+
+        out = prediction_files.read_npz_well(found, well)
+        if "well" in out:
+            out["contender"] = canonical_model(out.get("contender"))
+        return out
     data = json.loads(found.read_text(encoding="utf-8"))
     if well == "*":
         return {"wells": [w.get("key") or w.get("well_id") for w in data.get("wells", [])]}
