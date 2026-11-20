@@ -27,6 +27,17 @@ abstention rules and examples.
 | `black_density_nphi` | RHOB ← NPHI | [Volumetric density, NPHI as porosity](models/volumetric_density/README.md) |
 | `black_vpvs_ratio` | DTS ← DTC | [One fitted DTS/DTC ratio (control)](models/vpvs_ratio/README.md) |
 
+Opt-in gap rows (not in default runs; [granite/README.md](granite/README.md) has the 50 m density-gap experiment,
+its environments and results):
+
+| ID | Target ← inputs | Switch | Model card |
+| --- | --- | --- | --- |
+| `black_ttm_r3_frozen`, `black_ttm_r3_tuned` | RHOB ← RHOB flanks only | `WMB_BLACK_GRANITE=1` | [Granite gap rows](models/granite/README.md) |
+| `black_tspulse_frozen`, `black_tspulse_tuned` | RHOB ← RHOB flanks only | `WMB_BLACK_GRANITE=1` | [Granite gap rows](models/granite/README.md) |
+| `black_linear_gap` | RHOB, DTC, DTS ← own flanks | `WMB_BLACK_GRANITE=1` | [Granite gap rows](models/granite/README.md) |
+| `black_gardner_flank_resid` | RHOB ← DTC + RHOB flanks | `WMB_BLACK_GRANITE=1` | [Granite gap rows](models/granite/README.md) |
+| `black_timestral_target_only` | RHOB ← RHOB flanks only | `WMB_BLACK_TIMESTRAL=1` | [licence note](models/timestral_target_only/LICENSE.md) |
+
 - `contender.py`: explicit registration (`CONTENDERS`); `Gardner` and `MudrockDTS` stay importable from it.
 - `models/<family>/`: `equation.py` (plain NumPy), `wrapper.py` (station wrapper), `README.md` (model card),
   `LICENSE.md` and one `<id>.model.yaml` per registered ID (required inputs per target, read by the viewer and
