@@ -1,0 +1,12 @@
+name: purple_tabum_v11
+licence: MIT
+targets:
+  RHOB:
+    required: []
+    optional: [GR, RDEP, RMED, CALI, NPHI, PEF, DTC, DTS]
+  DTC:
+    required: []
+    optional: [GR, RDEP, RMED, CALI, NPHI, PEF, RHOB, DTS]
+  DTS:
+    required: []
+    optional: [GR, RDEP, RMED, CALI, NPHI, PEF, RHOB, DTC]

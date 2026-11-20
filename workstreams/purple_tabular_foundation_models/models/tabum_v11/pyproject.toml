@@ -1,0 +1,11 @@
+[project]
+name = "wmb-purple-tabum"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "tabum @ git+https://github.com/heldernoid/tabum.git@d119a5d3e11d144cd9c75b8609586a076c32db1e",
+    "PyYAML>=6,<7",
+]
+
+[tool.setuptools]
+packages = []
