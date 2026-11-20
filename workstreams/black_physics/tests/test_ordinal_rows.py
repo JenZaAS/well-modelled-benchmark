@@ -94,6 +94,23 @@ def test_row_keeps_the_base_fill_and_adds_valid_bins(tmp_path, monkeypatch):
     assert len(row.predict_batch([task, task])) == 2
 
 
+def test_finer_bins_refine_the_same_forecast(tmp_path, monkeypatch):
+    pytest.importorskip("yaml")
+    freeze(tmp_path, monkeypatch)
+    task = gap_task()
+    coarse, fine = Row(), type("FineRow", (Row,), {"bin_step": 0.02})()
+    for r in (coarse, fine):
+        r.fit(FORCE, "RHOB")
+    pc = validate_prediction(task, coarse.predict_task(task))
+    pf = validate_prediction(task, fine.predict_task(task))
+    m = task.predict_mask
+    assert pf.bin_probs.shape[1] == 67 and np.array_equal(pf.bin_edges, B.fine_edges(0.02))
+    np.testing.assert_allclose(B.coarsen(pf.bin_probs[m], pf.bin_edges), pc.bin_probs[m], atol=1e-12)
+    np.testing.assert_array_equal(pf.p50, pc.p50)
+    assert np.isnan(pf.bin_probs[~m]).all()
+    assert fine.provenance["bin_step"] == 0.02
+
+
 def test_band_is_widened_to_contain_the_fill(tmp_path, monkeypatch):
     pytest.importorskip("yaml")
     freeze(tmp_path, monkeypatch, shift=0.4)                            # every error positive: q05 above the fill

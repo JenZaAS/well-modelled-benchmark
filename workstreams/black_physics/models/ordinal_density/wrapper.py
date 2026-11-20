@@ -5,10 +5,13 @@
     black_ordinal_tspulse_finetune   red_tspulse_finetune's fill (RHOB only), softmax head on the fill, gap
                                      geometry and the sonic (Gardner) difference       (runs in the Granite env)
 
-p50 is the base model's own fill, unchanged, so MAE equals the base row's. The head adds a probability for each of
-15 density ranges at every hidden depth (Prediction.bin_edges / bin_probs: below 1.60, 1.60-1.70, ..., 2.80-2.90,
-2.90 and above, g/cm3), drawn by the viewer as a heatmap and scored as RPS_bins. p05/p25/p75/p95 are quantiles of
-that binned distribution, widened where needed to contain p50 (counted in `provenance["band_widened"]`).
+p50 is the base model's own fill, unchanged, so MAE equals the base row's. The head adds a probability for each
+density range at every hidden depth (Prediction.bin_edges / bin_probs), drawn by the viewer as a heatmap and scored
+as RPS_bins. The TSPulse head is a softmax over the method's 15 fixed ranges (below 1.60, 1.60-1.70, ..., 2.80-2.90,
+2.90 and above, g/cm3). The Timestral head counts past errors, so it gives the same distribution on 0.02 g/cm3 ranges
+(67 bins; they sum back exactly to its 15-bin forecast), which shows its shape instead of one 70 % range.
+p05/p25/p75/p95 are quantiles of the binned distribution, widened where needed to contain p50 (counted in
+`provenance["band_widened"]`).
 
 The heads were fitted on the C wells' gaps and selected on the D wells (workstreams/black_physics/ordinal_density).
 They are loaded from work_root()/black_ordinal_density/frozen/ and refused (StaleHead) unless their sha256 matches
@@ -52,10 +55,10 @@ def native_band(pred: Prediction) -> tuple[np.ndarray | None, np.ndarray | None,
     return lo, hi, {"P10-P90": 1.2815516, "P05-P95": 1.6448536}.get(name)
 
 
-def normal_bins(mu: np.ndarray, sigma: np.ndarray) -> np.ndarray:
-    """[n, 15] probabilities of N(mu, sigma) falling in each bin (end bins open)."""
+def normal_bins(mu: np.ndarray, sigma: np.ndarray, edges=B.EDGES) -> np.ndarray:
+    """[n, len(edges) + 1] probabilities of N(mu, sigma) falling in each bin (end bins open)."""
     cdf = np.vectorize(lambda z: 0.5 * (1.0 + math.erf(z / math.sqrt(2.0))), otypes=[float])
-    c = cdf((B.EDGES[None, :] - mu[:, None]) / sigma[:, None])
+    c = cdf((np.asarray(edges, float)[None, :] - mu[:, None]) / sigma[:, None])
     return np.diff(np.concatenate([np.zeros((len(mu), 1)), c, np.ones((len(mu), 1))], axis=1), axis=1)
 
 
@@ -63,6 +66,7 @@ class _OrdinalGap(BaseContender):
     workstream = "black_physics"
     targets = ["RHOB"]
     base_cls: type[BaseContender] = BaseContender       # the station row whose fills the head was fitted on
+    bin_step: float | None = None                       # finer nested ranges (empirical heads only); None: 15 bins
     licence_name = "MIT"
     licence_url = "https://opensource.org/licenses/MIT"
 
@@ -95,7 +99,8 @@ class _OrdinalGap(BaseContender):
             raise StaleHead(f"{model}'s checkpoint ({str(got)[:12]}) is not the one its head was fitted on "
                             f"({want[:12]}); re-run decide_any predict, the ordinal_density stages and `freeze`")
         self.provenance = {"base": model, "head": rec["head"], "head_sha256": entry["sha256"], "run_id": rec["run_id"],
-                           "base_provenance": getattr(self.base, "provenance", None), "band_widened": 0}
+                           "bin_step": self.bin_step, "base_provenance": getattr(self.base, "provenance", None),
+                           "band_widened": 0}
 
     def _with_bins(self, task: Task, base: Prediction) -> Prediction:
         n = len(task.depth)
@@ -103,25 +108,27 @@ class _OrdinalGap(BaseContender):
             return Prediction(mean=np.full(n, np.nan))
         p50 = np.asarray(base.p50 if base.p50 is not None else base.mean, float)
         lo, hi, z = native_band(base)
+        edges = B.fine_edges(self.bin_step) if self.bin_step else B.EDGES
         q = {level: np.full(n, np.nan) for level in QUANTILES}
-        bins = np.full((n, B.N_BINS), np.nan)
+        bins = np.full((n, len(edges) + 1), np.nan)
         if self.local:
             rows = np.flatnonzero(task.predict_mask & np.isfinite(p50))
             sigma = np.full(len(rows), FALLBACK_SIGMA)
             if z is not None:
                 w = (np.asarray(hi, float) - np.asarray(lo, float))[rows] / (2 * z)
                 sigma = np.where(np.isfinite(w) & (w > 0), w, sigma)
-            bins[rows] = normal_bins(p50[rows], sigma)
+            bins[rows] = normal_bins(p50[rows], sigma, edges)
             for level in QUANTILES:
                 q[level][rows] = p50[rows] + Z[level] * sigma
         else:
-            out = self.head.predict(task, p50, lo, hi)
+            out = self.head.predict(task, p50, lo, hi, edges=edges if self.bin_step else None)
             idx, probs = out["index"], out["probs"]
             ok = np.isfinite(probs).all(axis=1) & np.isfinite(p50[idx])
             rows = idx[ok]
             bins[rows] = probs[ok]
             for level in QUANTILES:
-                q[level][rows] = B.quantile(probs[ok], level, self.head.tails)
+                q[level][rows] = (B.quantile_on(probs[ok], edges, level, self.head.tails) if self.bin_step
+                                  else B.quantile(probs[ok], level, self.head.tails))
         mid = p50[rows]
         widened = 0
         for level in QUANTILES:                                   # keep p05 <= p25 <= p50 <= p75 <= p95
@@ -133,7 +140,7 @@ class _OrdinalGap(BaseContender):
         p50_out = np.where(task.predict_mask, p50, np.nan)
         return Prediction(mean=p50_out, quantiles={0.05: q[0.05], 0.25: q[0.25], 0.5: p50_out, 0.75: q[0.75],
                                                    0.95: q[0.95]},
-                          p05=q[0.05], p95=q[0.95], bin_edges=B.EDGES.copy(), bin_probs=bins)
+                          p05=q[0.05], p95=q[0.95], bin_edges=np.array(edges, float), bin_probs=bins)
 
     def predict_task(self, task: Task) -> Prediction:
         if self.head is None and not self.local:
@@ -152,9 +159,10 @@ class _OrdinalGap(BaseContender):
 
 
 class OrdinalTimestral(_OrdinalGap):
-    """Timestral-5M's gap fill (RHOB flanks + other logs) with 15-bin probabilities from its C-well errors."""
+    """Timestral-5M's gap fill (RHOB flanks + other logs) with 0.02 g/cm3 range probabilities from its past errors."""
     name = "black_ordinal_timestral"
     base_cls = Timestral
+    bin_step = 0.02
     inputs: list[str] = []
     required_inputs: list[str] = []
     optional_inputs = ["GR", "RDEP", "RMED", "CALI", "NPHI", "PEF", "DTC", "DTS"]

@@ -272,3 +272,50 @@ def test_cv_folds_never_split_a_well_and_pick_from_the_grid():
     X = np.column_stack([y + 0.03 * rng.standard_normal(len(y)), rng.random(len(y))])
     best, table = H.select_l2(X, ["base", "noise"], B.to_bin(y), wells, wells, grid=(1e-2, 1e-4), n_folds=3)
     assert best in (1e-2, 1e-4) and set(table) == {1e-2, 1e-4} and all(np.isfinite(list(table.values())))
+
+
+def test_finer_nested_bins_sum_back_to_the_fixed_bins():
+    e = B.fine_edges(0.02)
+    assert len(e) == 66 and e[0] == 1.60 and e[-1] == 2.90 and np.isin(B.EDGES, e).all()
+    with pytest.raises(ValueError):
+        B.fine_edges(0.03)                                               # does not divide 0.10
+    parent = B.parent_bins(e)
+    assert parent[0] == 0 and parent[-1] == B.N_BINS - 1 and np.bincount(parent).tolist() == [1] + [5] * 13 + [1]
+    rng = np.random.default_rng(3)
+    base = rng.uniform(1.9, 2.7, 200)
+    head = H.EmpiricalHead(by_flank=True).fit(np.full(4000, 2.3), 2.3 + rng.normal(0, 0.05, 4000),
+                                              rng.uniform(0, 0.1, 4000), np.ones(4000))
+    fv = rng.uniform(0, 0.1, 200)
+    coarse, fine = head.predict(base, fv), head.predict(base, fv, e)
+    assert fine.shape == (200, 67)
+    np.testing.assert_allclose(B.coarsen(fine, e), coarse, atol=1e-12)  # the same distribution, finer
+    np.testing.assert_allclose(B.quantile_on(coarse, B.EDGES, 0.3, TAILS), B.quantile(coarse, 0.3, TAILS), atol=1e-12)
+    med = B.quantile_on(fine, e, 0.5, TAILS)
+    assert np.all(np.abs(med - base) < 0.03)                              # finer bins track the shifted fill
+
+
+def test_inference_on_finer_bins_only_for_uncalibrated_empirical_heads(tmp_path):
+    from workstreams.black_physics.ordinal_density.infer import Head
+
+    depth, rhob = toy()
+    base = rhob + 0.02
+    tr = FT.gap_rows(gap_task(depth, rhob, 100, 300), base)
+    y = rhob[100:300]
+    e = H.EmpiricalHead(by_flank=True).fit(tr["base"], y, tr["flank_var"], np.ones(200))
+    pol = FT.FeaturePolicy(use_width=False, sonic=False)
+    X, names = pol.matrix(tr)
+    s = H.SoftmaxHead().fit(X, names, B.to_bin(y), np.ones(200))
+    bundle = {"tails": B.Tails.fit(y).as_dict(),
+              "heads": {"empirical_flank": {**e.as_dict(), "policy": None, "temperature": 1.3},
+                        "numeric": {**s.as_dict(), "policy": pol.as_dict(), "temperature": 0.8}}}
+    (tmp_path / "heads_m.json").write_text(json.dumps(bundle))
+    task = gap_task(depth, rhob, 320, 380)
+    fine = B.fine_edges(0.02)
+    raw = Head.load(tmp_path, "m", "empirical_flank|raw")
+    a, b = raw.predict(task, base), raw.predict(task, base, edges=fine)
+    assert b["probs"].shape == (60, 67) and np.array_equal(b["edges"], fine)
+    np.testing.assert_allclose(B.coarsen(b["probs"], fine), a["probs"], atol=1e-12)
+    np.testing.assert_allclose(b["p_below_2.40"], a["p_below_2.40"], atol=1e-12)
+    for head in ("empirical_flank|cal", "numeric|raw"):
+        with pytest.raises(ValueError, match="fixed bins"):
+            Head.load(tmp_path, "m", head).predict(task, base, edges=fine)

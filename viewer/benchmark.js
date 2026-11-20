@@ -340,9 +340,9 @@
 
   // ---------- binned forecasts (optional `bins` in a prediction file: edges, rows, probs) ----------
 
-  // Probability at which a heatmap cell is fully dark; lower probabilities fade linearly to white.
-  const HEAT_FULL = 0.5;
-  const HEAT_RGB = "43,108,163";
+  // Sequential blue ramp for the heatmap (light = unlikely, dark = the well's most likely cell); [level, r, g, b].
+  const HEAT_RAMP = [[0, 239, 245, 252], [0.3, 158, 202, 225], [0.65, 49, 130, 189], [1, 8, 48, 107]];
+  const HEAT_MIN_LEVEL = 0.02;           // cells fainter than this are left blank
 
   // [lo, hi] of each bin for drawing: the internal edges, with the two open end bins drawn one neighbouring
   // bin width wide (one unit when there is a single edge).
@@ -364,17 +364,28 @@
     const bounds = binBounds(b.edges);
     if (!bounds.length) return null;
     const byIndex = new Map();
+    let pmax = 0;
     b.rows.forEach((i, k) => {
       const p = b.probs[k];
-      if (Array.isArray(p) && p.length === bounds.length) byIndex.set(i, p);
+      if (!Array.isArray(p) || p.length !== bounds.length) return;
+      byIndex.set(i, p);
+      for (const v of p) if (num(v) != null && v > pmax) pmax = v;
     });
-    return byIndex.size ? { edges: b.edges.map(Number), bounds, byIndex } : null;
+    return byIndex.size && pmax > 0 ? { edges: b.edges.map(Number), bounds, byIndex, pmax } : null;
   }
 
-  // Cell opacity: linear in probability, full at HEAT_FULL and above.
-  function heatAlpha(p) {
+  // Heatmap colour for one cell: probability relative to the well's largest, on HEAT_RAMP; null = leave blank.
+  // Scaling to the well's own maximum keeps 40% and 70% apart (the legend states the maximum).
+  function heatColor(p, pmax) {
     const v = num(p);
-    return v == null || v <= 0 ? 0 : 0.9 * Math.min(1, v / HEAT_FULL);
+    if (v == null || !(pmax > 0)) return null;
+    const level = Math.min(1, v / pmax);
+    if (level < HEAT_MIN_LEVEL) return null;
+    let k = 1;
+    while (k < HEAT_RAMP.length - 1 && HEAT_RAMP[k][0] < level) k++;
+    const a = HEAT_RAMP[k - 1], b = HEAT_RAMP[k], t = (level - a[0]) / (b[0] - a[0]);
+    const c = [1, 2, 3].map((j) => Math.round(a[j] + (b[j] - a[j]) * t));
+    return `rgb(${c[0]},${c[1]},${c[2]})`;
   }
 
   // Depth extent [top, bottom] of sample i: half way to each neighbour (half a step at the ends).
@@ -403,10 +414,28 @@
       .sort((a, b) => b.p - a.p).slice(0, n || 3);
   }
 
-  // "2.3–2.4", "< 1.6" or "≥ 2.9" for one entry of topBins.
+  function binValue(x) { return Math.abs(x) < 10 ? x.toFixed(2) : String(Math.round(x * 10) / 10); }
+
+  // "2.30–2.40", "< 1.60" or "≥ 2.90" for one entry of topBins.
   function binLabel(b) {
-    const f = (x) => (Math.abs(x) < 10 ? x.toFixed(2) : String(Math.round(x * 10) / 10));
+    const f = binValue;
     return b.open === "below" ? `< ${f(b.hi)}` : b.open === "above" ? `≥ ${f(b.lo)}` : `${f(b.lo)}–${f(b.hi)}`;
+  }
+
+  // Value below which a share q of one row's probability lies, spreading each bin's mass evenly over its drawn
+  // [lo, hi] (open end bins drawn one bin wide). Rows are renormalised (the file rounds them to 3 decimals).
+  function binQuantile(probs, bounds, q) {
+    const p = probs.map((v) => Math.max(0, num(v) || 0));
+    const total = p.reduce((a, b) => a + b, 0);
+    if (!(total > 0)) return null;
+    let c = 0;
+    for (let k = 0; k < p.length; k++) {
+      if (p[k] > 0 && c + p[k] >= q * total) {
+        return bounds[k][0] + (bounds[k][1] - bounds[k][0]) * Math.min(1, Math.max(0, (q * total - c) / p[k]));
+      }
+      c += p[k];
+    }
+    return bounds[bounds.length - 1][1];
   }
 
   // Gap intervals [[top, bottom], ...] from the file, else rebuilt from nulls in `true` where p50 exists.
@@ -1573,13 +1602,15 @@
           const top = Math.max(Math.round(yOf(ext[0])), lastBottom);
           const bot = Math.max(y1, top + 1);
           lastBottom = bot;
+          ctx.fillStyle = "#fff";                           // forecast rows on white, as in the method's figures
+          ctx.fillRect(x, top, tw, bot - top);
           for (let k = 0; k < probs.length; k++) {
-            const a = heatAlpha(probs[k]);
-            if (a < 0.01) continue;
+            const color = heatColor(probs[k], heat.pmax);
+            if (!color) continue;
             const xa = Math.round(PU.xScale(heat.bounds[k][0], sc.xmin, sc.xmax, x, tw));
             const xb = Math.round(PU.xScale(heat.bounds[k][1], sc.xmin, sc.xmax, x, tw));
-            ctx.fillStyle = `rgba(${HEAT_RGB},${a.toFixed(3)})`;
-            ctx.fillRect(Math.min(xa, xb), top, Math.abs(xb - xa), bot - top);
+            ctx.fillStyle = color;
+            ctx.fillRect(Math.min(xa, xb), top, Math.max(1, Math.abs(xb - xa)), bot - top);
           }
         }
       }
@@ -1619,11 +1650,10 @@
       ctx.fillStyle = "#c0392b";
       ctx.fillText("p50", x + tw / 2 + 8, 16);
       if (heat) {
-        // Legend: a ramp from probability 0 to HEAT_FULL and above.
+        // Legend: the ramp from 0 to the well's largest probability.
         const rx = x + tw / 2 + 40, rw = 34;
         const grad = ctx.createLinearGradient(rx, 0, rx + rw, 0);
-        grad.addColorStop(0, `rgba(${HEAT_RGB},0)`);
-        grad.addColorStop(1, `rgba(${HEAT_RGB},0.9)`);
+        for (const [level, r, g, b] of HEAT_RAMP) grad.addColorStop(level, `rgb(${r},${g},${b})`);
         ctx.fillStyle = "#666";
         ctx.textAlign = "right";
         ctx.fillText("0", rx - 3, 16);
@@ -1633,7 +1663,7 @@
         ctx.strokeRect(rx + 0.5, 17.5, rw - 1, 7);
         ctx.fillStyle = "#666";
         ctx.textAlign = "left";
-        ctx.fillText(`≥${Math.round(HEAT_FULL * 100)}%`, rx + rw + 3, 16);
+        ctx.fillText(`${Math.round(heat.pmax * 100)}%`, rx + rw + 3, 16);
         ctx.textAlign = "center";
       } else {
         ctx.fillStyle = "rgba(43,108,163,0.85)";
@@ -1695,7 +1725,8 @@
       const tip = $("bm-heat-tip");
       if (tip) tip.hidden = true;
     }
-    // Hover readout over the prediction track when the heatmap is on: depth, measured value, p50, likeliest ranges.
+    // Hover readout over the prediction track when the heatmap is on: depth, measured value, p50, the forecast's
+    // median and 80% range, and its likeliest range.
     function showHeatTip(e) {
       const tip = $("bm-heat-tip"), g = st.geom, pg = st.predGeom, w = st.data;
       if (!tip || !g || !pg || !w || !st.bins || st.dist !== "heat") { hideHeatTip(); return; }
@@ -1707,8 +1738,11 @@
       if (!probs) { hideHeatTip(); return; }
       const unit = Q.unitOf(st.run.target);
       const v = (a) => (a && num(a[i]) != null ? `${(+a[i]).toFixed(3)} ${unit}`.trim() : "–");
+      const qv = (q) => binValue(binQuantile(probs, st.bins.bounds, q));
+      const top = topBins(probs, st.bins.bounds, 1)[0];
       tip.innerHTML = `<b>${esc(PU.formatTick(w.depth[i]))} m</b><br>measured ${esc(v(w.true))} · p50 ${esc(v(w.p50))}` +
-        topBins(probs, st.bins.bounds, 3).map((b) => `<br>${esc(binLabel(b))}: ${Math.round(b.p * 100)}%`).join("");
+        `<br>forecast median ${esc(qv(0.5))}, 80% between ${esc(qv(0.1))} and ${esc(qv(0.9))}` +
+        `<br>likeliest range ${esc(binLabel(top))}: ${Math.round(top.p * 100)}%`;
       tip.hidden = false;
       const left = px + 14 + tip.offsetWidth > rect.width ? px - 14 - tip.offsetWidth : px + 14;
       tip.style.left = `${Math.max(0, left)}px`;
@@ -1771,8 +1805,8 @@
 
   return {
     parseTabHash, tabHash, parseBenchmarkView, benchmarkHash, viewState, viewId, defaultProperty, BENCHMARK_VIEWS,
-    createTabs, METRICS, sharpnessOf, filterRows, barFraction, bandArrays, binBounds, binLookup, heatAlpha, rowExtent,
-    nearestIndex, topBins, binLabel, HEAT_FULL, gapIntervals, contextTracks, wheelWindow, uniq, mount,
+    createTabs, METRICS, sharpnessOf, filterRows, barFraction, bandArrays, binBounds, binLookup, heatColor, rowExtent,
+    nearestIndex, topBins, binLabel, binQuantile, HEAT_RAMP, gapIntervals, contextTracks, wheelWindow, uniq, mount,
     groupRuns, runTitle, datasetLabel, scenarioLabel, runHeader, formatRunTime, hardwareLabel, propertyItems, notScoredModels, modelFamily,
     summaryHtml, byPropertyHtml, scatterSvg, scatterExtent, scatterQuadrant, scatterConfig, scatterColors, SCATTER_DIMS, modelHash, parseModelHash, modelDetailHtml,
   };

@@ -192,15 +192,21 @@ test("binned forecasts: open end bins drawn one width wide, rows looked up by de
   const w = { depth: [10, 10.5, 11, 11.5], bins: { edges, rows: [1, 2], probs: [[0.1, 0.2, 0.3, 0.4], [1, 0, 0]] } };
   const lk = B.binLookup(w);
   assert.deepEqual([...lk.byIndex.keys()], [1]);                   // a row of the wrong length is ignored
+  assert.equal(lk.pmax, 0.4);                                       // the colour scale's top
   assert.equal(B.binLookup({ depth: [1] }), null);
   assert.equal(B.binLookup({ bins: { edges, rows: [], probs: [] } }), null);
 });
 
-test("binned forecasts: opacity, row extents, nearest sample and the hover ranking", () => {
-  assert.equal(B.heatAlpha(0), 0);
-  assert.equal(B.heatAlpha(null), 0);
-  assert.ok(Math.abs(B.heatAlpha(B.HEAT_FULL / 2) - 0.45) < 1e-12);
-  assert.equal(B.heatAlpha(0.9), 0.9);
+test("binned forecasts: colours scale to the well's maximum, extents, nearest sample, hover readout", () => {
+  const rgb = (r) => `rgb(${r[1]},${r[2]},${r[3]})`;
+  const ramp = B.HEAT_RAMP;
+  assert.equal(B.heatColor(0, 0.7), null);                          // blank below the faintest level
+  assert.equal(B.heatColor(null, 0.7), null);
+  assert.equal(B.heatColor(0.5, 0), null);
+  assert.equal(B.heatColor(0.7, 0.7), rgb(ramp[ramp.length - 1]));  // the well's most likely cell is darkest
+  assert.equal(B.heatColor(0.35, 0.35), B.heatColor(0.7, 0.7));
+  assert.notEqual(B.heatColor(0.4, 0.7), B.heatColor(0.7, 0.7));   // 40% and 70% no longer look the same
+  assert.equal(B.heatColor(0.7 * ramp[1][0], 0.7), rgb(ramp[1]));
   const d = [100, 100.5, 101, 103];
   assert.deepEqual(B.rowExtent(d, 0, 0.5), [99.75, 100.25]);
   assert.deepEqual(B.rowExtent(d, 2, 0.5), [100.75, 101.5]);      // a depth jump is capped at one step
@@ -213,4 +219,9 @@ test("binned forecasts: opacity, row extents, nearest sample and the hover ranki
   assert.deepEqual(top.map(B.binLabel), ["1.60–1.70", "≥ 1.80", "1.70–1.80"]);
   assert.equal(B.binLabel(B.topBins([1, 0], B.binBounds([2]), 1)[0]), "< 2.00");
   assert.equal(B.binLabel(B.topBins([0, 1, 0], B.binBounds([60, 70]), 1)[0]), "60–70");
+  const bounds = B.binBounds([2.0, 2.1, 2.2]);                      // [1.9,2.0) [2.0,2.1) [2.1,2.2) [2.2,2.3)
+  assert.ok(Math.abs(B.binQuantile([0, 0.5, 0.5, 0], bounds, 0.5) - 2.1) < 1e-12);
+  assert.ok(Math.abs(B.binQuantile([0, 0.5, 0.5, 0], bounds, 0.25) - 2.05) < 1e-12);
+  assert.ok(Math.abs(B.binQuantile([0, 0.499, 0.499, 0], bounds, 0.5) - 2.1) < 1e-12);   // rounded rows renormalised
+  assert.equal(B.binQuantile([0, 0, 0, 0], bounds, 0.5), null);
 });

@@ -1,11 +1,14 @@
 # Density-range probabilities for RHOB gaps (model card)
 
 **What these rows do, in plain words.** A gap-filling model draws one line through a hidden stretch of density log.
-These two rows keep that line and add, at every hidden depth, a probability for each of 15 density ranges: below
-1.60, 1.60–1.70, …, 2.80–2.90, and 2.90 g/cm³ and above. The viewer's Benchmark tab shows the probabilities as a
-heatmap behind the line (Well logs → Uncertainty: Bin heatmap). Darker means more likely, and hovering shows the
-likeliest ranges at that depth. The method, its scores and its caveats are in
-[../../ordinal_density/README.md](../../ordinal_density/README.md).
+These two rows keep that line and add, at every hidden depth, a probability for each density range. The method
+uses 15 ranges: below 1.60, 1.60–1.70, …, 2.80–2.90, and 2.90 g/cm³ and above. The TSPulse row reports those 15.
+The Timestral row reports the same forecast on 67 ranges 0.02 g/cm³ wide (same open ends), which add up exactly to
+its 15. A 0.10-wide range hides Timestral's shape, because its errors are about ±0.03 and 70 % of the mass lands in
+one range. The viewer's Benchmark tab shows the probabilities as a heatmap behind the line (Well logs → Uncertainty:
+Bin heatmap). Darker means more likely, the darkest colour is the well's largest probability (the legend gives
+it), and hovering shows the forecast's median, 80 % range and likeliest range at that depth. The method, its scores
+and its caveats are in [../../ordinal_density/README.md](../../ordinal_density/README.md).
 
 **Read this first.**
 
@@ -14,8 +17,14 @@ likeliest ranges at that depth. The method, its scores and its caveats are in
   targets or other base models have not been checked.
 - **The point estimate is not new.** p50 is the base model's own fill, so MAE and R² equal the base row's. What
   changes is the uncertainty: the 90 % and 50 % intervals and the new `RPS_bins` score.
-- **RPS_bins compares only rows with the same 15 bins.** It is the ranked probability score of the binned forecast:
-  0 is perfect, lower is better.
+- **The two rows' station `RPS_bins` are on different bins and must not be compared.** `RPS_bins` is the ranked
+  probability score of the binned forecast (0 is perfect, lower is better), and it depends on the bins. The table
+  gives both rows on the method's 15 bins. Timestral's 67 bins add up to its 15-bin forecast to within 1e-15, so its
+  15-bin RPS is unchanged at 0.018946. The station's own `RPS_bins` for it (0.019058) is on the 67 bins.
+- **Timestral's intervals are now read off the 0.02 bins, so they changed.** Before, they came from the 0.10 bins,
+  with the mass spread evenly across each. The 90 % interval went from 0.97 coverage and 0.245 width to 0.96 and
+  0.212, and the 50 % interval from 0.74 to 0.58 coverage. Both are still above their nominal level and were not
+  tuned to it. TSPulse's softmax head is fitted on the 15 bins, so it has no finer view without a refit.
 - **Neither row foresees a sharp streak that the flanks do not show.** For an example, see the pitch gap in the
   method README.
 
@@ -28,18 +37,21 @@ likeliest ranges at that depth. The method, its scores and its caveats are in
 
 | ID | RPS_bins | 90 % interval: coverage / width (g/cm³) | 50 % interval coverage | MAE (g/cm³) |
 | --- | --- | --- | --- | --- |
-| `black_ordinal_timestral` | 0.0189 | 0.97 / 0.245 | 0.74 | 0.0333 |
+| `black_ordinal_timestral` | 0.0189 (15 bins) | 0.96 / 0.212 | 0.58 | 0.0333 |
 | `black_ordinal_tspulse_finetune` | 0.0276 | 0.95 / 0.290 | 0.72 | 0.0460 |
 
-The station reproduces the method's own test scores for the same heads exactly: RPS 0.018946 and 0.027582. Each MAE
-equals that of the cached base fills the heads were fitted on (0.033314 and 0.045959), so the base models ran
-unchanged. Both intervals cover more than their nominal level, so they are somewhat wide on the test wells. The
-heads were chosen on D without temperature scaling ("raw"), and no interval was tuned to a target coverage.
+The station reproduces the method's own 15-bin test RPS for the same heads exactly: 0.018946 and 0.027582
+(Timestral's after adding its 67 bins back up). Each MAE equals that of the cached base fills the heads were fitted
+on (0.033314 and 0.045959), so the base models ran unchanged. Both intervals cover more than their nominal level,
+so they are somewhat wide on the test wells. The heads were chosen on D without temperature scaling ("raw"), and no
+interval was tuned to a target coverage.
 
 **Output.** `Prediction.p50` is the base fill. `p05`, `p25`, `p75` and `p95` are quantiles of the binned
 distribution. Where a quantile would fall on the wrong side of p50, it is moved onto p50, and
-`provenance["band_widened"]` counts these moves. `bin_edges` holds the 14 internal edges (1.60 to 2.90) and
-`bin_probs` is an `[n_depth, 15]` array of probabilities. Its rows are NaN outside the gap. Whole-curve
+`provenance["band_widened"]` counts these moves. For TSPulse, `bin_edges` holds the 14 internal edges (1.60 to
+2.90) and `bin_probs` is an `[n_depth, 15]` array. For Timestral, `bin_edges` holds 66 edges (1.60 to 2.90 in steps
+of 0.02) and `bin_probs` is `[n_depth, 67]`; `bins.coarsen` adds it back to the 15 bins. The rows of `bin_probs` are
+NaN outside the gap. Whole-curve
 (`missing_curve`) tasks have no gap flanks, so both rows abstain (NaN).
 
 **Frozen heads.** The heads live in `<work_root>/black_ordinal_density/frozen/<base model>.json` and are not in

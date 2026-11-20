@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import numpy as np
 
-from workstreams.black_physics.ordinal_density.bins import EDGES, N_BINS
+from workstreams.black_physics.ordinal_density.bins import EDGES, N_BINS, parent_bins
 
 SMOOTH = 1e-4
 L2 = 1e-3                      # default; the stage `fit` picks it from L2_GRID by grouped folds over C's wells
@@ -49,16 +49,28 @@ def row_weights(wells, gaps) -> np.ndarray:
     return w * len(w) / w.sum() if len(w) else w
 
 
-def smooth(p) -> np.ndarray:
-    return (np.asarray(p, float) + SMOOTH) / (1.0 + N_BINS * SMOOTH)
+def smooth(p, share=None) -> np.ndarray:
+    """Add a small floor (SMOOTH per fixed bin) and renormalise. On a nested finer grid, `share` splits each fixed
+    bin's floor evenly over its sub-bins, so the finer probabilities sum back to the 15-bin ones exactly."""
+    p = np.asarray(p, float)
+    share = np.ones(p.shape[-1]) if share is None else np.asarray(share, float)
+    return (p + SMOOTH * share) / (1.0 + SMOOTH * share.sum())
+
+
+def _floor_share(edges) -> np.ndarray | None:
+    if len(edges) == len(EDGES) and np.allclose(edges, EDGES):
+        return None
+    parent = parent_bins(edges)
+    return 1.0 / np.bincount(parent, minlength=N_BINS)[parent]
 
 
 # ------------------------------------------------------------------------------------------- empirical errors
-def _mass(resid_sorted, cum, base) -> np.ndarray:
+def _mass(resid_sorted, cum, base, edges=EDGES) -> np.ndarray:
     """Bin masses of (base + residual): P(y < edge) = weight of residuals strictly below edge - base."""
-    cdf = cum[np.searchsorted(resid_sorted, EDGES[None, :] - np.asarray(base, float)[:, None], side="left")]
+    edges = np.asarray(edges, float)
+    cdf = cum[np.searchsorted(resid_sorted, edges[None, :] - np.asarray(base, float)[:, None], side="left")]
     cdf = np.pad(cdf, ((0, 0), (1, 1)), constant_values=(0.0, 1.0))
-    return smooth(np.diff(cdf, axis=1))
+    return smooth(np.diff(cdf, axis=1), _floor_share(edges))
 
 
 class Residuals:
@@ -68,8 +80,8 @@ class Residuals:
         c = np.r_[0.0, np.cumsum(np.asarray(weights, float)[o])]
         self.cum = c / c[-1]
 
-    def mass(self, base) -> np.ndarray:
-        return _mass(self.r, self.cum, base)
+    def mass(self, base, edges=EDGES) -> np.ndarray:
+        return _mass(self.r, self.cum, base, edges)
 
     def as_dict(self) -> dict:
         return {"r": self.r.tolist(), "cum": self.cum.tolist()}
@@ -111,17 +123,18 @@ class EmpiricalHead:
                     self.groups[g] = Residuals(r[sel], w[sel])
         return self
 
-    def predict(self, base, flank_var) -> np.ndarray:
+    def predict(self, base, flank_var, edges=EDGES) -> np.ndarray:
+        """[n, len(edges) + 1] probabilities; edges: the fixed 15-bin edges or a nested finer grid (fine_edges)."""
         base, fv = np.asarray(base, float), np.asarray(flank_var, float)
-        out = np.full((len(base), N_BINS), np.nan)
+        out = np.full((len(base), len(edges) + 1), np.nan)
         ok = np.isfinite(base)
-        out[ok] = self.pooled.mass(base[ok])
+        out[ok] = self.pooled.mass(base[ok], edges)
         if self.by_flank and self.cuts is not None:
             grp = np.searchsorted(self.cuts, fv, side="right")
             for g, res in self.groups.items():
                 sel = ok & np.isfinite(fv) & (grp == g)
                 if sel.any():
-                    out[sel] = res.mass(base[sel])
+                    out[sel] = res.mass(base[sel], edges)
         return out
 
     def as_dict(self) -> dict:

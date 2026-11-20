@@ -202,7 +202,8 @@ Next to `scores.json`, each scored run writes one **prediction file** for the vi
 scoring): per test well the depth, measured target, p50, the 90% band and the hidden intervals, rounded to 4 decimals.
 A model that returns a binned forecast also gets `"bins": {"edges", "rows", "probs"}`: the internal edges, the depth
 indices that have a forecast, and one row of probabilities per such depth (3 decimals). The Benchmark tab's Well logs
-view then offers **Uncertainty: Bin heatmap**.
+view then offers **Uncertainty: Bin heatmap**. Its darkest colour is the well's largest bin probability (stated in
+the legend), and hovering shows the median, the 80 % range and the likeliest bin at that depth.
 Two formats hold the same information, and the viewer shows either one identically:
 
 | Format | File | Use |

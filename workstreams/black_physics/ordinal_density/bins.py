@@ -112,6 +112,65 @@ def quantile(p, q: float, tails: Tails) -> np.ndarray:
     return out
 
 
+# ------------------------------------------------------------------------------------- finer nested grids
+def fine_edges(step: float) -> np.ndarray:
+    """Internal edges every `step` from 1.60 to 2.90 g/cm3. `step` must divide the 0.10 bin width, so each fixed
+    bin splits into whole sub-bins and the same two open tails remain (a nested, finer view; see coarsen)."""
+    per = WIDTH / step
+    if step <= 0 or abs(per - round(per)) > 1e-9:
+        raise ValueError(f"step {step} does not divide the {WIDTH} bin width")
+    n = int(round((EDGES[-1] - EDGES[0]) / step))
+    return np.round(EDGES[0] + step * np.arange(n + 1), 6)
+
+
+def parent_bins(edges) -> np.ndarray:
+    """For each bin on a nested grid (len(edges) + 1 bins), the index of the fixed bin that contains it."""
+    e = np.asarray(edges, float)
+    if not np.isin(np.round(EDGES, 6), np.round(e, 6)).all() or not (np.isclose(e[0], EDGES[0])
+                                                                       and np.isclose(e[-1], EDGES[-1])):
+        raise ValueError("edges must contain every fixed edge and share the two open tails")
+    inside = np.r_[e[0] - 1.0, (e[:-1] + e[1:]) / 2, e[-1] + 1.0]        # one point inside each finer bin
+    return to_bin(inside)
+
+
+def coarsen(p, edges) -> np.ndarray:
+    """Probabilities on a nested grid summed into the 15 fixed bins."""
+    p = np.asarray(p, float)
+    onehot = np.zeros((p.shape[1], N_BINS))
+    onehot[np.arange(p.shape[1]), parent_bins(edges)] = 1.0
+    return p @ onehot
+
+
+def quantile_on(p, edges, q: float, tails: Tails) -> np.ndarray:
+    """quantile() for probabilities on a nested grid (e.g. fine_edges): uniform mass inside each finite bin, the
+    fixed tails' training values inside the two open bins. NaN rows stay NaN."""
+    p, e = np.asarray(p, float), np.asarray(edges, float)
+    parent_bins(e)
+    out = np.full(len(p), np.nan)
+    ok = np.isfinite(p).all(axis=1)
+    if not ok.any():
+        return out
+    pp = p[ok]
+    cum = np.cumsum(pp, axis=1)
+    cum[:, -1] = 1.0
+    ar = np.arange(len(pp))
+    k = np.argmax(cum >= q - 1e-12, axis=1)
+    below = np.where(k > 0, cum[ar, np.maximum(k - 1, 0)], 0.0)
+    mass = pp[ar, k]
+    u = np.clip(np.where(mass > 0, (q - below) / np.where(mass > 0, mass, 1.0), 0.5), 0.0, 1.0)
+    vals = np.empty(len(pp))
+    first, last = k == 0, k == len(e)
+    mid = ~first & ~last
+    lo, hi = e[np.clip(k - 1, 0, len(e) - 1)], e[np.clip(k, 0, len(e) - 1)]
+    vals[mid] = lo[mid] + (hi[mid] - lo[mid]) * u[mid]
+    if first.any():
+        vals[first] = tails.within(0, u[first])
+    if last.any():
+        vals[last] = tails.within(N_BINS - 1, u[last])
+    out[ok] = vals
+    return out
+
+
 def readouts(p, tails: Tails) -> dict:
     """Mean (the pitch's probability-weighted estimate), median and central-interval ends of each row."""
     p = np.asarray(p, float)

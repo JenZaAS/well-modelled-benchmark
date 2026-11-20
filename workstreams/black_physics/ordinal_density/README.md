@@ -182,10 +182,15 @@ forecast catches it. Both give "below 2.10" only 13–16 % there, and both 80 % 
 **In the station and the viewer.** The two selected heads are also registered as station rows,
 `black_ordinal_timestral` and `black_ordinal_tspulse_finetune` (opt-in, `WMB_BLACK_ORDINAL=1`; model card:
 [../models/ordinal_density/README.md](../models/ordinal_density/README.md)). Each row runs its base model unchanged,
-adds the 15 probabilities per hidden depth (`Prediction.bin_edges` / `bin_probs`) and is scored as `RPS_bins`.
-On `rhob_gap50` the station reproduces this README's test scores exactly: 0.018946 for Timestral and 0.027582 for
-TSPulse. The viewer's Benchmark tab draws the probabilities as a heatmap (Well logs → Uncertainty: Bin heatmap), and
-hovering over a depth shows its likeliest ranges.
+adds the probabilities per hidden depth (`Prediction.bin_edges` / `bin_probs`) and is scored as `RPS_bins`.
+TSPulse reports the 15 bins. Timestral's empirical head reports the same forecast on 0.02 g/cm³ bins
+(`bins.fine_edges(0.02)`, 67 bins; `heads.EmpiricalHead.predict(..., edges)`). They add up exactly to its 15
+(`bins.coarsen`), and its quantiles come from them (`bins.quantile_on`). A softmax head or a temperature is fitted
+on the 15 bins, so `infer.Head.predict` refuses finer bins for those. On `rhob_gap50` the station reproduces this
+README's 15-bin test scores exactly: 0.018946 for Timestral (its 67 bins added up) and 0.027582 for TSPulse. The
+viewer's Benchmark tab draws the probabilities as a heatmap (Well logs → Uncertainty: Bin heatmap), with the darkest
+colour at the well's largest probability. Hovering over a depth shows the forecast's median, 80 % range and
+likeliest range.
 
 **Not done, on purpose.** Decima on Timestral's fills: the plan's budget ran Decima on the TSPulse fills only.
 

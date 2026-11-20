@@ -104,17 +104,25 @@ class Head:
     def needs_sonic(self) -> bool:
         return self.policy is not None and self.policy.sonic
 
-    def predict(self, task, p50, lo=None, hi=None, gardner=None) -> dict:
+    def predict(self, task, p50, lo=None, hi=None, gardner=None, edges=None) -> dict:
+        """edges: None for the 15 fixed bins, or a nested finer grid (bins.fine_edges) for an uncalibrated empirical
+        head, whose finer probabilities sum back to its 15-bin ones. Readouts always use the 15 bins."""
+        fine = edges is not None and not (len(edges) == len(B.EDGES) and np.allclose(edges, B.EDGES))
+        if fine and (self.policy is not None or self.temperature != 1.0):
+            raise ValueError("only an uncalibrated empirical head has finer bins (a softmax head or a temperature "
+                             "is fitted on the 15 fixed bins)")
+        e = np.asarray(edges, float) if fine else B.EDGES
         if self.needs_sonic and gardner is None:
             from workstreams.black_physics.granite.pipeline import gardner_on
 
             gardner = gardner_on(task)
         rows = FT.gap_rows(task, _full(task, p50), _full(task, lo), _full(task, hi), _full(task, gardner))
         if self.policy is None:
-            p = self.head.predict(rows["base"], rows["flank_var"])
+            p = self.head.predict(rows["base"], rows["flank_var"], e)
         else:
             p = self.head.predict(self.policy.matrix(rows)[0])
         p = H.apply_temperature(p, self.temperature) if self.temperature != 1.0 else p
-        return {"index": rows["index"], "depth": rows["depth"], "probs": p, "edges": B.EDGES.copy(),
-                "readouts": B.readouts(p, self.tails), "p_below_2.40": B.prob_below(p),
+        coarse = B.coarsen(p, e) if fine else p
+        return {"index": rows["index"], "depth": rows["depth"], "probs": p, "edges": e.copy(),
+                "readouts": B.readouts(coarse, self.tails), "p_below_2.40": B.prob_below(coarse),
                 "head": f"{self.name}|{'cal' if self.calibrated else 'raw'}", "fitted_on_base_model": self.model}
