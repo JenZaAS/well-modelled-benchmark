@@ -1,0 +1,74 @@
+"""Reusable inference: a masked task plus any base model's fill on it -> 15 bin probabilities per hidden depth.
+
+    from workstreams.black_physics.ordinal_density.infer import Head
+    head = Head.load(run_dir, "red_timestral")           # the head chosen on D, with its temperature
+    out = head.predict(task, p50, lo, hi)                 # p50/lo/hi: full-depth arrays or hidden-depth arrays
+
+The head was fitted to one base model's errors on C; using it with another base model's fills is allowed but
+uncalibrated. Only the masked task and the fill are read: the hidden values are never needed.
+"""
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+import numpy as np
+
+from workstreams.black_physics.ordinal_density import bins as B
+from workstreams.black_physics.ordinal_density import features as FT
+from workstreams.black_physics.ordinal_density import heads as H
+
+
+def _full(task, x):
+    if x is None:
+        return None
+    x = np.asarray(x, float)
+    n, m = len(task.depth), np.asarray(task.predict_mask, bool)
+    if len(x) == n:
+        return x
+    if len(x) == int(m.sum()):
+        out = np.full(n, np.nan)
+        out[m] = x
+        return out
+    raise ValueError(f"expected {n} (all depths) or {int(m.sum())} (hidden depths) values, got {len(x)}")
+
+
+class Head:
+    def __init__(self, spec: dict, tails: B.Tails, name: str, calibrated: bool, model: str):
+        self.name, self.calibrated, self.model, self.tails = name, calibrated, model, tails
+        self.temperature = float(spec["temperature"]) if calibrated else 1.0
+        if spec["kind"] == "empirical":
+            self.head, self.policy = H.EmpiricalHead.from_dict(spec), None
+        else:
+            pol = spec["policy"]
+            self.head = H.SoftmaxHead.from_dict(spec)
+            self.policy = FT.FeaturePolicy(pol["use_width"], pol["sonic"], pol["products"])
+
+    @classmethod
+    def load(cls, run_dir, model: str, head: str | None = None) -> "Head":
+        """head: '<name>|raw' or '<name>|cal'; default the head selected on D in scores.json."""
+        run_dir = Path(run_dir)
+        bundle = json.loads((run_dir / f"heads_{model}.json").read_text(encoding="utf-8"))
+        if head is None:
+            head = json.loads((run_dir / "scores.json").read_text(encoding="utf-8"))["models"][model]["selected"]
+        name, var = head.split("|")
+        return cls(bundle["heads"][name], B.Tails.from_dict(bundle["tails"]), name, var == "cal", model)
+
+    @property
+    def needs_sonic(self) -> bool:
+        return self.policy is not None and self.policy.sonic
+
+    def predict(self, task, p50, lo=None, hi=None, gardner=None) -> dict:
+        if self.needs_sonic and gardner is None:
+            from workstreams.black_physics.granite.pipeline import gardner_on
+
+            gardner = gardner_on(task)
+        rows = FT.gap_rows(task, _full(task, p50), _full(task, lo), _full(task, hi), _full(task, gardner))
+        if self.policy is None:
+            p = self.head.predict(rows["base"], rows["flank_var"])
+        else:
+            p = self.head.predict(self.policy.matrix(rows)[0])
+        p = H.apply_temperature(p, self.temperature) if self.temperature != 1.0 else p
+        return {"index": rows["index"], "depth": rows["depth"], "probs": p, "edges": B.EDGES.copy(),
+                "readouts": B.readouts(p, self.tails), "p_below_2.40": B.prob_below(p),
+                "head": f"{self.name}|{'cal' if self.calibrated else 'raw'}", "fitted_on_base_model": self.model}

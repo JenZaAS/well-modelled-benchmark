@@ -40,6 +40,10 @@ The experiment's foundation-model rows moved to the red workstream as `red_ttm_r
 [red_foundation_models/models/granite](../red_foundation_models/models/granite/README.md)). Their old `black_*`
 ids are aliases, so earlier results still display.
 
+[ordinal_density/README.md](ordinal_density/README.md) builds on those fills. It turns each fill of the hidden 50 m
+into 15 density-bin probabilities per depth: a heatmap of where the fill is uncertain. It compares empirical-error
+heads, a learned numeric head and Decima-small, and it makes the two-frame pitch figure.
+
 - `contender.py`: explicit registration (`CONTENDERS`); `Gardner` and `MudrockDTS` stay importable from it.
 - `models/<family>/`: `equation.py` (plain NumPy), `wrapper.py` (station wrapper), `README.md` (model card),
   `LICENSE.md` and one `<id>.model.yaml` per registered ID (required inputs per target, read by the viewer and
