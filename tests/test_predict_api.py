@@ -56,6 +56,7 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setenv("WMB_PREDICT_CACHE", str(tmp_path / "predict-cache"))
     predict_api.clear_caches()
     monkeypatch.setattr(predict_api, "_registry", lambda: REG)
+    monkeypatch.setattr(predict_api, "_opt_in", lambda: [])
     yield tmp_path / "results"
     predict_api.clear_caches()
 
@@ -298,6 +299,28 @@ def test_list_models_marks_eligibility_and_failures():
     assert not predict_api.list_models("synthetic", "SYN-06", "DTS")["models"][3]["eligible"]      # rhob_only
     assert "does not support" in predict_api.list_models("synthetic", "SYN-06", "DTS")["models"][3]["reason"]
     assert not predict_api.list_models(None, None, "RHOB")["models"][0]["eligible"]
+
+
+class OptInRhob(NeedsSklearn):
+    name, targets = "optin_rhob", ["RHOB"]
+
+
+def test_list_models_shows_opt_in_models_disabled_with_their_flag(monkeypatch):
+    opt = [{"name": "optin_rhob", "workstream": "test", "enable": "WMB_TEST_MODELS=x", "factory": OptInRhob},
+           {"name": "template_linear", "workstream": "test", "enable": "WMB_TEST_MODELS=y", "factory": TemplateLinear}]
+    monkeypatch.setattr(predict_api, "_opt_in", lambda: opt)
+    models = predict_api.list_models("synthetic", "SYN-06", "RHOB")["models"]
+    by = {m["name"]: m for m in models}
+    assert [m["name"] for m in models].count("template_linear") == 1 and by["template_linear"]["eligible"]  # registered wins
+    o = by["optin_rhob"]
+    assert not o["eligible"] and not o.get("error") and o["opt_in"] == "WMB_TEST_MODELS=x"
+    assert o["reason"] == "opt-in: set WMB_TEST_MODELS=x and restart the viewer"
+    assert o["inputs"]["required"] == ["DTC"] and "inputs_used" not in o
+    assert [m["name"] for m in models][-1] == "blue_boosted_trees"        # import failures still come last
+    dts = {m["name"]: m for m in predict_api.list_models("synthetic", "SYN-06", "DTS")["models"]}
+    assert dts["optin_rhob"]["reason"] == "does not support target DTS"
+    out = predict_api.predict_well("synthetic", "SYN-06", "RHOB", ["optin_rhob"], timeout_s=20)
+    assert not out["models"][0]["ok"] and "unknown model" in out["models"][0]["error"]   # listed, never run
 
 
 # ---------- ranking ----------

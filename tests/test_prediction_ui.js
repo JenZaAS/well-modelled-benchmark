@@ -294,3 +294,76 @@ test("twin-curve track headers stack scales on separate lines in curve colour", 
   assert.ok(P.trackHeaderHeight([["GR", "CALI"]]) > P.trackHeaderHeight([["PEF"]]));
 });
 
+
+test("opt-in models get their own status, section and flag note", () => {
+  const optin = { name: "red_chronos2", eligible: false, opt_in: "WMB_RED_MODELS=chronos2",
+    reason: "opt-in: set WMB_RED_MODELS=chronos2 and restart the viewer" };
+  assert.equal(P.eligibilityState(optin).status, "optin");
+  assert.equal(P.modelNote(optin, P.eligibilityState(optin)), "WMB_RED_MODELS=chronos2");
+  const unsupported = { name: "rhob_only", eligible: false, opt_in: "WMB_X=1", reason: "does not support target DTC" };
+  assert.equal(P.eligibilityState(unsupported).status, "unsupported");
+  assert.equal(P.modelNote(unsupported, P.eligibilityState(unsupported)), "");
+  const ready = { name: "a", eligible: true, inputs_used: { required: ["DTC"], optional: [] } };
+  assert.equal(P.modelNote(ready, P.eligibilityState(ready)), "DTC (required)");
+});
+
+test("groupModels puts every model in one section, ready first, failed runs under Unavailable", () => {
+  const models = [
+    { name: "u", eligible: false, reason: "does not support target DTC" },
+    { name: "a", eligible: true },
+    { name: "o", eligible: false, reason: "opt-in: set WMB_RED_MODELS=ttm and restart the viewer" },
+    { name: "m", eligible: false, reason: "missing required curve: DTC" },
+    { name: "e", eligible: false, error: true, reason: "import failed: x" },
+    { name: "b", eligible: true },
+    { name: "q", eligible: false, reason: "something new" },
+  ];
+  const groups = P.groupModels(models, null, "DTC");
+  assert.deepEqual(groups.map((g) => [g.key, g.items.map((x) => x.m.name).join("")]),
+    [["ok", "ab"], ["missing", "m"], ["optin", "o"], ["unsupported", "u"], ["error", "eq"]]);
+  assert.equal(groups[0].label, "Ready for DTC");
+  assert.equal(groups.reduce((n, g) => n + g.items.length, 0), models.length);
+  const failed = P.groupModels(models, { models: [{ name: "b", ok: false, error: "boom" }] }, "DTC");
+  assert.deepEqual(failed.find((g) => g.key === "error").items.map((x) => x.m.name), ["e", "b", "q"]);   // server order kept
+  assert.deepEqual(P.groupModels([], null, "DTC"), []);
+});
+
+test("plotWidths fills the plot area within limits and keeps minimums when narrow", () => {
+  assert.deepEqual(P.plotWidths(500, 5), { TW: 100, PW: 260 });
+  assert.deepEqual(P.plotWidths(760, 5), { TW: 100, PW: 260 });
+  const mid = P.plotWidths(1168, 5);
+  assert.ok(mid.TW > 140 && mid.TW < 160 && mid.PW > 380);
+  assert.ok(5 * mid.TW + mid.PW <= 1168);
+  assert.deepEqual(P.plotWidths(4000, 5), { TW: 160, PW: 900 });
+  assert.equal(P.plotWidths(600, 0).PW, 600);
+  assert.deepEqual(P.plotWidths(NaN, 3), { TW: 100, PW: 260 });
+});
+
+test("the model list renders a section per state with counts and the ready total", async (t) => {
+  const elements = new Map();
+  const pane = {
+    hidden: true,
+    querySelector(id) {
+      if (!elements.has(id)) elements.set(id, { addEventListener(event, fn) { this[event] = fn; } });
+      return elements.get(id);
+    },
+    querySelectorAll: () => [],
+  };
+  const models = [
+    { name: "ready_one", eligible: true, inputs_used: { required: ["DTC"], optional: [] } },
+    { name: "red_ttm", eligible: false, opt_in: "WMB_RED_MODELS=ttm", reason: "opt-in: set WMB_RED_MODELS=ttm and restart the viewer" },
+    { name: "rhob_only", eligible: false, reason: "does not support target DTC" },
+  ];
+  t.mock.method(globalThis, "fetch", async (url) => ({ ok: true, json: async () => (url.startsWith("/api/predict/models") ? { models } : { rows: [] }) }));
+  const oldWindow = globalThis.window;
+  globalThis.window = { addEventListener() {} };
+  t.after(() => { if (oldWindow === undefined) delete globalThis.window; else globalThis.window = oldWindow; });
+  P.mount(pane, { DATA: { wells: [] } });
+  await new Promise(setImmediate);
+  const html = pane.querySelector("#pd-models").innerHTML;
+  assert.equal(pane.querySelector("#pd-models-count").textContent, "1 of 3 ready");
+  assert.match(html, /<details class="pd-group" data-group="ok" open><summary>Ready for RHOB <span class="na">1<\/span>/);
+  assert.match(html, /data-group="optin" open>.*red_ttm.*WMB_RED_MODELS=ttm/s);
+  assert.match(html, /data-model="red_ttm" disabled/);
+  assert.match(html, /data-group="unsupported" open>/);
+  assert.doesNotMatch(html, /data-model="ready_one" disabled/);
+});

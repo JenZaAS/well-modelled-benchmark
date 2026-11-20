@@ -31,6 +31,8 @@ Add `LICENSE.md` in the model folder (next to the wrapper and `model.yaml`) with
 
 In `workstreams/<team>/contender.py`, import the class and add it to the `CONTENDERS` list. That list is how the runner finds models. Do not remove a working entry until the new import runs.
 
+If a model should register only when a flag is set (a heavy backbone, a separate environment), leave it out of `CONTENDERS` unless the flag is on, and list it in `OPT_IN` with that flag: `OPT_IN = {MyModel: "WMB_MY_MODELS=mine"}`. The runner ignores `OPT_IN`. The viewer's **Prediction** tab shows those models greyed out, with the flag that registers them, so people know they exist.
+
 ## 5. Check the contract
 
 ```bash

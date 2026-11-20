@@ -60,4 +60,7 @@ def _classes(key: str) -> tuple:
 
 
 # The shared runner executes *every* registered model by default, even on core-only laptops.
-CONTENDERS = [TrainMeanFloor, *(cls for key in _enabled_keys() for cls in _classes(key))]
+_KEYS = _enabled_keys()
+CONTENDERS = [TrainMeanFloor, *(cls for key in _KEYS for cls in _classes(key))]
+# The rows left out above, with the flag that registers each; the viewer's Prediction tab lists them as opt-in.
+OPT_IN = {cls: f"WMB_RED_MODELS={key}" for key in MODELS if key not in _KEYS for cls in _classes(key)}
