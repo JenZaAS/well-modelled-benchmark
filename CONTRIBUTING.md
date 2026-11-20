@@ -14,7 +14,8 @@ We all work on `main`, with or without branches. These rules keep us out of each
 3. **`git pull --rebase` before every push.** If it conflicts and the file isn't yours, stop and ask the team that works on that folder.
 4. **Never commit data, model weights, credentials or big outputs.** Data lives where
    `data_paths.local.yaml` points (that file is gitignored; see [docs/SETUP_DATA_PATHS.md](docs/SETUP_DATA_PATHS.md)).
-   Weights in the cache, results in `results/` (gitignored). Notebooks: clear outputs before committing.
+   Weights in the cache, results in `results/`: only scores, and predictions for FORCE 2020 and synthetic runs,
+   are committed (see [results/README.md](results/README.md)). Notebooks: clear outputs before committing.
 5. **Commit small and often**, with a message that says what and why (e.g. `blue: add LightGBM contender`).
 
 ## Daily loop

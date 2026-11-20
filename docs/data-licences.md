@@ -13,3 +13,7 @@
 | Diskos | Licensed | — | Only if access is given; raw data stays local |
 
 The repo itself is MIT and holds **code only**. Data is shared for testing, not redistribution.
+One exception: the viewer prediction files for FORCE 2020 runs in `results/` contain test-well curves and are
+committed with the FORCE 2020 credit line in [results/README.md](../results/README.md). Both FORCE 2020
+licences (NLOD 2.0 and CC BY 4.0) allow redistribution with credit. No other dataset's curves are committed;
+the allowlist in `.gitignore` enforces this.

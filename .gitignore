@@ -50,6 +50,23 @@ mlruns/
 wandb/
 lightning_logs/
 # Outputs
+# results/ is shared through git on an allowlist (see results/README.md).
+# Scores and run summaries hold metrics only, so they are shared for every dataset.
+# Prediction files embed well curves (measured target, GR, CALI, RDEP) and the repo
+# is public, so they are shared only for the datasets listed here. Add a dataset
+# only after checking its licence allows redistribution (docs/data-licences.md),
+# and add its credit line to results/README.md. Never add Diskos or company data.
+results/**
+!results/**/
+!results/README.md
+!results/**/scores.json
+!results/runs/*.json
+!results/summary/*.md
+!results/summary/*.json
+!results/*/force2020/**/predictions.json
+!results/*/force2020/**/predictions.npz
+!results/*/synthetic/**/predictions.json
+!results/*/synthetic/**/predictions.npz
 **/scratch/
 # Generated offline viewer pages embed curve data — never commit those.
 # viewer/wellmap.html is the data-free page and may be committed.

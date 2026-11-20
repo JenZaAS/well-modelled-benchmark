@@ -83,7 +83,7 @@ Edit **only your own folder**. Shared folders change only after a heads-up in th
 | `experiments/` | Earlier proofs of concept, kept for reference | Blue team |
 | `docs/` | Benchmark definition, metrics, data licences, models | Benchmark; anyone may add |
 | `data/` | **Only a README.** Data lives outside git | Data preparation |
-| `results/` | Outputs (gitignored); `results/summary/` small tables may be committed | Benchmark |
+| `results/` | Benchmark outputs. Scores are shared through git; prediction files only for FORCE 2020 and synthetic ([results/README.md](results/README.md)) | Benchmark |
 | `tests/` | Smoke tests that run without data | Shared |
 
 Roles are flexible: people may take several, and teams may merge (e.g. blue and black).
@@ -105,7 +105,9 @@ The contract and metrics are in [docs/benchmark.md](docs/benchmark.md). The olde
 
 Public open data only. **Never commit data, model weights or big outputs** (the `.gitignore` blocks the usual
 file types). Data is shared through the team's shared data folder; Diskos data, if we get access, stays local and only
-scores and aggregates are published. Licences and credit lines: [docs/data-licences.md](docs/data-licences.md).
+scores and aggregates are published. The one exception is the viewer prediction files for FORCE 2020 runs in
+`results/`, which contain test-well curves and are committed with their credit line (see
+[results/README.md](results/README.md)). Licences and credit lines: [docs/data-licences.md](docs/data-licences.md).
 
 ## Model licences
 

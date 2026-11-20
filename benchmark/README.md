@@ -36,7 +36,8 @@ How it works:
 3. `run.py` calls `fit(train_wells, target)`, then `predict_task(task)` per test task, validates each
    prediction with `wmb.contract.validate_prediction`, and times load, fit and predict (per well and batched).
    A model that raises or returns an invalid prediction is recorded in `failure.json`; the run continues.
-4. Scores go to `results/<contender>/<dataset>/<target>/<scenario>/scores.json` (gitignored). For
+4. Scores go to `results/<contender>/<dataset>/<target>/<scenario>/scores.json` (shared through git; see
+   `results/README.md`). For
    `missing_curve` a copy also goes to `results/<contender>/<dataset>/<target>/scores.json`.
    Each run also writes `results/runs/<timestamp>_<dataset>.json` and `.csv`. Each file has a `test` field (see `test_def.py`).
 5. `scoreboard.py` collects them into `results/summary/scoreboard.md` (small; may be committed).

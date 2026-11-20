@@ -21,7 +21,9 @@ FORCE 2020 (the demo set) is also described in [datasets/force2020/README.md](da
 | NLOG | NLOG terms (quote NLOG.NL as the source) | `docs/data-licences.md` |
 | Kansas Geological Survey | KGS terms (use the required citation) | `docs/data-licences.md` |
 
-Do not commit raw data or well logs to this repository.
+Do not commit raw data or well logs to this repository. The one exception is the
+viewer prediction files for FORCE 2020 runs in `results/`, which contain test-well
+curves and carry the FORCE 2020 credit line in [results/README.md](results/README.md).
 
 ## Models and libraries
 

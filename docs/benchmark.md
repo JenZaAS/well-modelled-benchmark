@@ -180,7 +180,8 @@ See [`tests.md`](tests.md) for the schema and the shipped tests.
 
 ## Where results go
 
-Per-model files (gitignored):
+Per-model files (scores are shared through git, prediction files only for FORCE 2020 and synthetic; see
+[results/README.md](../results/README.md)):
 
 ```
 results/<model>/<dataset>/<target>/<scenario>/scores.json
@@ -189,8 +190,8 @@ results/<model>/<dataset>/<target>/<scenario>/scores.json
 With `--test`, these files go one level deeper, under `<scenario>/<test>/`. Each also carries a `test` field
 (the test definition name, or a generated one such as `synthetic_rhob_missing` for the old flags).
 For `gap`, scenario is `gap_10`, `gap_50` or `gap_100`. Each run also
-writes a combined `results/runs/<timestamp>_<dataset>.json` and `.csv`
-(gitignored). `python -m benchmark.scoreboard` prints one table from
+writes a combined `results/runs/<timestamp>_<dataset>.json` (shared) and `.csv`
+(local only). `python -m benchmark.scoreboard` prints one table from
 all `scores.json` files, and `--write` updates
 `results/summary/scoreboard.md` (small; may be committed).
 
