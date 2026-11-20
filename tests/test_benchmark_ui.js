@@ -179,3 +179,38 @@ test("filterRows tolerates an optional test field and ignores it when unset", ()
   assert.deepEqual(B.filterRows(rows, { test: "official" }).map((r) => r.MAE), [1]);
   assert.equal(B.filterRows(rows, { dataset: "a", test: "" }).length, 3);
 });
+
+test("binned forecasts: open end bins drawn one width wide, rows looked up by depth index", () => {
+  const edges = [1.6, 1.7, 1.8];
+  const bounds = B.binBounds(edges);
+  assert.equal(bounds.length, 4);
+  assert.ok(Math.abs(bounds[0][0] - 1.5) < 1e-12 && bounds[0][1] === 1.6);
+  assert.deepEqual(bounds[2], [1.7, 1.8]);
+  assert.ok(Math.abs(bounds[3][1] - 1.9) < 1e-12);
+  assert.deepEqual(B.binBounds([2]), [[1, 2], [2, 3]]);
+  assert.deepEqual(B.binBounds([]), []);
+  const w = { depth: [10, 10.5, 11, 11.5], bins: { edges, rows: [1, 2], probs: [[0.1, 0.2, 0.3, 0.4], [1, 0, 0]] } };
+  const lk = B.binLookup(w);
+  assert.deepEqual([...lk.byIndex.keys()], [1]);                   // a row of the wrong length is ignored
+  assert.equal(B.binLookup({ depth: [1] }), null);
+  assert.equal(B.binLookup({ bins: { edges, rows: [], probs: [] } }), null);
+});
+
+test("binned forecasts: opacity, row extents, nearest sample and the hover ranking", () => {
+  assert.equal(B.heatAlpha(0), 0);
+  assert.equal(B.heatAlpha(null), 0);
+  assert.ok(Math.abs(B.heatAlpha(B.HEAT_FULL / 2) - 0.45) < 1e-12);
+  assert.equal(B.heatAlpha(0.9), 0.9);
+  const d = [100, 100.5, 101, 103];
+  assert.deepEqual(B.rowExtent(d, 0, 0.5), [99.75, 100.25]);
+  assert.deepEqual(B.rowExtent(d, 2, 0.5), [100.75, 101.5]);      // a depth jump is capped at one step
+  assert.equal(B.nearestIndex(d, 100.2), 0);
+  assert.equal(B.nearestIndex(d, 100.3), 1);
+  assert.equal(B.nearestIndex(d, 500), 3);
+  assert.equal(B.nearestIndex([], 1), -1);
+  const top = B.topBins([0.1, 0.5, 0.15, 0.25], B.binBounds([1.6, 1.7, 1.8]), 3);
+  assert.deepEqual(top.map((b) => b.p), [0.5, 0.25, 0.15]);
+  assert.deepEqual(top.map(B.binLabel), ["1.60–1.70", "≥ 1.80", "1.70–1.80"]);
+  assert.equal(B.binLabel(B.topBins([1, 0], B.binBounds([2]), 1)[0]), "< 2.00");
+  assert.equal(B.binLabel(B.topBins([0, 1, 0], B.binBounds([60, 70]), 1)[0]), "60–70");
+});

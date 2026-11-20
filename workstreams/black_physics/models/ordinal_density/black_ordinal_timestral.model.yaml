@@ -1,0 +1,8 @@
+# red_timestral's 50 m gap fill (unchanged p50) plus a frozen 15-bin head: P(density range) at each hidden depth.
+# Same inputs as red_timestral (RHOB flanks; other logs as covariates). Abstains on whole-curve tasks.
+name: black_ordinal_timestral
+licence: MIT (head and wrapper); base model Modified MIT (weights), Apache-2.0 (inference code)
+targets:
+  RHOB:
+    required: []
+    optional: [GR, RDEP, RMED, CALI, NPHI, PEF, DTC, DTS]

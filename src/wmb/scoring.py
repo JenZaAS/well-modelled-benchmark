@@ -97,6 +97,24 @@ def regression_scores(y: np.ndarray, mean: np.ndarray, std: np.ndarray | None = 
         out["cover_50"] = float(((yy[g] >= l50[g]) & (yy[g] <= h50[g])).mean())
     return out
 
+def ranked_probability_score(y, edges, probs) -> np.ndarray:
+    """Ranked probability score per row of a binned forecast (lower is better; 0 = all mass in the right bin).
+
+    edges: K-1 increasing internal edges; bin k covers [edges[k-1], edges[k]) and the end bins are open, so a value
+    on an edge belongs to the higher bin. probs: [n, K]. The score is the mean over the K-1 edges of
+    (P(Y < edge) - 1[y < edge])^2. Rows with a non-finite y or forecast are NaN.
+    """
+    y = np.asarray(y, float)
+    e = np.asarray(edges, float)
+    p = np.asarray(probs, float)
+    cum = np.cumsum(p, axis=1)[:, :-1]
+    with np.errstate(invalid="ignore"):
+        obs = (y[:, None] < e[None, :]).astype(float)
+    out = np.mean((cum - obs) ** 2, axis=1)
+    out[~(np.isfinite(y) & np.isfinite(p).all(axis=1))] = np.nan
+    return out
+
+
 def crps_gaussian(y, mu, sigma) -> np.ndarray:
     """Closed-form CRPS for a normal predictive distribution (Gneiting & Raftery 2007)."""
     z = (np.asarray(y) - mu) / sigma

@@ -111,6 +111,7 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
 #bm-plot-wrap { position: relative; height: 520px; border: 1px solid var(--line); background: #fff; }
 #bm-plot-wrap canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
 #bm-plot-wrap canvas.dragging { cursor: grabbing; }
+#bm-plot-wrap .bm-heat-tip { position: absolute; pointer-events: none; z-index: 2; padding: 5px 8px; font: 11px/1.4 sans-serif; color: #1f1f1f; background: rgba(255,255,255,0.96); border: 1px solid #bbb; border-radius: 4px; box-shadow: 0 1px 4px rgba(0,0,0,0.12); white-space: nowrap; }
 #tab-benchmark .bm-bar button { font: inherit; padding: 1px 8px; cursor: pointer; }
 #bm-note { color: var(--muted); margin: 4px 0; }
 #tab-benchmark .bm-top { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px 16px; min-height: 84px; padding-bottom: 12px; }

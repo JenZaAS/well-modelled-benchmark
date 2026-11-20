@@ -105,8 +105,33 @@ def score_tasks(tasks: list[Task], preds: list[Prediction], truth: dict) -> dict
             cols[k].append(np.full(int(m.sum()), np.nan) if v is None else np.asarray(v, float)[m])
     cat = {k: np.concatenate(v) for k, v in cols.items()}
     opt = {k: (None if np.isnan(cat[k]).all() else cat[k]) for k in ("std", "p05", "p95", "p25", "p75")}
-    return scoring.regression_scores(cat["y"], cat["p50"], opt["std"], p05=opt["p05"], p95=opt["p95"],
-                                     p25=opt["p25"], p75=opt["p75"])
+    out = scoring.regression_scores(cat["y"], cat["p50"], opt["std"], p05=opt["p05"], p95=opt["p95"],
+                                    p25=opt["p25"], p75=opt["p75"])
+    return out | bin_scores(tasks, preds, truth, out.get("n", 0))
+
+
+def bin_scores(tasks: list[Task], preds: list[Prediction], truth: dict, n_scored: int) -> dict:
+    """RPS of the optional binned forecasts on the scored samples that have one; {} when no task has bins.
+
+    RPS_bins depends on the bin edges, so compare it only between rows with the same edges (bin_edges is recorded).
+    """
+    vals, edges = [], None
+    for t, p in zip(tasks, preds):
+        if p.bin_probs is None:
+            continue
+        edges = p.bin_edges if edges is None else edges
+        if len(p.bin_edges) != len(edges) or not np.allclose(p.bin_edges, edges):
+            return {"RPS_bins": None, "bin_note": "bin edges differ between wells"}
+        m = t.predict_mask & np.isfinite(p.p50)
+        vals.append(scoring.ranked_probability_score(np.asarray(truth[(t.well_id, t.target)], float)[m],
+                                                     p.bin_edges, p.bin_probs[m]))
+    if edges is None:
+        return {}
+    r = np.concatenate(vals) if vals else np.array([])
+    r = r[np.isfinite(r)]
+    return {"RPS_bins": float(r.mean()) if len(r) else None, "n_bins": int(len(r)),
+            "bin_cover": round(len(r) / n_scored, 4) if n_scored else None,
+            "bin_edges": [round(float(e), 6) for e in edges]}
 
 
 def _write(out, name: str, payload: dict) -> None:

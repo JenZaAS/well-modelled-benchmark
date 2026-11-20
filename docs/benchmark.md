@@ -44,13 +44,15 @@ A **Prediction** must use the same depth index (same length as `task.depth`):
 | `p05` and `p95` | Optional | 5th and 95th percentiles (a 90% interval) |
 | `std` | Optional | One-sigma uncertainty. If you do not give `p05`/`p95`, the runner treats the interval as Gaussian: 90% is `p50 ± 1.64485·std`, 50% is `p50 ± 0.67449·std`. |
 | `quantiles` | Optional | Dict such as `{0.05: ..., 0.50: ..., 0.95: ...}` |
+| `bin_edges` and `bin_probs` | Optional, together | A binned forecast: `K-1` increasing internal edges, and an `[n_depth, K]` array of probabilities. Bin `k` covers `[edges[k-1], edges[k])`, the two end bins are open, and a value on an edge belongs to the higher bin. A row is either `K` probabilities that sum to 1 or all NaN (no forecast at that depth). It is scored as `RPS_bins`, and the viewer draws it as a heatmap. |
 
 Units are the canonical ones from `wmb.datasets.canonical_curves.yaml`
 and `wmb.curves.UNITS`: **RHOB** in g/cm3 (g/cc), **DTC** and **DTS** in
 us/ft. Do not convert units yourself; the loader already has.
 
 The runner validates the prediction before scoring: same length as
-depth, `p05 ≤ p50 ≤ p95` where all are finite, `std ≥ 0` where finite.
+depth, `p05 ≤ p50 ≤ p95` where all are finite, `std ≥ 0` where finite. Bin probabilities
+must lie in [0, 1], and each finite row must sum to 1 within 0.001; the runner then renormalises it.
 NaN is allowed where you cannot predict. Clear `ValueError` messages
 explain a failed check. A broken model is skipped and recorded; it does
 not stop the other models.
@@ -128,6 +130,7 @@ All accuracy numbers are in the target's canonical unit.
 | **Uncertainty** | Coverage of the 90% interval, and of the 50% interval | close to 0.90 and 0.50 |
 | **Sharpness** | Mean width of the 90% interval (`p95 − p05`, or the Gaussian equivalent) | narrower, **only if coverage is close to 90%** |
 | **Optional** | CRPS (Gaussian when only `std` is given; otherwise from quantiles when available) and pinball at 5/50/95% | lower |
+| **Binned forecasts** | `RPS_bins`, the ranked probability score: the mean over the bin edges of (P(y < edge) − 1[y < edge])², averaged over the scored samples that have a binned forecast. `n_bins` counts those samples, `bin_cover` is their share of `n`, and `bin_edges` records the edges. Compare `RPS_bins` only between rows with the same edges. | lower |
 | **Speed** | `fit_s`, `load_s` (constructing the model), `predict_s` (all test wells), `predict_s_per_well`, `predict_s_batch` (one batch of N wells), `samples_per_s`. Hardware (`machine`, Python, CPU count) is recorded. | lower time |
 
 Point-only models (no `p05`/`p95` and no `std`) still get accuracy and
@@ -197,6 +200,9 @@ all `scores.json` files, and `--write` updates
 
 Next to `scores.json`, each scored run writes one **prediction file** for the viewer's Benchmark tab (not used for
 scoring): per test well the depth, measured target, p50, the 90% band and the hidden intervals, rounded to 4 decimals.
+A model that returns a binned forecast also gets `"bins": {"edges", "rows", "probs"}`: the internal edges, the depth
+indices that have a forecast, and one row of probabilities per such depth (3 decimals). The Benchmark tab's Well logs
+view then offers **Uncertainty: Bin heatmap**.
 Two formats hold the same information, and the viewer shows either one identically:
 
 | Format | File | Use |

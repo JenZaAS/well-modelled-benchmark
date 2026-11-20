@@ -4,7 +4,9 @@
     results/<model>/<dataset>/<target>/<scenario>/predictions.npz    format "npz"
 
 Both hold the same information: per test well the depth, the measured target, p50, the 90% band (p05/p95, or std
-when there is no band), the hidden intervals and a few context logs, all rounded to 4 decimals. "json" is one
+when there is no band), the hidden intervals and a few context logs, all rounded to 4 decimals. A model that returns a
+binned forecast (Prediction.bin_edges / bin_probs) also gets "bins": {"edges", "rows", "probs"}: the internal edges,
+the depth indices that have a forecast, and one row of bin probabilities (3 decimals) per such depth. "json" is one
 human-readable file. "npz" stores the same rounded values as compressed fixed-point integers: about 3x smaller,
 about 3x faster to write, and the viewer reads one well without parsing the whole run. The viewer serves either
 as the same JSON, so switching formats changes nothing in the browser.
@@ -28,7 +30,8 @@ ENV_VAR = "WMB_PREDICTIONS_FORMAT"
 FILE_NAMES = {"json": "predictions.json", "npz": "predictions.npz"}
 DECIMALS = 4
 CONTEXT_CURVES = ("GR", "CALI", "RDEP")
-NPZ_VERSION = 1
+NPZ_VERSION = 1                            # bins are optional extra arrays: older files (no bins) stay valid
+BIN_DECIMALS = 3
 _ARRAYS = ("depth", "true", "p50", "p05", "p95", "std")
 _EXACT_LIMIT = 2.0 ** 33                   # |x * 10**DECIMALS| below this: NumPy rounding is exact away from ties
 
@@ -96,18 +99,39 @@ def well_records(tasks, preds, truth: dict) -> list[dict]:
             "p05": np.asarray(p.p05, float) if band else None, "p95": np.asarray(p.p95, float) if band else None,
             "std": None if band or p.std is None else np.asarray(p.std, float),
             "mask": np.asarray(t.predict_mask, bool),
+            "bins": _bin_rows(p),
             "context": {c: np.asarray(v, float) for c in CONTEXT_CURVES
                         if c != t.target and (v := truth.get((t.well_id, c))) is not None and np.isfinite(v).any()},
         })
     return out
 
 
+def _bin_rows(p) -> dict | None:
+    """{edges, rows, probs} on the depths with a binned forecast, probabilities rounded to BIN_DECIMALS; else None."""
+    if getattr(p, "bin_probs", None) is None or getattr(p, "bin_edges", None) is None:
+        return None
+    probs = np.asarray(p.bin_probs, float)
+    rows = np.flatnonzero(np.isfinite(probs).all(axis=1))
+    return {"edges": np.asarray(p.bin_edges, float), "rows": rows.astype(np.int32),
+            "probs": np.round(probs[rows], BIN_DECIMALS)}
+
+
+def bins_json(b: dict | None) -> dict | None:
+    if b is None:
+        return None
+    return {"edges": json_values(b["edges"]), "rows": [int(i) for i in b["rows"]],
+            "probs": [json_values(r, BIN_DECIMALS) for r in b["probs"]]}
+
+
 def well_json(r: dict) -> dict:
     """The JSON object the viewer receives for one well (same keys and order in both formats)."""
-    return {"key": r["key"], "well_id": r["well_id"], "depth": json_values(r["depth"]), "true": json_values(r["true"]),
-            "p50": json_values(r["p50"]), "p05": json_values(r["p05"]), "p95": json_values(r["p95"]),
-            "std": json_values(r["std"]), "gaps": gap_intervals(r["depth"], r["mask"]),
-            "context": {c: json_values(v) for c, v in r["context"].items()}}
+    out = {"key": r["key"], "well_id": r["well_id"], "depth": json_values(r["depth"]), "true": json_values(r["true"]),
+           "p50": json_values(r["p50"]), "p05": json_values(r["p05"]), "p95": json_values(r["p95"]),
+           "std": json_values(r["std"]), "gaps": gap_intervals(r["depth"], r["mask"]),
+           "context": {c: json_values(v) for c, v in r["context"].items()}}
+    if r.get("bins") is not None:
+        out["bins"] = bins_json(r["bins"])
+    return out
 
 
 def header(base: dict, scenario: str) -> dict:
@@ -163,7 +187,20 @@ def write_npz(path: Path, base: dict, scenario: str, tasks, preds, truth: dict) 
         arrays[f"w{i}_mask"] = r["mask"]
         for c, v in r["context"].items():
             arrays[f"w{i}_ctx_{c}"] = _encode(v)
+        if r["bins"] is not None:
+            b = r["bins"]
+            arrays[f"w{i}_bin_edges"] = _encode(b["edges"])
+            arrays[f"w{i}_bin_rows"] = b["rows"]
+            arrays[f"w{i}_bin_probs"] = np.rint(b["probs"] * 10 ** BIN_DECIMALS).astype(np.uint16)
     _save(path, arrays)
+
+
+def _read_bins(z, i: int) -> dict | None:
+    if f"w{i}_bin_probs" not in z.files:
+        return None
+    edges = _decode(z[f"w{i}_bin_edges"])
+    probs = z[f"w{i}_bin_probs"].astype(float).reshape(-1, len(edges) + 1) / 10 ** BIN_DECIMALS
+    return {"edges": edges, "rows": z[f"w{i}_bin_rows"], "probs": probs}
 
 
 def _npz_meta(z) -> dict:
@@ -183,7 +220,7 @@ def read_npz_well(path: Path, well: str) -> dict:
             if well in (w["key"], w["well_id"]):
                 arr = {n: (_decode(z[f"w{i}_{n}"]) if f"w{i}_{n}" in z.files else None) for n in _ARRAYS}
                 rec = {"key": w["key"], "well_id": w["well_id"], **arr, "mask": z[f"w{i}_mask"],
-                       "context": {c: _decode(z[f"w{i}_ctx_{c}"]) for c in w["context"]}}
+                       "context": {c: _decode(z[f"w{i}_ctx_{c}"]) for c in w["context"]}, "bins": _read_bins(z, i)}
                 return {k: meta.get(k) for k in ("contender", "dataset", "target", "scenario")} | {"well": well_json(rec)}
     raise FileNotFoundError(f"well {well} not in predictions.npz")
 

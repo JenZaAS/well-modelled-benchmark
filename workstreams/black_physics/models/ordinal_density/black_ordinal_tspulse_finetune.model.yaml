@@ -1,0 +1,8 @@
+# red_tspulse_finetune's 50 m gap fill (RHOB only; unchanged p50) plus a frozen 15-bin softmax head that also reads
+# DTC (Gardner difference) where present. Abstains on whole-curve tasks.
+name: black_ordinal_tspulse_finetune
+licence: MIT (head and wrapper); base model Apache-2.0
+targets:
+  RHOB:
+    required: []
+    optional: [DTC]

@@ -213,16 +213,41 @@ def _list(v):
     return [None if not np.isfinite(x) else float(x) for x in a]
 
 
+def bins_record(pred: Prediction) -> dict[str, Any] | None:
+    """Sparse JSON form of an optional binned forecast: edges, and probabilities on the finite rows only."""
+    if pred.bin_probs is None or pred.bin_edges is None:
+        return None
+    p = np.asarray(pred.bin_probs, float)
+    rows = np.flatnonzero(np.isfinite(p).all(axis=1))
+    return {"edges": [float(e) for e in np.asarray(pred.bin_edges, float)], "n": int(len(p)),
+            "index": [int(i) for i in rows], "probs": [[float(x) for x in p[i]] for i in rows]}
+
+
+def bins_from_record(rec: dict[str, Any] | None) -> tuple[np.ndarray | None, np.ndarray | None]:
+    if not rec:
+        return None, None
+    edges = np.asarray(rec["edges"], float)
+    p = np.full((int(rec["n"]), len(edges) + 1), np.nan)
+    if rec["index"]:
+        p[np.asarray(rec["index"], int)] = np.asarray(rec["probs"], float)
+    return edges, p
+
+
 def record_from_prediction(key: str, pred: Prediction, **meta: Any) -> dict[str, Any]:
     """Full-resolution JSON-safe record of a validated Prediction."""
     q = {str(k): _list(v) for k, v in (pred.quantiles or {}).items()}
-    return {"key": key, "p50": _list(pred.p50), "std": _list(pred.std), "p05": _list(pred.p05),
-            "p95": _list(pred.p95), "quantiles": q or None, **meta}
+    out = {"key": key, "p50": _list(pred.p50), "std": _list(pred.std), "p05": _list(pred.p05),
+           "p95": _list(pred.p95), "quantiles": q or None}
+    bins = bins_record(pred)
+    if bins is not None:
+        out["bins"] = bins
+    return {**out, **meta}
 
 
 def prediction_from_record(record: dict[str, Any]) -> Prediction:
     def a(v):
         return None if v is None else np.array([np.nan if x is None else x for x in v], float)
     q = {float(k): a(v) for k, v in (record.get("quantiles") or {}).items()}
+    edges, probs = bins_from_record(record.get("bins"))
     return Prediction(mean=a(record.get("p50")), std=a(record.get("std")), p05=a(record.get("p05")),
-                      p95=a(record.get("p95")), quantiles=q or None)
+                      p95=a(record.get("p95")), quantiles=q or None, bin_edges=edges, bin_probs=probs)

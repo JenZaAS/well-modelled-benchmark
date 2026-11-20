@@ -10,8 +10,6 @@ weight within its gap. Hyperparameters are fixed in advance (no selection inside
 from __future__ import annotations
 
 import numpy as np
-from scipy.optimize import minimize, minimize_scalar
-from scipy.special import logsumexp, softmax
 
 from workstreams.black_physics.ordinal_density.bins import EDGES, N_BINS
 
@@ -21,6 +19,20 @@ L2_GRID = (1e-3, 1e-4, 1e-5)
 N_FOLDS = 4
 MAXITER = 3000
 T_BOUNDS = (0.2, 10.0)
+
+
+# NumPy versions of scipy.special's softmax and logsumexp: inference (predict, apply_temperature) needs no SciPy,
+# so a frozen head runs inside a model environment without it. Fitting imports scipy.optimize lazily.
+def logsumexp(a, axis=-1) -> np.ndarray:
+    a = np.asarray(a, float)
+    m = np.max(a, axis=axis, keepdims=True)
+    return np.squeeze(m, axis=axis) + np.log(np.sum(np.exp(a - m), axis=axis))
+
+
+def softmax(a, axis=-1) -> np.ndarray:
+    a = np.asarray(a, float)
+    e = np.exp(a - np.max(a, axis=axis, keepdims=True))
+    return e / np.sum(e, axis=axis, keepdims=True)
 
 
 def row_weights(wells, gaps) -> np.ndarray:
@@ -165,6 +177,8 @@ class SoftmaxHead:
     """One linear layer to 15 logits, L2-regularised weighted cross-entropy (L-BFGS). All 15 columns are kept."""
 
     def fit(self, X, names, b, w, l2: float = L2, init: np.ndarray | None = None):
+        from scipy.optimize import minimize
+
         self.scaler = Scaler().fit(X, names)
         Z = self.scaler.transform(X)
         b = np.asarray(b, int)
@@ -256,6 +270,8 @@ def apply_temperature(p, T: float) -> np.ndarray:
 
 def fit_temperature(p, b, w) -> float:
     """One positive temperature minimising the weighted log loss of softmax(log p / T)."""
+    from scipy.optimize import minimize_scalar
+
     p, b, w = np.asarray(p, float), np.asarray(b, int), np.asarray(w, float)
     ok = np.isfinite(p).all(axis=1) & (b >= 0)
     lp, b, w = np.log(np.clip(p[ok], 1e-300, 1.0)), b[ok], w[ok]

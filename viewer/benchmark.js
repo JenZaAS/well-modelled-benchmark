@@ -338,6 +338,77 @@
     return null;
   }
 
+  // ---------- binned forecasts (optional `bins` in a prediction file: edges, rows, probs) ----------
+
+  // Probability at which a heatmap cell is fully dark; lower probabilities fade linearly to white.
+  const HEAT_FULL = 0.5;
+  const HEAT_RGB = "43,108,163";
+
+  // [lo, hi] of each bin for drawing: the internal edges, with the two open end bins drawn one neighbouring
+  // bin width wide (one unit when there is a single edge).
+  function binBounds(edges) {
+    const e = (edges || []).map(Number);
+    const n = e.length;
+    if (!n || e.some((x) => !Number.isFinite(x))) return [];
+    const first = n > 1 ? e[1] - e[0] : 1, last = n > 1 ? e[n - 1] - e[n - 2] : 1;
+    const out = [[e[0] - first, e[0]]];
+    for (let k = 1; k < n; k++) out.push([e[k - 1], e[k]]);
+    out.push([e[n - 1], e[n - 1] + last]);
+    return out;
+  }
+
+  // {edges, bounds, byIndex: Map(depth index -> probabilities)} for a well, or null when it has no binned forecast.
+  function binLookup(w) {
+    const b = w && w.bins;
+    if (!b || !Array.isArray(b.edges) || !Array.isArray(b.rows) || !Array.isArray(b.probs)) return null;
+    const bounds = binBounds(b.edges);
+    if (!bounds.length) return null;
+    const byIndex = new Map();
+    b.rows.forEach((i, k) => {
+      const p = b.probs[k];
+      if (Array.isArray(p) && p.length === bounds.length) byIndex.set(i, p);
+    });
+    return byIndex.size ? { edges: b.edges.map(Number), bounds, byIndex } : null;
+  }
+
+  // Cell opacity: linear in probability, full at HEAT_FULL and above.
+  function heatAlpha(p) {
+    const v = num(p);
+    return v == null || v <= 0 ? 0 : 0.9 * Math.min(1, v / HEAT_FULL);
+  }
+
+  // Depth extent [top, bottom] of sample i: half way to each neighbour (half a step at the ends).
+  function rowExtent(depth, i, step) {
+    const d = depth[i];
+    const up = i > 0 ? (d - depth[i - 1]) / 2 : step / 2;
+    const dn = i < depth.length - 1 ? (depth[i + 1] - d) / 2 : step / 2;
+    return [d - Math.min(up, step), d + Math.min(dn, step)];
+  }
+
+  // Index of the depth sample nearest to d (depth increasing), or -1 for an empty axis.
+  function nearestIndex(depth, d) {
+    if (!depth || !depth.length) return -1;
+    let lo = 0, hi = depth.length - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      if (depth[mid] <= d) lo = mid; else hi = mid;
+    }
+    return Math.abs(depth[hi] - d) < Math.abs(depth[lo] - d) ? hi : lo;
+  }
+
+  // The n most likely bins of one row, most likely first: [{lo, hi, p, open}] (open: "below"/"above" for end bins).
+  function topBins(probs, bounds, n) {
+    return probs.map((p, k) => ({ lo: bounds[k][0], hi: bounds[k][1], p: num(p) || 0,
+      open: k === 0 ? "below" : k === bounds.length - 1 ? "above" : "" }))
+      .sort((a, b) => b.p - a.p).slice(0, n || 3);
+  }
+
+  // "2.3–2.4", "< 1.6" or "≥ 2.9" for one entry of topBins.
+  function binLabel(b) {
+    const f = (x) => (Math.abs(x) < 10 ? x.toFixed(2) : String(Math.round(x * 10) / 10));
+    return b.open === "below" ? `< ${f(b.hi)}` : b.open === "above" ? `≥ ${f(b.lo)}` : `${f(b.lo)}–${f(b.hi)}`;
+  }
+
   // Gap intervals [[top, bottom], ...] from the file, else rebuilt from nulls in `true` where p50 exists.
   function gapIntervals(w) {
     if (Array.isArray(w.gaps)) return w.gaps;
@@ -379,6 +450,7 @@
   const CONTEXT_DEFS = contextDefs();
   const CTX_TRACK_W = 110;
   const PRED_TRACK_W = 150;
+  const HEAT_TRACK_W = 240;              // wider prediction track while the bin heatmap is shown
 
   // Up to `limit` (default 3) context tracks present in the well, excluding the predicted target.
   // `curves` is a packed {name: array} map or a list of curve names.
@@ -466,6 +538,10 @@
     }
   }
   for (const alias of ["ttm", "moment"]) modelProfiles.set("white_" + alias, modelProfiles.get("red_" + alias));
+  for (const [id, name, input, method] of [
+    ["timestral", "Timestral + density bins", "RHOB gap flanks and other logs", "Forecast with Timestral, then score past errors into 15 ranges"],
+    ["tspulse_finetune", "TSPulse FT + density bins", "RHOB gap flanks (and DTC)", "Reconstruct with TSPulse, then a softmax head over 15 ranges"],
+  ]) profile("black_ordinal_" + id, name, tsFamily, input, method, "RHOB gap estimate + 15 range probabilities");
   function modelProfile(id) {
     return modelProfiles.get(id) || { name: String(id).replace(/^(?:black|blue|red|purple|white)_/, "").replace(/_/g, " "), family: "Other" };
   }
@@ -1006,7 +1082,7 @@
       return null;
     }
     const runs = groupRuns(rows);
-    const st = { sel: runs[0], family: "", mode: "summary", prop: null, model: "", target: "", well: "", scale: "auto", fillSource: "formation", scatter: Object.assign({}, SCATTER_DEFAULTS), data: null, token: 0 };
+    const st = { sel: runs[0], family: "", mode: "summary", prop: null, model: "", target: "", well: "", scale: "auto", dist: "heat", bins: null, fillSource: "formation", scatter: Object.assign({}, SCATTER_DEFAULTS), data: null, token: 0 };
     pane.innerHTML = `<section class="bm bm-detail" id="bm-detail" hidden></section><div class="bm" id="bm-overview">
       <div class="bm-top">
         <div>
@@ -1027,13 +1103,14 @@
       <div class="bm-tipbox" id="bm-tipbox" hidden></div>
       <div id="bm-view"></div>
       <div id="bm-logs-view" hidden>
-        <h2 class="bm-sec">Well logs <span class="na">\u2014 true curve, prediction and 90% band for one well of the selected run</span></h2>
+        <h2 class="bm-sec">Well logs <span class="na">\u2014 true curve, prediction and its uncertainty (90% band, or range probabilities) for one well of the selected run</span></h2>
         <div class="bm-bar">
           <label>Model <select id="bm-model"></select></label>
           <span id="bm-model-info"></span>
           <label>Property <select id="bm-target"></select></label>
           <label>Well <select id="bm-well"></select></label>
           <label>X scale <select id="bm-scale"><option value="auto">Auto</option><option value="std">Standard</option></select></label>
+          <label id="bm-dist-wrap" hidden title="This model gives a probability for each value range at every hidden depth. Bin heatmap shades each range by its probability; 90% band shows only the interval.">Uncertainty <select id="bm-dist"><option value="heat">Bin heatmap</option><option value="band">90% band</option></select></label>
           <label title="Shade zone bands behind all tracks. The TOPS strip and top lines always show.">Formation fill <select id="bm-fill"><option value="formation">Formation</option><option value="group">Group</option><option value="off">Off</option></select></label>
           <button type="button" id="bm-in">Zoom in</button>
           <button type="button" id="bm-out">Zoom out</button>
@@ -1042,7 +1119,7 @@
         <small>Scroll or drag to pan; pinch on a trackpad or Ctrl/⌘ + scroll to zoom at the pointer.</small>
         <div id="bm-note"></div>
         <div id="bm-example" class="bm-example" role="status">EXAMPLE DATA — lagged synthetic prediction, not a real template run</div>
-        <div id="bm-plot-wrap"><canvas id="bm-canvas"></canvas></div>
+        <div id="bm-plot-wrap"><canvas id="bm-canvas"></canvas><div class="bm-heat-tip" id="bm-heat-tip" role="status" hidden></div></div>
       </div>
     </div>`;
     const $ = (id) => pane.querySelector("#" + id);
@@ -1210,7 +1287,9 @@
       const select = $("bm-well"), note = $("bm-note");
       select.disabled = true;
       select.innerHTML = "";
-      st.data = null;
+      st.data = null; st.bins = null;
+      $("bm-dist-wrap").hidden = true;
+      hideHeatTip();
       draw();
       if (!st.run) {
         const example = $("bm-example");
@@ -1237,7 +1316,9 @@
 
     async function loadWell() {
       const token = ++st.token;
-      st.data = null; st.context = null;
+      st.data = null; st.context = null; st.bins = null;
+      $("bm-dist-wrap").hidden = true;
+      hideHeatTip();
       const ex0 = $("bm-example"); if (ex0 && ex0.dataset) ex0.dataset.show = "";
       $("bm-note").textContent = "Loading well…";
       draw();
@@ -1245,6 +1326,8 @@
         const j = await getJson(`/api/benchmark/prediction?${query(st.well)}`);
         if (token !== st.token) return;
         st.data = j.well;
+        st.bins = binLookup(j.well);
+        $("bm-dist-wrap").hidden = !st.bins;
         st.win = null;
         st.context = null;
         st.zones = null;
@@ -1297,6 +1380,7 @@
     $("bm-target").addEventListener("change", (e) => { st.target = e.target.value; renderSelectors(); });
     $("bm-well").addEventListener("change", (e) => { st.well = e.target.value; loadWell(); });
     $("bm-scale").addEventListener("change", (e) => { st.scale = e.target.value; draw(); });
+    $("bm-dist").addEventListener("change", (e) => { st.dist = e.target.value; hideHeatTip(); draw(); });
     $("bm-fill").addEventListener("change", (e) => { st.fillSource = e.target.value; draw(); });
 
     function draw() {
@@ -1422,9 +1506,11 @@
         x += STRIP + gap;
       }
       const tracksLeft = x;
+      const heat = st.bins && st.dist === "heat" ? st.bins : null;
+      const predW = heat ? HEAT_TRACK_W : PRED_TRACK_W;
       const fills = intervals(st.fillSource);
       if (fills.length) {
-        PS.fillFormationBands(ctx, fills, tracksLeft, ctxTracks.length * (CTX_TRACK_W + gap) + PRED_TRACK_W,
+        PS.fillFormationBands(ctx, fills, tracksLeft, ctxTracks.length * (CTX_TRACK_W + gap) + predW,
           yOf, plotTop, plotH, PS.FORMATION_FILL_ALPHA);
       }
       const autoScale = (series, std, log, name) => {
@@ -1463,17 +1549,40 @@
         x += tw + gap;
       });
 
-      const tw = PRED_TRACK_W;
+      const tw = predW;
       const std = STD_SCALE[st.run.target] || [0, 1];
       // Range from true + p50 only so a wide 90% band cannot smear the track.
       const sc = st.scale === "std" && STD_SCALE[st.run.target]
         ? { xmin: std[0], xmax: std[1] }
         : autoScale([w.true, w.p50], std, false, st.run.target);
-      const band = bandArrays(w);
+      const band = heat ? null : bandArrays(w);
+      st.predGeom = { x, tw, sc };
       const clip = PU.clipRect(x, plotTop, tw, plotH);
       ctx.save();
       ctx.beginPath(); ctx.rect(clip.x, clip.y, clip.w, clip.h); ctx.clip();
       shadeGaps(x, tw, 0.16);
+      if (heat) {
+        // One row of cells per depth sample; when samples are denser than pixels, the first sample in each pixel row.
+        let lastBottom = -Infinity;
+        for (let i = i0; i < i1; i++) {
+          const probs = heat.byIndex.get(i);
+          if (!probs) continue;
+          const ext = rowExtent(w.depth, i, st.step);
+          const y1 = Math.round(yOf(ext[1]));                // whole pixels: no seams between rows or bins
+          if (y1 <= lastBottom) continue;
+          const top = Math.max(Math.round(yOf(ext[0])), lastBottom);
+          const bot = Math.max(y1, top + 1);
+          lastBottom = bot;
+          for (let k = 0; k < probs.length; k++) {
+            const a = heatAlpha(probs[k]);
+            if (a < 0.01) continue;
+            const xa = Math.round(PU.xScale(heat.bounds[k][0], sc.xmin, sc.xmax, x, tw));
+            const xb = Math.round(PU.xScale(heat.bounds[k][1], sc.xmin, sc.xmax, x, tw));
+            ctx.fillStyle = `rgba(${HEAT_RGB},${a.toFixed(3)})`;
+            ctx.fillRect(Math.min(xa, xb), top, Math.abs(xb - xa), bot - top);
+          }
+        }
+      }
       if (band) {
         ctx.fillStyle = "rgba(43,108,163,0.22)";
         const segs = PU.buildSegments(w.depth, band.lo, { maxGap: maxGap, i0: i0, i1: i1 });
@@ -1504,13 +1613,32 @@
       ctx.font = "10px sans-serif";
       ctx.textAlign = "center";
       ctx.fillStyle = "#333";
-      ctx.fillText(st.run.target + "  true / p50", x + tw / 2, 4);
+      ctx.fillText(st.run.target + (heat ? "  true / p50 / probability of each range" : "  true / p50"), x + tw / 2, 4);
       ctx.fillStyle = "#1f1f1f";
       ctx.fillText("true", x + tw / 2 - 28, 16);
       ctx.fillStyle = "#c0392b";
       ctx.fillText("p50", x + tw / 2 + 8, 16);
-      ctx.fillStyle = "rgba(43,108,163,0.85)";
-      ctx.fillText("90%", x + tw / 2 + 34, 16);
+      if (heat) {
+        // Legend: a ramp from probability 0 to HEAT_FULL and above.
+        const rx = x + tw / 2 + 40, rw = 34;
+        const grad = ctx.createLinearGradient(rx, 0, rx + rw, 0);
+        grad.addColorStop(0, `rgba(${HEAT_RGB},0)`);
+        grad.addColorStop(1, `rgba(${HEAT_RGB},0.9)`);
+        ctx.fillStyle = "#666";
+        ctx.textAlign = "right";
+        ctx.fillText("0", rx - 3, 16);
+        ctx.fillStyle = grad;
+        ctx.fillRect(rx, 17, rw, 8);
+        ctx.strokeStyle = "#bbb";
+        ctx.strokeRect(rx + 0.5, 17.5, rw - 1, 7);
+        ctx.fillStyle = "#666";
+        ctx.textAlign = "left";
+        ctx.fillText(`≥${Math.round(HEAT_FULL * 100)}%`, rx + rw + 3, 16);
+        ctx.textAlign = "center";
+      } else {
+        ctx.fillStyle = "rgba(43,108,163,0.85)";
+        ctx.fillText("90%", x + tw / 2 + 34, 16);
+      }
       ctx.fillStyle = "#666";
       ctx.textAlign = "left";
       ctx.fillText(PU.formatTick(sc.xmin), x + 2, 28);
@@ -1551,6 +1679,7 @@
     cvEl.addEventListener("wheel", (e) => {
       if (!st.data || !st.win || !st.geom) return;
       e.preventDefault();
+      hideHeatTip();
       const pixels = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? st.geom.plotH : 1);
       st.win = wheelWindow(PU, st.win, st.ext, pixels, st.geom.plotH,
         Math.max(st.win.min, Math.min(st.win.max, depthAtEvent(e))), e.ctrlKey || e.metaKey, st.step);
@@ -1562,8 +1691,34 @@
       cvEl.setPointerCapture(e.pointerId);
       cvEl.classList.add("dragging");
     });
+    function hideHeatTip() {
+      const tip = $("bm-heat-tip");
+      if (tip) tip.hidden = true;
+    }
+    // Hover readout over the prediction track when the heatmap is on: depth, measured value, p50, likeliest ranges.
+    function showHeatTip(e) {
+      const tip = $("bm-heat-tip"), g = st.geom, pg = st.predGeom, w = st.data;
+      if (!tip || !g || !pg || !w || !st.bins || st.dist !== "heat") { hideHeatTip(); return; }
+      const rect = cvEl.getBoundingClientRect();
+      const px = e.clientX - rect.left, py = e.clientY - rect.top;
+      if (px < pg.x || px > pg.x + pg.tw || py < g.plotTop || py > g.plotTop + g.plotH) { hideHeatTip(); return; }
+      const i = nearestIndex(w.depth, depthAtEvent(e));
+      const probs = st.bins.byIndex.get(i);
+      if (!probs) { hideHeatTip(); return; }
+      const unit = Q.unitOf(st.run.target);
+      const v = (a) => (a && num(a[i]) != null ? `${(+a[i]).toFixed(3)} ${unit}`.trim() : "–");
+      tip.innerHTML = `<b>${esc(PU.formatTick(w.depth[i]))} m</b><br>measured ${esc(v(w.true))} · p50 ${esc(v(w.p50))}` +
+        topBins(probs, st.bins.bounds, 3).map((b) => `<br>${esc(binLabel(b))}: ${Math.round(b.p * 100)}%`).join("");
+      tip.hidden = false;
+      const left = px + 14 + tip.offsetWidth > rect.width ? px - 14 - tip.offsetWidth : px + 14;
+      tip.style.left = `${Math.max(0, left)}px`;
+      tip.style.top = `${Math.max(0, Math.min(py + 12, rect.height - tip.offsetHeight))}px`;
+    }
+    cvEl.addEventListener("pointerleave", hideHeatTip);
     cvEl.addEventListener("pointermove", (e) => {
-      if (!st.drag || st.drag.id !== e.pointerId || !st.geom || !st.data) return;
+      if (!st.drag) { showHeatTip(e); return; }
+      hideHeatTip();
+      if (st.drag.id !== e.pointerId || !st.geom || !st.data) return;
       const dd = -(e.clientY - st.drag.y) / st.geom.plotH * (st.drag.win.max - st.drag.win.min);
       st.win = PU.panBy(st.drag.win, st.ext, dd, st.step);
       draw();
@@ -1616,7 +1771,8 @@
 
   return {
     parseTabHash, tabHash, parseBenchmarkView, benchmarkHash, viewState, viewId, defaultProperty, BENCHMARK_VIEWS,
-    createTabs, METRICS, sharpnessOf, filterRows, barFraction, bandArrays, gapIntervals, contextTracks, wheelWindow, uniq, mount,
+    createTabs, METRICS, sharpnessOf, filterRows, barFraction, bandArrays, binBounds, binLookup, heatAlpha, rowExtent,
+    nearestIndex, topBins, binLabel, HEAT_FULL, gapIntervals, contextTracks, wheelWindow, uniq, mount,
     groupRuns, runTitle, datasetLabel, scenarioLabel, runHeader, formatRunTime, hardwareLabel, propertyItems, notScoredModels, modelFamily,
     summaryHtml, byPropertyHtml, scatterSvg, scatterExtent, scatterQuadrant, scatterConfig, scatterColors, SCATTER_DIMS, modelHash, parseModelHash, modelDetailHtml,
   };

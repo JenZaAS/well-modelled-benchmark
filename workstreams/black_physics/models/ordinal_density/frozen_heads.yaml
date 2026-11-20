@@ -1,0 +1,18 @@
+# Frozen 15-bin heads of the black_ordinal_* rows: written by
+#   python -m workstreams.black_physics.ordinal_density freeze
+# The heads themselves stay in work_root()/black_ordinal_density/frozen/ (not in git); a row refuses a
+# head whose sha256 or inference code differs from this file. Keyed by the base model the head was fit on.
+red_timestral:
+  base_checkpoint_sha256: null
+  code_sha256: 3b3b07ab4905e6bb1474a228c2dbc6071517125ee46558c3e961eaab4e8a7832
+  head: empirical_flank|raw
+  run_id: rhob_gap50-5a53a2cd66
+  sha256: 6e82dd410c5c4855902e80e746ace1b6ded0b75ea91e4ad7df5b5408079fa858
+  test_rps: 0.018946
+red_tspulse_finetune:
+  base_checkpoint_sha256: 097b4dabaa08e67f190dbaaec64b0dec2f23fb48ed487bf5733b0f0d5a2af366
+  code_sha256: 3b3b07ab4905e6bb1474a228c2dbc6071517125ee46558c3e961eaab4e8a7832
+  head: numeric_sonic|raw
+  run_id: rhob_gap50-5a53a2cd66
+  sha256: bf6770f35c862ab620dd0c2321477606ae44698819324cf08655460cccd96fb7
+  test_rps: 0.027582

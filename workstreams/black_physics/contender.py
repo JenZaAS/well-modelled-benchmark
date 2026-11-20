@@ -19,6 +19,10 @@ Opt-in rows of the Granite density-gap experiment (WMB_BLACK_GRANITE=1, NumPy on
 (interpolation reference) and black_gardner_flank_resid (Gardner + flank residual). The experiment's
 foundation-model rows (red_ttm_r3_*, red_tspulse_*, red_timestral_target_only) are registered by the red
 workstream (WMB_RED_MODELS=granite,timestral_target_only); the experiment itself stays in granite/.
+
+Opt-in binned-forecast rows (WMB_BLACK_ORDINAL=1; each needs its base model's environment): black_ordinal_timestral
+and black_ordinal_tspulse_finetune add 15 density-range probabilities per hidden depth (shown as a heatmap in the
+viewer) to red_timestral's and red_tspulse_finetune's gap fills. See ordinal_density/README.md.
 """
 from __future__ import annotations
 
@@ -27,6 +31,7 @@ import os
 from workstreams.black_physics.models.castagna_mudrock.wrapper import MudrockDTS
 from workstreams.black_physics.models.gardner.wrapper import Gardner, GardnerFixed
 from workstreams.black_physics.models.granite.wrapper import EXTRA as GRANITE_EXTRA
+from workstreams.black_physics.models.ordinal_density.wrapper import ORDINAL
 from workstreams.black_physics.models.greenberg_castagna.wrapper import GreenbergCastagnaBrineGR
 from workstreams.black_physics.models.volumetric_density.wrapper import DensityNPHI
 from workstreams.black_physics.models.vpvs_ratio.wrapper import VpVsRatio
@@ -35,10 +40,14 @@ from workstreams.black_physics.models.wyllie.wrapper import WyllieNPHI
 CONTENDERS = [Gardner, MudrockDTS, GardnerFixed, GreenbergCastagnaBrineGR, WyllieNPHI, DensityNPHI, VpVsRatio]
 
 GRANITE_ON = os.getenv("WMB_BLACK_GRANITE", "").strip() not in ("", "0")
+ORDINAL_ON = os.getenv("WMB_BLACK_ORDINAL", "").strip() not in ("", "0")
 if GRANITE_ON:
     CONTENDERS += [*GRANITE_EXTRA]
+if ORDINAL_ON:
+    CONTENDERS += [*ORDINAL]
 # The rows left out above, with the flag that registers them; the viewer's Prediction tab lists them as opt-in.
-OPT_IN = {} if GRANITE_ON else {cls: "WMB_BLACK_GRANITE=1" for cls in GRANITE_EXTRA}
+OPT_IN = ({} if GRANITE_ON else {cls: "WMB_BLACK_GRANITE=1" for cls in GRANITE_EXTRA}) | (
+    {} if ORDINAL_ON else {cls: "WMB_BLACK_ORDINAL=1" for cls in ORDINAL})
 
 __all__ = ["CONTENDERS", "OPT_IN", "DensityNPHI", "Gardner", "GardnerFixed", "GreenbergCastagnaBrineGR", "MudrockDTS",
            "VpVsRatio", "WyllieNPHI"]

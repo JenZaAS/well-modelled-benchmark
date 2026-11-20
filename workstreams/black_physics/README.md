@@ -42,7 +42,10 @@ ids are aliases, so earlier results still display.
 
 [ordinal_density/README.md](ordinal_density/README.md) builds on those fills. It turns each fill of the hidden 50 m
 into 15 density-bin probabilities per depth: a heatmap of where the fill is uncertain. It compares empirical-error
-heads, a learned numeric head and Decima-small, and it makes the two-frame pitch figure.
+heads, a learned numeric head and Decima-small, and it makes the two-frame pitch figure. The two selected heads are
+also station rows (`black_ordinal_timestral`, `black_ordinal_tspulse_finetune`; opt-in `WMB_BLACK_ORDINAL=1`, model
+card [models/ordinal_density/README.md](models/ordinal_density/README.md)). The viewer draws their probabilities as a
+heatmap in the Benchmark tab's Well logs view.
 
 - `contender.py`: explicit registration (`CONTENDERS`); `Gardner` and `MudrockDTS` stay importable from it.
 - `models/<family>/`: `equation.py` (plain NumPy), `wrapper.py` (station wrapper), `README.md` (model card),

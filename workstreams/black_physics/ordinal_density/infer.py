@@ -2,13 +2,16 @@
 
     from workstreams.black_physics.ordinal_density.infer import Head
     head = Head.load(run_dir, "red_timestral")           # the head chosen on D, with its temperature
+    head = Head.load_frozen("red_timestral", sha256)      # or: the frozen copy (cli `freeze`), checked by hash
     out = head.predict(task, p50, lo, hi)                 # p50/lo/hi: full-depth arrays or hidden-depth arrays
 
 The head was fitted to one base model's errors on C; using it with another base model's fills is allowed but
-uncalibrated. Only the masked task and the fill are read: the hidden values are never needed.
+uncalibrated. Only the masked task and the fill are read: the hidden values are never needed. NumPy only (no SciPy),
+so a frozen head runs inside a model's own environment.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -17,6 +20,33 @@ import numpy as np
 from workstreams.black_physics.ordinal_density import bins as B
 from workstreams.black_physics.ordinal_density import features as FT
 from workstreams.black_physics.ordinal_density import heads as H
+
+
+CODE = ("bins.py", "features.py", "heads.py", "infer.py")     # the inference code a frozen head depends on
+
+
+class StaleHead(RuntimeError):
+    """The frozen head is missing, was changed, or was made with different inference code."""
+
+
+def frozen_dir() -> Path:
+    from wmb.paths import work_root
+
+    return work_root() / "black_ordinal_density" / "frozen"
+
+
+def code_sha256() -> str:
+    """Hash of the inference code (file names and bytes, line endings normalised)."""
+    h = hashlib.sha256()
+    here = Path(__file__).resolve().parent
+    for name in CODE:
+        h.update(name.encode())
+        h.update(hashlib.sha256((here / name).read_bytes().replace(b"\r\n", b"\n")).digest())
+    return h.hexdigest()
+
+
+def file_sha256(path: Path) -> str:
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
 
 def _full(task, x):
@@ -53,6 +83,22 @@ class Head:
             head = json.loads((run_dir / "scores.json").read_text(encoding="utf-8"))["models"][model]["selected"]
         name, var = head.split("|")
         return cls(bundle["heads"][name], B.Tails.from_dict(bundle["tails"]), name, var == "cal", model)
+
+    @classmethod
+    def load_frozen(cls, model: str, sha256: str, folder: Path | None = None) -> tuple["Head", dict]:
+        """The frozen head for `model` (cli `freeze`), refused unless its hash and the inference code still match."""
+        path = (Path(folder) if folder is not None else frozen_dir()) / f"{model}.json"
+        how = ("run `python -m workstreams.black_physics.ordinal_density all` then "
+               "`python -m workstreams.black_physics.ordinal_density freeze` (granite env)")
+        if not path.is_file():
+            raise StaleHead(f"no frozen head for {model} at {path}; {how}")
+        if file_sha256(path) != sha256:
+            raise StaleHead(f"{path} is not the frozen head this row was registered with (sha256 differs); {how}")
+        rec = json.loads(path.read_text(encoding="utf-8"))
+        if rec.get("code_sha256") != code_sha256():
+            raise StaleHead(f"the ordinal_density inference code changed after {model}'s head was frozen; {how}")
+        name, var = rec["head"].split("|")
+        return cls(rec["spec"], B.Tails.from_dict(rec["tails"]), name, var == "cal", model), rec
 
     @property
     def needs_sonic(self) -> bool:

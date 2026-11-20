@@ -179,13 +179,15 @@ gaps measured on both sides: well 25/5-3, 1933–1983 m. On that gap:
 The measured curve has a low-density streak at 1960–1972 m: 56 % of its depths are below 2.10 g/cm³. Neither
 forecast catches it. Both give "below 2.10" only 13–16 % there, and both 80 % ranges miss about half of the streak.
 
-**Not done, on purpose.**
+**In the station and the viewer.** The two selected heads are also registered as station rows,
+`black_ordinal_timestral` and `black_ordinal_tspulse_finetune` (opt-in, `WMB_BLACK_ORDINAL=1`; model card:
+[../models/ordinal_density/README.md](../models/ordinal_density/README.md)). Each row runs its base model unchanged,
+adds the 15 probabilities per hidden depth (`Prediction.bin_edges` / `bin_probs`) and is scored as `RPS_bins`.
+On `rhob_gap50` the station reproduces this README's test scores exactly: 0.018946 for Timestral and 0.027582 for
+TSPulse. The viewer's Benchmark tab draws the probabilities as a heatmap (Well logs → Uncertainty: Bin heatmap), and
+hovering over a depth shows its likeliest ranges.
 
-- **No new station row.** The heads work on saved fills and write a sidecar of probabilities. They do not add a
-  point prediction to the station scoreboard. A registered contender would have to run the base model inside the
-  station (TSPulse in its own torch environment) and pass the mixture's quantiles through `Prediction.quantiles`.
-  That is the next step if the scoreboard should carry these intervals.
-- **Decima on Timestral's fills.** The plan's budget ran Decima on the TSPulse fills only.
+**Not done, on purpose.** Decima on Timestral's fills: the plan's budget ran Decima on the TSPulse fills only.
 
 ## The thirty-second pitch
 
@@ -213,7 +215,13 @@ python -m workstreams.black_physics.ordinal_density fit --test rhob_gap50       
 python -m workstreams.black_physics.ordinal_density score --test rhob_gap50 --include-decima
 python -m workstreams.black_physics.ordinal_density plot --test rhob_gap50
 python -m workstreams.black_physics.ordinal_density scales --test rhob_gap50    # stretch: two-scale hybrid
+python -m workstreams.black_physics.ordinal_density freeze --test rhob_gap50    # selected heads -> station rows
 ```
+
+`freeze` copies each model's selected head to `<work_root>/black_ordinal_density/frozen/<model>.json`. It also
+writes the heads' and the inference code's sha256 to
+[../models/ordinal_density/frozen_heads.yaml](../models/ordinal_density/frozen_heads.yaml), which is committed.
+The station rows refuse a head that does not match, so after re-fitting, re-run `freeze` and then the benchmark.
 
 - **Models.** `--models` defaults to `red_tspulse_finetune,red_timestral`. Older ids such as `black_tspulse_ft`
   resolve through `wmb.aliases`.
@@ -226,18 +234,20 @@ python -m workstreams.black_physics.ordinal_density scales --test rhob_gap50    
   `<work_root>/black_ordinal_density/decima_cache.jsonl`.
 - **Run time.** `prepare` takes about 15 s, `fit` about 10 min (mostly the grouped cross-validation of the numeric
   heads), `score` about 15 s plus about 3 min for Decima the first time, and `plot` about 15 s.
-- **Tests.** `python -m pytest workstreams/black_physics/tests/test_ordinal_density.py` (synthetic, NumPy and SciPy
-  only).
+- **Tests.** `python -m pytest workstreams/black_physics/tests/test_ordinal_density.py
+  workstreams/black_physics/tests/test_ordinal_rows.py` (synthetic, NumPy and SciPy only).
 
 **Using a head on new fills.** [infer.py](infer.py) is the reusable entry point:
 
 ```python
 from workstreams.black_physics.ordinal_density.infer import Head
 head = Head.load(run_dir, "red_timestral")      # the head chosen on D, with its temperature
+head, rec = Head.load_frozen("red_timestral", sha256)   # or the frozen copy, checked against its hash
 out = head.predict(task, p50, lo, hi)            # masked Task + the base fill; returns probs [n_hidden, 15]
 ```
 
-It reads only the masked task and the fill. A head fitted on one model's errors can be applied to another
+It reads only the masked task and the fill, and needs NumPy only (no SciPy), so it runs inside a model's own
+environment. A head fitted on one model's errors can be applied to another
 model's fills, but it is then uncalibrated.
 
 ## Files
@@ -252,7 +262,7 @@ model's fills, but it is then uncalibrated.
 | [cli.py](cli.py) | The stages, the keyed join to the tasks, validation, the scoreboard and the sidecar. |
 | [plots.py](plots.py) | Scoreboard, reliability plot and the two pitch frames. |
 | [scales.py](scales.py) | Stretch: the two-scale hybrid. |
-| [infer.py](infer.py) | Reusable inference on any masked task and fill. |
+| [infer.py](infer.py) | Reusable inference on any masked task and fill; frozen heads and their hash checks. |
 
 **Outputs in the run folder.** None of these are committed:
 

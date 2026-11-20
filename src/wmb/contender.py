@@ -31,6 +31,8 @@ class Prediction:
     p50: np.ndarray | None = None            # alias of mean
     p05: np.ndarray | None = None            # lower end of the 90% interval
     p95: np.ndarray | None = None            # upper end of the 90% interval
+    bin_edges: np.ndarray | None = None      # optional: K-1 increasing internal edges of K ordered value bins
+    bin_probs: np.ndarray | None = None      # optional: [len(depth), K] bin probabilities; NaN rows = no forecast
 
     def __post_init__(self):
         if self.mean is None:

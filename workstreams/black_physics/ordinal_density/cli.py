@@ -509,10 +509,59 @@ def write_scoreboard(d: Path, res: dict) -> None:
 
 
 # --------------------------------------------------------------------------------------------- main
+# --------------------------------------------------------------------------------------------- freeze
+LOCK = Path(__file__).resolve().parents[1] / "models" / "ordinal_density" / "frozen_heads.yaml"
+
+
+def freeze(test: str, models: list[str], run_id: str | None) -> Path:
+    """Copy each model's D-selected head (with its tails) to work_root/black_ordinal_density/frozen/<model>.json and
+    write their hashes to the registered rows' lock file (models/ordinal_density/frozen_heads.yaml, in git).
+
+    The station rows black_ordinal_* load only a frozen head whose hash matches the lock and whose inference code is
+    unchanged, so re-fitting never silently changes a registered row: re-freeze, then re-run the benchmark.
+    """
+    from workstreams.black_physics.ordinal_density import infer as INF
+
+    d, _ = run_dir(test, models, run_id)
+    scores = json.loads((d / "scores.json").read_text(encoding="utf-8"))
+    cfg = json.loads((d / "config.json").read_text(encoding="utf-8"))
+    out = INF.frozen_dir()
+    out.mkdir(parents=True, exist_ok=True)
+    lock = {}
+    for model in models:
+        bundle = json.loads((d / f"heads_{model}.json").read_text(encoding="utf-8"))
+        selected = scores["models"][model]["selected"]
+        prep = cfg["stages"]["prepare"]["models"][model]
+        rec = {"model": model, "run_id": d.name, "test": test, "head": selected,
+               "spec": bundle["heads"][selected.split("|")[0]], "tails": bundle["tails"],
+               "use_native_width": bundle["use_native_width"], "base_band": prep.get("band"),
+               "code_sha256": INF.code_sha256(), "base_cache_sha256": prep["cache_sha256"],
+               "base_checkpoint_sha256": (prep.get("provenance") or {}).get("checkpoint_sha256")}
+        path = out / f"{model}.json"
+        path.write_text(json.dumps(rec, sort_keys=True, default=_json), encoding="utf-8")
+        test_rps = scores["models"][model]["groups"]["test"]["heads"][selected]["RPS"]
+        lock[model] = {"head": selected, "sha256": INF.file_sha256(path), "run_id": d.name,
+                       "code_sha256": rec["code_sha256"], "base_checkpoint_sha256": rec["base_checkpoint_sha256"],
+                       "test_rps": round(float(test_rps), 6)}
+        log(f"freeze {model}: {selected} -> {path} ({path.stat().st_size / 1e6:.1f} MB)")
+    import yaml
+
+    text = "\n".join([
+        "# Frozen 15-bin heads of the black_ordinal_* rows: written by",
+        "#   python -m workstreams.black_physics.ordinal_density freeze",
+        "# The heads themselves stay in work_root()/black_ordinal_density/frozen/ (not in git); a row refuses a",
+        "# head whose sha256 or inference code differs from this file. Keyed by the base model the head was fit on.",
+        yaml.safe_dump(lock, sort_keys=True)])
+    with LOCK.open("w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+    record(d, cfg["core"], "freeze", {"frozen": {m: str(out / f"{m}.json") for m in models}, "lock": str(LOCK)})
+    return LOCK
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(prog="python -m workstreams.black_physics.ordinal_density",
                                  description="Where is a reconstructed well log uncertain? 15-bin density heads.")
-    ap.add_argument("stage", choices=["prepare", "fit", "score", "plot", "scales", "all"])
+    ap.add_argument("stage", choices=["prepare", "fit", "score", "plot", "scales", "freeze", "all"])
     ap.add_argument("--test", default="rhob_gap50")
     ap.add_argument("--models", default=",".join(DEFAULT_MODELS))
     ap.add_argument("--run-id")
@@ -535,4 +584,6 @@ def main(argv=None) -> int:
             from workstreams.black_physics.ordinal_density import scales
 
             scales.run(a.test, models, a.run_id)
+        elif st == "freeze":
+            freeze(a.test, models, a.run_id)
     return 0
