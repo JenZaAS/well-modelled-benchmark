@@ -395,6 +395,15 @@ def score() -> dict:
         del backend
         torch.cuda.empty_cache()
     np.savez_compressed(P.path("final", "finetune_predictions.npz"), **keyed)
+    from workstreams.black_physics.granite import artifacts as ART
+
+    man = {"frozen_at": time.strftime("%Y-%m-%dT%H:%M:%S"), "identity": ART.identity_record(ART.official_identity(tr)),
+           "ft_config": asdict(FT), "git": P.git_head(),
+           "variants": {FT_NAMES[a]: {"checkpoint": str(checkpoint(a).relative_to(C.work_dir())),
+                                      "checkpoint_sha256": ART.file_sha256(checkpoint(a)),
+                                      "calibrator": info[FT_NAMES[a]]["calibrator"], "meta": info[FT_NAMES[a]]["meta"]}
+                        for a in ("ttm", "tspulse") if FT_NAMES[a] in info}}
+    P.save_json(ART.ft_manifest_path(), man)
     res = {"rows": rows, "variants": info, "git": P.git_head(), "ft_config": asdict(FT)}
     P.save_json(P.path("final", "finetune.json"), res)
     return res

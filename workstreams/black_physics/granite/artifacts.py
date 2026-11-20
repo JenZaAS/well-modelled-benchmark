@@ -140,6 +140,48 @@ def load_variant(name: str, train_wells, device=None, log=None) -> tuple:
     return backend, cal, prov
 
 
+FT_NAME_TO_ARM = {"black_ttm_r3_ft": "ttm", "black_tspulse_ft": "tspulse"}   # stronger fine-tune (finetune.py)
+
+
+def ft_manifest_path() -> Path:
+    return C.work_dir() / "manifest_ft.json"
+
+
+def load_ft_variant(name: str, train_wells, device=None, log=None) -> tuple:
+    """(backend, calibrator, provenance) for a stronger fine-tune row; manifest written by `finetune_score`."""
+    from workstreams.black_physics.granite.finetune import load_ft
+
+    arm = FT_NAME_TO_ARM[name]
+    if not is_official(train_wells):          # contract check: never read FORCE-trained files
+        return local_fit(C.VARIANT_IDS[(arm, True)], train_wells, device, log)
+    p = ft_manifest_path()
+    if not p.is_file():
+        raise StaleArtifacts(f"no fine-tune manifest at {p}; run the `finetune` and `finetune_score` stages")
+    m = json.loads(p.read_text(encoding="utf-8"))
+    ident = official_identity(train_wells)
+    want = identity_record(ident)
+    problems = [f"{k}: artifacts {m['identity'].get(k)!r} != current {v!r}" for k, v in want.items()
+                if m["identity"].get(k) != v]
+    var = m.get("variants", {}).get(name)
+    if var is None:
+        problems.append(f"variant {name} is not in the fine-tune manifest")
+    else:
+        ck = C.work_dir() / var["checkpoint"]
+        if not ck.is_file():
+            problems.append(f"checkpoint {ck} is missing")
+        elif file_sha256(ck) != var["checkpoint_sha256"]:
+            problems.append(f"checkpoint {ck} changed (sha256 mismatch)")
+    if problems:
+        raise StaleArtifacts("fine-tune artifacts do not match: " + "; ".join(problems) +
+                             ". Rerun the `finetune` and `finetune_score` stages.")
+    backend, meta = load_ft(arm, device, C.work_dir() / var["checkpoint"])
+    cal = CAL.IntervalCalibrator.from_dict(var["calibrator"])
+    prov = {"source": "frozen fine-tune", "manifest_frozen_at": m.get("frozen_at"), "checkpoint": var["checkpoint"],
+            "checkpoint_sha256": var["checkpoint_sha256"], "scope": meta.get("scope"), "lr": meta.get("lr"),
+            "calibrator": var["calibrator"], **want}
+    return backend, cal, prov
+
+
 def local_fit(name: str, train_wells, device=None, log=None, max_updates: int = 5, length_m: float = 10.0) -> tuple:
     """Contract-check fit on arbitrary (e.g. synthetic) wells. Never reads FORCE-trained files."""
     from workstreams.black_physics.granite import train as T

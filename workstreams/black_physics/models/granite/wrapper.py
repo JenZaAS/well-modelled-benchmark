@@ -2,6 +2,7 @@
 
     black_ttm_r3_frozen / black_ttm_r3_tuned       IBM TTM-R3 lite, two directional forecasts blended by distance
     black_tspulse_frozen / black_tspulse_tuned     IBM TSPulse R1, masked reconstruction of a centred window
+    black_ttm_r3_ft / black_tspulse_ft             the same models after the stronger fine-tune (finetune.py)
     black_linear_gap                               straight line between the nearest measured flank values
     black_gardner_flank_resid                      fixed Gardner from DTC + linearly interpolated flank residual
 
@@ -182,5 +183,31 @@ class GardnerFlankResidual(BaseContender):
         return self.predict_task(t)
 
 
+class _GraniteFT(_GraniteGap):
+    """A stronger fine-tune row (granite/finetune.py): checkpoint + D bands from manifest_ft.json."""
+
+    tuned = True
+
+    def fit(self, train_wells, target):
+        from workstreams.black_physics.granite import artifacts
+        from workstreams.black_physics.granite.reconstruct import make_reconstructor
+
+        if not self.supports(target):
+            raise ValueError(f"{self.name} predicts RHOB, not {target}")
+        self.backend, self.calibrator, self.provenance = artifacts.load_ft_variant(self.name, train_wells, self.device)
+        self.reconstructor = make_reconstructor(self.backend)
+
+
+class TTMR3FT(_GraniteFT):
+    """TTM-R3 lite after the stronger fine-tune (blended two-sided loss, 13,824 A gaps; scope picked on B)."""
+    name, arm = "black_ttm_r3_ft", "ttm"
+
+
+class TSPulseFT(_GraniteFT):
+    """TSPulse R1 after the stronger fine-tune (up to whole-model training on 13,824 A gaps; scope picked on B)."""
+    name, arm = "black_tspulse_ft", "tspulse"
+
+
 GRANITE = [TTMR3Frozen, TTMR3Tuned, TSPulseFrozen, TSPulseTuned]
+FT = [TTMR3FT, TSPulseFT]          # separate list: the pipeline's `final` stage iterates GRANITE only
 EXTRA = [LinearGap, GardnerFlankResidual]
