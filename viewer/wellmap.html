@@ -154,6 +154,14 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
 #tab-benchmark .bm-architecture { display: flex; flex-wrap: wrap; gap: 12px; padding: 0; list-style: none; }
 #tab-benchmark .bm-architecture li { flex: 1 1 160px; padding: 16px; border: 1px solid var(--line); border-top: 3px solid #32658a; border-radius: 8px; background: var(--card); }
 #tab-benchmark .bm-architecture strong { display: block; color: #1f4b73; margin-bottom: 6px; }
+#tab-benchmark .bm-figure { margin: 18px 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+#tab-benchmark .bm-figure h3 { margin: 0; }
+#tab-benchmark .bm-figure svg { display: block; width: 100%; max-width: 600px; height: auto; margin: 12px auto; }
+#tab-benchmark .bm-figure path { stroke: #32658a; stroke-width: 1.8; stroke-linejoin: round; fill: none; }
+#tab-benchmark .bm-figure circle { fill: #236657; }
+#tab-benchmark .bm-figure path.bm-estimate { stroke: #ac511d; stroke-width: 2.8; }
+#tab-benchmark .bm-figure text { text-anchor: middle; fill: #193b54; font: 600 12px system-ui, sans-serif; }
+#tab-benchmark .bm-figure figcaption { color: var(--muted); line-height: 1.5; }
 #tab-benchmark .bm-r-head, #tab-benchmark .bm-r-track, #tab-benchmark .bm-dl { display: flex; align-items: center; gap: 6px; }
 #tab-benchmark .bm-dl .bm-nm { margin-right: auto; }
 #tab-benchmark .bm-r-head small { margin: 0 0 0 auto; }
@@ -197,6 +205,12 @@ td .c { display: inline-block; width: 8px; height: 8px; border-radius: 50%; marg
 #tab-benchmark .bm-models { margin-bottom: 12px; }
 #tab-benchmark .bm-leg span { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 11.5px; }
 #tab-benchmark .bm-leg svg { flex: 0 0 30px; }
+#tab-benchmark .bm-scatter-ctl { display: flex; flex-wrap: wrap; gap: 12px; margin: 8px 0 4px; font-size: 12px; }
+#tab-benchmark .bm-scatter-ctl select { margin-left: 4px; }
+#tab-benchmark .bm-leg .bm-cbar-wrap { display: grid; gap: 3px; margin-bottom: 4px; }
+#tab-benchmark .bm-leg .bm-cbar-wrap b { color: #1A1E23; font-size: 11.5px; }
+#tab-benchmark .bm-cbar { display: block; height: 10px; border-radius: 5px; }
+#tab-benchmark .bm-leg .bm-cbar-ends { display: flex; justify-content: space-between; gap: 6px; font-size: 10.5px; }
 #tab-benchmark .bm-grid-wrap { overflow-x: auto; margin: 0 -5px; }
 #tab-benchmark .bm-grid { width: 100%; table-layout: auto; border-collapse: separate; border-spacing: 5px 8px; }
 #tab-benchmark .bm-grid th, #tab-benchmark .bm-grid td { position: static; text-align: left; vertical-align: middle; white-space: normal; padding: 9px 12px; }

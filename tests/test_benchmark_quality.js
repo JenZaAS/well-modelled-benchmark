@@ -324,3 +324,36 @@ test("relative scatter is centred on the Linear baseline (0..2) with quadrant la
   );
   assert.match(svg, /viewBox="0 0 850 260"/);
 });
+
+test("goodness colours run red (worse) to green (better) on the quality boundaries", () => {
+  assert.equal(Q.goodness("dev", 0), 1);
+  assert.equal(Q.goodness("dev", 0.03), 0.75);
+  assert.ok(Math.abs(Q.goodness("dev", 0.08) - 0.4) < 1e-9);
+  assert.equal(Q.goodness("dev", 0.5), 0);
+  assert.ok(Math.abs(Q.goodness("acc", 1.3, 1) - 0.4) < 1e-9);
+  assert.ok(Q.goodness("speed", 0.01) > Q.goodness("speed", 1));
+  assert.equal(Q.goodness("acc", 1, null), null);
+  assert.equal(Q.goodnessColor(0), "#c03a32");
+  assert.equal(Q.goodnessColor(1), "#2e9a5e");
+  assert.equal(Q.goodnessColor(null), Q.COLORS.muted.fg);
+});
+
+test("scatter dimensions are selectable and the colour dimension fills the points", () => {
+  const items = [
+    { id: "a", acc: 1, width: 2, dev: 0, cover: 0.9, speed: 0.01, calClass: "good" },
+    { id: "b", acc: 2, width: 1, dev: 0.3, cover: 0.6, speed: 2, calClass: "poor" },
+  ];
+  const ctx = { prop: "RHOB", colorOf: () => "#2F6FAE" };
+  const def = B.scatterSvg(items, ctx);
+  assert.match(def, /Accuracy \(MAE\) versus Sharpness \(90% band width\), coloured by Calibration/);
+  assert.match(def, new RegExp(`fill="${Q.goodnessColor(1)}"`));
+  assert.match(def, new RegExp(`fill="${Q.goodnessColor(0)}"`));
+  const custom = B.scatterSvg(items, { ...ctx, scatter: { x: "speed", y: "dev", color: "acc" } });
+  assert.match(custom, /Time per well \(s\)/);
+  assert.match(custom, /90% band coverage distance from 90% \(pt\)/);
+  const plain = B.scatterSvg(items, { ...ctx, scatter: { color: "none" } });
+  assert.match(plain, /stroke-dasharray="3 2.5"/);
+  const html = B.summaryHtml(items, { ...ctx, scatter: { x: "acc", y: "speed", color: "width" } });
+  assert.match(html, /data-scatter="x"[^]*value="acc" selected/);
+  assert.match(html, /Fill = Sharpness/);
+});

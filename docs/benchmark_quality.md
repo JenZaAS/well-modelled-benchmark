@@ -16,6 +16,19 @@ The live viewer's Benchmark tab colours every score as good, ok or poor. All rul
   as "doesn't count".
 - The speed dial is a log scale from 0.001 to 100 s per well: `position = clamp((log10(t) + 3) / 5, 0, 1)`.
 
+## Trade-off scatter
+
+The summary scatter defaults to accuracy (y) vs sharpness (x), with each point filled by **calibration** of the 90%
+band. Pickers above the plot choose the X axis, Y axis and colour from accuracy, sharpness, calibration (points from
+90%) and speed; colour "None" restores the model-colour fill with the calibration ring. Picking the other axis's
+measure swaps the axes. All measures are lower-is-better, so bottom-left is always best; the Linear-centred quadrants
+in All mode only appear when both axes are accuracy / sharpness.
+
+The fill runs red (worse) → amber → green (better) via `goodness()` in `benchmark_quality.js`, anchored on the rules
+above: 0 off / the best model = full green, the good boundary = 0.75, the ok boundary = 0.4, twice the ok boundary
+or beyond = red. Accuracy and sharpness are measured against the lowest value shown; speed uses a log scale
+(5 ms green … 5 s red).
+
 ## All mode
 
 "All" never averages raw values across properties (the units differ). Using `template_linear` as the baseline:
