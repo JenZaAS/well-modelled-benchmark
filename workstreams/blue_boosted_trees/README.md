@@ -64,6 +64,11 @@ Decisions that affect comparisons:
   MAE / std of the measured log, Pearson r.
 
 ### Quick start for a teammate (start here)
+**With an AI agent (easiest):** pull the repo, open it in VS Code with Copilot Chat in agent mode, and run the prompt
+[`.github/prompts/run-blue-app.prompt.md`](../../.github/prompts/run-blue-app.prompt.md) (type `/run-blue-app` in chat). It
+checks what is already set up, asks you for the data folder and the two zip files, installs the packages, unpacks the zips
+and starts the app. With another agent, tell it: "follow `.github/prompts/run-blue-app.prompt.md`". The manual steps follow.
+
 From the repo root, in a virtual environment (Python 3.12 recommended):
 
 1. **Install** the core packages and the app packages:
