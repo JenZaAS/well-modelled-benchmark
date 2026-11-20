@@ -1,0 +1,42 @@
+[
+  {
+    "git_commit": "924965d",
+    "git_commit_full": "924965dd28c6245548010fde30a960ea5cee5c62",
+    "contender": "purple_kumo_tabular",
+    "test": "rhob_missing",
+    "workstream": "purple_tabular_foundation_models",
+    "dataset": "force2020",
+    "target": "RHOB",
+    "n_train_wells": 98,
+    "n_test_wells": 20,
+    "hardware": {
+      "machine": "arm64",
+      "system": "Darwin",
+      "processor": "arm",
+      "python_version": "3.12.12",
+      "cpu_count": 10
+    },
+    "machine": "arm / Darwin",
+    "run_at": "2026-11-19T17:47:02+0100",
+    "scenario": "missing_curve",
+    "n_tasks": 20,
+    "load_s": 0.0,
+    "fit_s": 2.3324,
+    "n": 232695,
+    "has_uncertainty": true,
+    "MAE": 0.0667189273430173,
+    "RMSE": 0.09951079776941679,
+    "R2": 0.8191407633750792,
+    "cover_90": 0.8883388126087798,
+    "interval_width_90": 0.2866131932102396,
+    "pinball_05": 0.010847359522676916,
+    "pinball_50": 0.03335946367150865,
+    "pinball_95": 0.00905405287089324,
+    "predict_s": 55.4537,
+    "predict_s_batch": 44.8098,
+    "predict_s_per_well": 2.772687,
+    "predict_s_per_1000": 0.213956,
+    "samples_per_s": 4673.9,
+    "n_samples": 259183
+  }
+]

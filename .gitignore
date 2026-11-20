@@ -50,13 +50,6 @@ mlruns/
 wandb/
 lightning_logs/
 # Outputs
-results/*
-!results/README.md
-!results/summary/
-results/summary/*
-!results/summary/*.md
-!results/summary/*.json
-results/raw/
 **/scratch/
 # Generated offline viewer pages embed curve data — never commit those.
 # viewer/wellmap.html is the data-free page and may be committed.
