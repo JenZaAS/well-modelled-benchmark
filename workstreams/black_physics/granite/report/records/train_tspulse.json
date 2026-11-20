@@ -1,0 +1,148 @@
+{
+  "arm": "tspulse",
+  "trainable": [
+    "decoder_with_head.time_head.base_reconstruction_block.bias",
+    "decoder_with_head.time_head.base_reconstruction_block.weight"
+  ],
+  "n_trainable": 200,
+  "n_parameters": 1068958,
+  "n_examples": 1728,
+  "n_wells": 54,
+  "device": "cuda",
+  "overfit_reload": {
+    "steps": 40,
+    "first_loss": 0.2557964026927948,
+    "last_loss": 0.16211813688278198,
+    "loss_dropped": true,
+    "eval_loss_trained": 0.15797847509384155,
+    "eval_loss_reset": 0.25627845525741577,
+    "eval_loss_reloaded": 0.15797847509384155,
+    "reload_exact": true
+  },
+  "measure": [
+    {
+      "microbatch": 1,
+      "accumulation": 8,
+      "s_per_update": 0.1526,
+      "ok": true,
+      "peak_allocated_mb": 21.5,
+      "peak_reserved_mb": 46.0,
+      "process_rss_mb": 2029.0
+    },
+    {
+      "microbatch": 2,
+      "accumulation": 4,
+      "s_per_update": 0.0769,
+      "ok": true,
+      "peak_allocated_mb": 21.6,
+      "peak_reserved_mb": 46.0,
+      "process_rss_mb": 2029.0
+    },
+    {
+      "microbatch": 4,
+      "accumulation": 2,
+      "s_per_update": 0.0379,
+      "ok": true,
+      "peak_allocated_mb": 21.9,
+      "peak_reserved_mb": 46.0,
+      "process_rss_mb": 2029.0
+    },
+    {
+      "microbatch": 8,
+      "accumulation": 1,
+      "s_per_update": 0.0197,
+      "ok": true,
+      "peak_allocated_mb": 22.4,
+      "peak_reserved_mb": 48.0,
+      "process_rss_mb": 2029.0
+    }
+  ],
+  "microbatch": 8,
+  "accumulation": 1,
+  "eval_s_first": 0.15,
+  "first_update_grads": {
+    "time_head": {
+      "tensors": 2,
+      "finite": true,
+      "abs_sum": 0.5099766850471497
+    }
+  },
+  "train_minutes": 0.049,
+  "updates_run": 125,
+  "train_peak_allocated_mb": 33.3,
+  "train_peak_reserved_mb": 50.0,
+  "process_rss_mb": 2029.3,
+  "history": [
+    {
+      "update": 0,
+      "minutes": 0.0,
+      "train_loss": null,
+      "B_metric": 0.07891496948161929,
+      "best": true
+    },
+    {
+      "update": 25,
+      "minutes": 0.008,
+      "train_loss": 0.06972800314426422,
+      "B_metric": 0.07888299538111175,
+      "best": true
+    },
+    {
+      "update": 50,
+      "minutes": 0.018,
+      "train_loss": 0.07817133307456971,
+      "B_metric": 0.07885001880816526,
+      "best": true
+    },
+    {
+      "update": 75,
+      "minutes": 0.027,
+      "train_loss": 0.07385043054819107,
+      "B_metric": 0.07885796555494459,
+      "best": false
+    },
+    {
+      "update": 100,
+      "minutes": 0.037,
+      "train_loss": 0.07555891677737236,
+      "B_metric": 0.0788774148805952,
+      "best": false
+    },
+    {
+      "update": 125,
+      "minutes": 0.047,
+      "train_loss": 0.07431804284453392,
+      "B_metric": 0.0788755493981958,
+      "best": false
+    }
+  ],
+  "best_overall_update": 50,
+  "best_overall_metric": 0.07885001880816526,
+  "best_update": 50,
+  "best_metric": 0.07885001880816526,
+  "step0_won": false,
+  "step0_metric": 0.07891496948161929,
+  "stop_reason": "no improvement in 3 evaluations",
+  "truncated": false,
+  "caps": {
+    "max_updates": 300,
+    "max_minutes": 45.0
+  },
+  "best_head_max_abs_change": 0.012800097465515137,
+  "first_load_s": 4.76,
+  "head_file": "checkpoints\\tspulse_tuned_best.pt",
+  "head_sha256": "2dea53d81f97cb8c09a16ffb10989f61e81ccc1f9b0573363d6fddc896e0cb2e",
+  "versions": {
+    "torch": "2.10.0+cu126",
+    "cuda": "12.6",
+    "device": "Quadro T1000 with Max-Q Design",
+    "transformers": "4.57.6",
+    "granite-tsfm": "0.3.13.dev6+g31fa2f015",
+    "numpy": "2.5.5"
+  },
+  "config_hash": "00bafc81acb0bec0",
+  "git": {
+    "commit": "370af9d36cd7c1c5287f8503cfd4132e28d6c50b",
+    "black_physics_dirty": true
+  }
+}

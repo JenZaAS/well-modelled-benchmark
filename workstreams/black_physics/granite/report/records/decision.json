@@ -1,0 +1,804 @@
+{
+  "selected": "black_tspulse_tuned",
+  "arm": "tspulse",
+  "schema": {
+    "version": "gap-state-v1",
+    "arm": "tspulse",
+    "features": [
+      {
+        "name": "width",
+        "unit": "g/cm3",
+        "description": "TTM: mean raw P90-P10 inside the gap; TSPulse: mean |flank value - flank median| (variability proxy)"
+      },
+      {
+        "name": "flank_median_diff",
+        "unit": "g/cm3",
+        "description": "|median of the shallow context - median of the deep context| (NaN if one-sided)"
+      },
+      {
+        "name": "pred_range",
+        "unit": "g/cm3",
+        "description": "max - min of the reconstructed curve inside the gap"
+      },
+      {
+        "name": "ctx_above_m",
+        "unit": "m",
+        "description": "metres of measured context used above the gap"
+      },
+      {
+        "name": "ctx_below_m",
+        "unit": "m",
+        "description": "metres of measured context used below the gap"
+      },
+      {
+        "name": "gardner_mad",
+        "unit": "g/cm3",
+        "description": "median |reconstruction - fixed Gardner from DTC| over gap depths with DTC (NaN if none)"
+      },
+      {
+        "name": "dtc_fraction",
+        "unit": "1",
+        "description": "fraction of gap depths with usable DTC (a finite Gardner estimate)"
+      }
+    ],
+    "template_example": "Bulk-density gap, 50 m. Shallow/deep flank medians differ by 0.080 g/cm\u00b3. Observed context 14 m above, 13 m below. Flank variability 0.030 g/cm\u00b3. Predicted density range 0.120 g/cm\u00b3. Median disagreement with sonic-derived density 0.040 g/cm\u00b3. Sonic availability 100%."
+  },
+  "rules": {
+    "prevalence": {
+      "name": "prevalence",
+      "prep": null,
+      "beta": null,
+      "constant": 0.46624999999999994,
+      "note": "C well-weighted pass rate",
+      "columns": null
+    },
+    "width_only": {
+      "name": "width_only",
+      "prep": {
+        "features": [
+          "width"
+        ],
+        "median": {
+          "width": 0.03142386150934064
+        },
+        "mean": {
+          "width": 0.03996899902185366
+        },
+        "std": {
+          "width": 0.033156957375912885
+        },
+        "indicators": []
+      },
+      "beta": [
+        -0.4489004655281017,
+        -2.20800713049681
+      ],
+      "constant": null,
+      "note": "",
+      "columns": [
+        "intercept",
+        "width"
+      ]
+    },
+    "numeric": {
+      "name": "numeric",
+      "prep": {
+        "features": [
+          "width",
+          "flank_median_diff",
+          "pred_range",
+          "ctx_above_m",
+          "ctx_below_m"
+        ],
+        "median": {
+          "width": 0.03142386150934064,
+          "flank_median_diff": 0.04694914819999996,
+          "pred_range": 0.089577317237854,
+          "ctx_above_m": 13.832000000000107,
+          "ctx_below_m": 13.832000000000107
+        },
+        "mean": {
+          "width": 0.03996899902185366,
+          "flank_median_diff": 0.08141123483412162,
+          "pred_range": 0.1252275745610933,
+          "ctx_above_m": 13.702594594594668,
+          "ctx_below_m": 13.728270270270304
+        },
+        "std": {
+          "width": 0.033156957375912885,
+          "flank_median_diff": 0.10085721002045414,
+          "pred_range": 0.12970919579264395,
+          "ctx_above_m": 1.873845640466445,
+          "ctx_below_m": 1.3214525719551875
+        },
+        "indicators": []
+      },
+      "beta": [
+        -0.5566878621819891,
+        -1.7848355526031434,
+        -1.430973875598924,
+        -0.24993412705550894,
+        0.07394558893959753,
+        -0.1250220917052404
+      ],
+      "constant": null,
+      "note": "",
+      "columns": [
+        "intercept",
+        "width",
+        "flank_median_diff",
+        "pred_range",
+        "ctx_above_m",
+        "ctx_below_m"
+      ]
+    },
+    "numeric_gardner": {
+      "name": "numeric_gardner",
+      "prep": {
+        "features": [
+          "width",
+          "flank_median_diff",
+          "pred_range",
+          "ctx_above_m",
+          "ctx_below_m",
+          "gardner_mad",
+          "dtc_fraction"
+        ],
+        "median": {
+          "width": 0.03142386150934064,
+          "flank_median_diff": 0.04694914819999996,
+          "pred_range": 0.089577317237854,
+          "ctx_above_m": 13.832000000000107,
+          "ctx_below_m": 13.832000000000107,
+          "gardner_mad": 0.07725300821006664,
+          "dtc_fraction": 1.0
+        },
+        "mean": {
+          "width": 0.03996899902185366,
+          "flank_median_diff": 0.08141123483412162,
+          "pred_range": 0.1252275745610933,
+          "ctx_above_m": 13.702594594594668,
+          "ctx_below_m": 13.728270270270304,
+          "gardner_mad": 0.09045218960076208,
+          "dtc_fraction": 0.9459459459459459
+        },
+        "std": {
+          "width": 0.033156957375912885,
+          "flank_median_diff": 0.10085721002045414,
+          "pred_range": 0.12970919579264395,
+          "ctx_above_m": 1.873845640466445,
+          "ctx_below_m": 1.3214525719551875,
+          "gardner_mad": 0.05637221610857853,
+          "dtc_fraction": 0.22612433149569608
+        },
+        "indicators": [
+          "gardner_mad"
+        ]
+      },
+      "beta": [
+        -0.5577091007387044,
+        -1.8107800373232807,
+        -1.4372925462925605,
+        -0.24292802483931047,
+        0.08001032847535519,
+        -0.13170519116860718,
+        0.09064364876718922,
+        0.044108981812167526,
+        -0.009974114025232126
+      ],
+      "constant": null,
+      "note": "",
+      "columns": [
+        "intercept",
+        "width",
+        "flank_median_diff",
+        "pred_range",
+        "ctx_above_m",
+        "ctx_below_m",
+        "gardner_mad",
+        "dtc_fraction",
+        "gardner_mad_missing"
+      ]
+    }
+  },
+  "recalibration": {
+    "numeric": {
+      "a": -0.12737806067515703,
+      "b": 0.9741086165392282,
+      "constant": null,
+      "note": ""
+    },
+    "numeric_gardner": {
+      "a": -0.16410628939297242,
+      "b": 0.9110172575719898,
+      "constant": null,
+      "note": ""
+    },
+    "decima": {
+      "a": -0.4907023048731645,
+      "b": 1.6517347257400987,
+      "constant": null,
+      "note": ""
+    }
+  },
+  "decima": {
+    "model": "amyrmahdy/decima-small@480c4ea9e54f2946b947fb3ceb3c7cc7ece77522",
+    "precision": "int8",
+    "question": "Will the mean absolute error across this 50 m density gap be at most 0.05 g/cm\u00b3?",
+    "choices": [
+      "yes",
+      "no"
+    ],
+    "p_pass": "P(choices[0])",
+    "decima_ai": "2.5.1",
+    "onnxruntime": "1.32.0",
+    "n": 148,
+    "seconds": 19.8,
+    "ms_per_state": 133.78,
+    "snapshot": "<cache_dir>\\hf\\hub\\models--amyrmahdy--decima-small\\snapshots\\480c4ea9e54f2946b947fb3ceb3c7cc7ece77522",
+    "python": "3.12.10"
+  },
+  "decima_question": "Will the mean absolute error across this 50 m density gap be at most 0.05 g/cm\u00b3?",
+  "dev_scores": {
+    "C": {
+      "prevalence": {
+        "n_gaps": 148,
+        "n_complete": 148,
+        "n_labelled": 148,
+        "prevalence": 0.4864864864864865,
+        "brier": 0.2502269003378379,
+        "accepted": 0,
+        "review": 148,
+        "false_accepts": 0,
+        "accepted_risk": null,
+        "bad_gaps": 76,
+        "good_sent_to_review": 72,
+        "reliability": [
+          {
+            "bin": "[0.00, 0.33)",
+            "n": 0,
+            "mean_p": null,
+            "pass_rate": null
+          },
+          {
+            "bin": "[0.33, 0.67)",
+            "n": 148,
+            "mean_p": 0.46624999999999994,
+            "pass_rate": 0.4864864864864865
+          },
+          {
+            "bin": "[0.67, 1.00]",
+            "n": 0,
+            "mean_p": null,
+            "pass_rate": null
+          }
+        ],
+        "threshold": 0.8
+      },
+      "width_only": {
+        "n_gaps": 148,
+        "n_complete": 148,
+        "n_labelled": 148,
+        "prevalence": 0.4864864864864865,
+        "brier": 0.18042299046864302,
+        "accepted": 3,
+        "review": 145,
+        "false_accepts": 1,
+        "accepted_risk": 0.3333333333333333,
+        "bad_gaps": 76,
+        "good_sent_to_review": 70,
+        "reliability": [
+          {
+            "bin": "[0.00, 0.33)",
+            "n": 42,
+            "mean_p": 0.14693634730079091,
+            "pass_rate": 0.14285714285714285
+          },
+          {
+            "bin": "[0.33, 0.67)",
+            "n": 63,
+            "mean_p": 0.513323210209276,
+            "pass_rate": 0.4444444444444444
+          },
+          {
+            "bin": "[0.67, 1.00]",
+            "n": 43,
+            "mean_p": 0.7469187370145813,
+            "pass_rate": 0.8837209302325582
+          }
+        ],
+        "threshold": 0.8
+      },
+      "numeric": {
+        "n_gaps": 148,
+        "n_complete": 148,
+        "n_labelled": 148,
+        "prevalence": 0.4864864864864865,
+        "brier": 0.13845250904540515,
+        "accepted": 33,
+        "review": 115,
+        "false_accepts": 3,
+        "accepted_risk": 0.09090909090909091,
+        "bad_gaps": 76,
+        "good_sent_to_review": 42,
+        "reliability": [
+          {
+            "bin": "[0.00, 0.33)",
+            "n": 50,
+            "mean_p": 0.11732250381905926,
+            "pass_rate": 0.1
+          },
+          {
+            "bin": "[0.33, 0.67)",
+            "n": 43,
+            "mean_p": 0.5059683834961066,
+            "pass_rate": 0.46511627906976744
+          },
+          {
+            "bin": "[0.67, 1.00]",
+            "n": 55,
+            "mean_p": 0.8062942594076407,
+            "pass_rate": 0.8545454545454545
+          }
+        ],
+        "threshold": 0.8
+      },
+      "numeric_gardner": {
+        "n_gaps": 148,
+        "n_complete": 148,
+        "n_labelled": 148,
+        "prevalence": 0.4864864864864865,
+        "brier": 0.13821119623636338,
+        "accepted": 34,
+        "review": 114,
+        "false_accepts": 3,
+        "accepted_risk": 0.08823529411764706,
+        "bad_gaps": 76,
+        "good_sent_to_review": 41,
+        "reliability": [
+          {
+            "bin": "[0.00, 0.33)",
+            "n": 51,
+            "mean_p": 0.12324190335429312,
+            "pass_rate": 0.09803921568627451
+          },
+          {
+            "bin": "[0.33, 0.67)",
+            "n": 44,
+            "mean_p": 0.5116142891993396,
+            "pass_rate": 0.5
+          },
+          {
+            "bin": "[0.67, 1.00]",
+            "n": 53,
+            "mean_p": 0.8125731920359109,
+            "pass_rate": 0.8490566037735849
+          }
+        ],
+        "threshold": 0.8
+      },
+      "numeric_cal": {
+        "n_gaps": 148,
+        "n_complete": 148,
+        "n_labelled": 148,
+        "prevalence": 0.4864864864864865,
+        "brier": 0.13909878096165296,
+        "accepted": 27,
+        "review": 121,
+        "false_accepts": 2,
+        "accepted_risk": 0.07407407407407407,
+        "bad_gaps": 76,
+        "good_sent_to_review": 47,
+        "reliability": [
+          {
+            "bin": "[0.00, 0.33)",
+            "n": 54,
+            "mean_p": 0.125493360129621,
+            "pass_rate": 0.09259259259259259
+          },
+          {
+            "bin": "[0.33, 0.67)",
+            "n": 48,
+            "mean_p": 0.5215887094350783,
+            "pass_rate": 0.5625
+          },
+          {
+            "bin": "[0.67, 1.00]",
+            "n": 46,
+            "mean_p": 0.8047482972980119,
+            "pass_rate": 0.8695652173913043
+          }
+        ],
+        "threshold": 0.8
+      },
+      "numeric_gardner_cal": {
+        "n_gaps": 148,
+        "n_complete": 148,
+        "n_labelled": 148,
+        "prevalence": 0.4864864864864865,
+        "brier": 0.14054000133388833,
+        "accepted": 22,
+        "review": 126,
+        "false_accepts": 0,
+        "accepted_risk": 0.0,
+        "bad_gaps": 76,
+        "good_sent_to_review": 50,
+        "reliability": [
+          {
+            "bin": "[0.00, 0.33)",
+            "n": 53,
+            "mean_p": 0.1279158665073492,
+            "pass_rate": 0.09433962264150944
+          },
+          {
+            "bin": "[0.33, 0.67)",
+            "n": 51,
+            "mean_p": 0.5068765520827347,
+            "pass_rate": 0.5686274509803921
+          },
+          {
+            "bin": "[0.67, 1.00]",
+            "n": 44,
+            "mean_p": 0.7916248895440517,
+            "pass_rate": 0.8636363636363636
+          }
+        ],
+        "threshold": 0.8
+      },
+      "decima_raw": {
+        "n_gaps": 148,
+        "n_complete": 148,
+        "n_labelled": 148,
+        "prevalence": 0.4864864864864865,
+        "brier": 0.2562868579865042,
+        "accepted": 0,
+        "review": 148,
+        "false_accepts": 0,
+        "accepted_risk": null,
+        "bad_gaps": 76,
+        "good_sent_to_review": 72,
+        "reliability": [
+          {
+            "bin": "[0.00, 0.33)",
+            "n": 8,
+            "mean_p": 0.26445996648545317,
+            "pass_rate": 0.625
+          },
+          {
+            "bin": "[0.33, 0.67)",
+            "n": 140,
+            "mean_p": 0.5018213083175425,
+            "pass_rate": 0.4785714285714286
+          },
+          {
+            "bin": "[0.67, 1.00]",
+            "n": 0,
+            "mean_p": null,
+            "pass_rate": null
+          }
+        ],
+        "threshold": 0.8
+      },
+      "decima_cal": {
+        "n_gaps": 148,
+        "n_complete": 148,
+        "n_labelled": 148,
+        "prevalence": 0.4864864864864865,
+        "brier": 0.2724705585934609,
+        "accepted": 0,
+        "review": 148,
+        "false_accepts": 0,
+        "accepted_risk": null,
+        "bad_gaps": 76,
+        "good_sent_to_review": 72,
+        "reliability": [
+          {
+            "bin": "[0.00, 0.33)",
+            "n": 18,
+            "mean_p": 0.22415259682398936,
+            "pass_rate": 0.6666666666666666
+          },
+          {
+            "bin": "[0.33, 0.67)",
+            "n": 130,
+            "mean_p": 0.38786031913962965,
+            "pass_rate": 0.46153846153846156
+          },
+          {
+            "bin": "[0.67, 1.00]",
+            "n": 0,
+            "mean_p": null,
+            "pass_rate": null
+          }
+        ],
+        "threshold": 0.8
+      }
+    },
+    "D": {
+      "prevalence": {
+        "n_gaps": 88,
+        "n_complete": 88,
+        "n_labelled": 88,
+        "prevalence": 0.3977272727272727,
+        "brier": 0.24423565340909092,
+        "accepted": 0,
+        "review": 88,
+        "false_accepts": 0,
+        "accepted_risk": null,
+        "bad_gaps": 53,
+        "good_sent_to_review": 35,
+        "reliability": [
+          {
+            "bin": "[0.00, 0.33)",
+            "n": 0,
+            "mean_p": null,
+            "pass_rate": null
+          },
+          {
+            "bin": "[0.33, 0.67)",
+            "n": 88,
+            "mean_p": 0.46624999999999983,
+            "pass_rate": 0.3977272727272727
+          },
+          {
+            "bin": "[0.67, 1.00]",
+            "n": 0,
+            "mean_p": null,
+            "pass_rate": null
+          }
+        ],
+        "threshold": 0.8
+      },
+      "width_only": {
+        "n_gaps": 88,
+        "n_complete": 88,
+        "n_labelled": 88,
+        "prevalence": 0.3977272727272727,
+        "brier": 0.154245858978855,
+        "accepted": 4,
+        "review": 84,
+        "false_accepts": 1,
+        "accepted_risk": 0.25,
+        "bad_gaps": 53,
+        "good_sent_to_review": 32,
+        "reliability": [
+          {
+            "bin": "[0.00, 0.33)",
+            "n": 40,
+            "mean_p": 0.12244777139566594,
+            "pass_rate": 0.1
+          },
+          {
+            "bin": "[0.33, 0.67)",
+            "n": 33,
+            "mean_p": 0.5198612865127386,
+            "pass_rate": 0.5757575757575758
+          },
+          {
+            "bin": "[0.67, 1.00]",
+            "n": 15,
+            "mean_p": 0.7728558886060263,
+            "pass_rate": 0.8
+          }
+        ],
+        "threshold": 0.8
+      },
+      "numeric": {
+        "n_gaps": 88,
+        "n_complete": 88,
+        "n_labelled": 88,
+        "prevalence": 0.3977272727272727,
+        "brier": 0.15016814144693164,
+        "accepted": 14,
+        "review": 74,
+        "false_accepts": 2,
+        "accepted_risk": 0.14285714285714285,
+        "bad_gaps": 53,
+        "good_sent_to_review": 23,
+        "reliability": [
+          {
+            "bin": "[0.00, 0.33)",
+            "n": 40,
+            "mean_p": 0.10871464882613177,
+            "pass_rate": 0.1
+          },
+          {
+            "bin": "[0.33, 0.67)",
+            "n": 24,
+            "mean_p": 0.5087704555232533,
+            "pass_rate": 0.5416666666666666
+          },
+          {
+            "bin": "[0.67, 1.00]",
+            "n": 24,
+            "mean_p": 0.8010758170868014,
+            "pass_rate": 0.75
+          }
+        ],
+        "threshold": 0.8
+      },
+      "numeric_gardner": {
+        "n_gaps": 88,
+        "n_complete": 88,
+        "n_labelled": 88,
+        "prevalence": 0.3977272727272727,
+        "brier": 0.15237390087404096,
+        "accepted": 15,
+        "review": 73,
+        "false_accepts": 2,
+        "accepted_risk": 0.13333333333333333,
+        "bad_gaps": 53,
+        "good_sent_to_review": 22,
+        "reliability": [
+          {
+            "bin": "[0.00, 0.33)",
+            "n": 42,
+            "mean_p": 0.1169106245012909,
+            "pass_rate": 0.09523809523809523
+          },
+          {
+            "bin": "[0.33, 0.67)",
+            "n": 23,
+            "mean_p": 0.5365382276668399,
+            "pass_rate": 0.5652173913043478
+          },
+          {
+            "bin": "[0.67, 1.00]",
+            "n": 23,
+            "mean_p": 0.8230656699841059,
+            "pass_rate": 0.782608695652174
+          }
+        ],
+        "threshold": 0.8
+      },
+      "numeric_cal": {
+        "n_gaps": 88,
+        "n_complete": 88,
+        "n_labelled": 88,
+        "prevalence": 0.3977272727272727,
+        "brier": 0.15019373888656648,
+        "accepted": 11,
+        "review": 77,
+        "false_accepts": 1,
+        "accepted_risk": 0.09090909090909091,
+        "bad_gaps": 53,
+        "good_sent_to_review": 25,
+        "reliability": [
+          {
+            "bin": "[0.00, 0.33)",
+            "n": 42,
+            "mean_p": 0.11190084463471772,
+            "pass_rate": 0.09523809523809523
+          },
+          {
+            "bin": "[0.33, 0.67)",
+            "n": 24,
+            "mean_p": 0.5046749836367556,
+            "pass_rate": 0.5416666666666666
+          },
+          {
+            "bin": "[0.67, 1.00]",
+            "n": 22,
+            "mean_p": 0.7873797656492406,
+            "pass_rate": 0.8181818181818182
+          }
+        ],
+        "threshold": 0.8
+      },
+      "numeric_gardner_cal": {
+        "n_gaps": 88,
+        "n_complete": 88,
+        "n_labelled": 88,
+        "prevalence": 0.3977272727272727,
+        "brier": 0.15234523974897407,
+        "accepted": 10,
+        "review": 78,
+        "false_accepts": 1,
+        "accepted_risk": 0.1,
+        "bad_gaps": 53,
+        "good_sent_to_review": 26,
+        "reliability": [
+          {
+            "bin": "[0.00, 0.33)",
+            "n": 43,
+            "mean_p": 0.12005907197882332,
+            "pass_rate": 0.11627906976744186
+          },
+          {
+            "bin": "[0.33, 0.67)",
+            "n": 26,
+            "mean_p": 0.5237311798912916,
+            "pass_rate": 0.5769230769230769
+          },
+          {
+            "bin": "[0.67, 1.00]",
+            "n": 19,
+            "mean_p": 0.8062938385904651,
+            "pass_rate": 0.7894736842105263
+          }
+        ],
+        "threshold": 0.8
+      },
+      "decima_raw": {
+        "n_gaps": 88,
+        "n_complete": 88,
+        "n_labelled": 88,
+        "prevalence": 0.3977272727272727,
+        "brier": 0.2432987870348506,
+        "accepted": 0,
+        "review": 88,
+        "false_accepts": 0,
+        "accepted_risk": null,
+        "bad_gaps": 53,
+        "good_sent_to_review": 35,
+        "reliability": [
+          {
+            "bin": "[0.00, 0.33)",
+            "n": 2,
+            "mean_p": 0.2762250357054785,
+            "pass_rate": 0.0
+          },
+          {
+            "bin": "[0.33, 0.67)",
+            "n": 86,
+            "mean_p": 0.5023570912546509,
+            "pass_rate": 0.4069767441860465
+          },
+          {
+            "bin": "[0.67, 1.00]",
+            "n": 0,
+            "mean_p": null,
+            "pass_rate": null
+          }
+        ],
+        "threshold": 0.8
+      },
+      "decima_cal": {
+        "n_gaps": 88,
+        "n_complete": 88,
+        "n_labelled": 88,
+        "prevalence": 0.3977272727272727,
+        "brier": 0.23205858461518608,
+        "accepted": 0,
+        "review": 88,
+        "false_accepts": 0,
+        "accepted_risk": null,
+        "bad_gaps": 53,
+        "good_sent_to_review": 35,
+        "reliability": [
+          {
+            "bin": "[0.00, 0.33)",
+            "n": 6,
+            "mean_p": 0.25132475043563646,
+            "pass_rate": 0.0
+          },
+          {
+            "bin": "[0.33, 0.67)",
+            "n": 82,
+            "mean_p": 0.38693776137384295,
+            "pass_rate": 0.4268292682926829
+          },
+          {
+            "bin": "[0.67, 1.00]",
+            "n": 0,
+            "mean_p": null,
+            "pass_rate": null
+          }
+        ],
+        "threshold": 0.8
+      }
+    }
+  },
+  "n": {
+    "C": 148,
+    "D": 88
+  },
+  "n_labelled": {
+    "C": 148,
+    "D": 88
+  },
+  "pass_rate": {
+    "C": 0.4864864864864865,
+    "D": 0.3977272727272727
+  }
+}

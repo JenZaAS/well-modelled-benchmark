@@ -1,0 +1,109 @@
+{
+  "frozen_at": "2026-11-20T09:03:25",
+  "identity": {
+    "config_hash": "00bafc81acb0bec0",
+    "code_hash": "a00483f7fc540fff",
+    "input_policy": "target_only: RHOB flanks from task.target_observed; no covariates, calendar or frequency token",
+    "ttm": "ibm-granite/granite-timeseries-ttm-r3@226cdc78f96e1304760ca141bd82d7d91be08bd8",
+    "tspulse": "ibm-granite/granite-timeseries-tspulse-r1@b12164578f7b893ada0028c00d292ba10383d25a",
+    "split_hash": "e418285e7420ef26",
+    "data_hash": "d80d06e1233764cb",
+    "gaps_hash": {
+      "A": "6d99df50fc55c6e0",
+      "B": "b39a709f3d4b40de",
+      "C": "df63cee0cccd81f1",
+      "D": "d7ffb345c97c8ad4"
+    }
+  },
+  "ft_config": {
+    "gaps_per_well_A": 256,
+    "batch": 32,
+    "max_updates": 4000,
+    "max_minutes": 12.0,
+    "eval_every": 100,
+    "patience": 10,
+    "warmup": 100,
+    "min_lr_frac": 0.1,
+    "clip": 1.0,
+    "weight_decay": 0.01,
+    "seed": 2026
+  },
+  "git": {
+    "commit": "dc05f93073d01ee4003afa2f2e6cb282ca7dd26d",
+    "black_physics_dirty": true
+  },
+  "variants": {
+    "black_ttm_r3_ft": {
+      "checkpoint": "checkpoints\\ttm_ft_best.pt",
+      "checkpoint_sha256": "3b0e0b4b59c27cce27f24a19a8d4cc3ef1b0023d29b9b1bd88dd1399bd3a62da",
+      "calibrator": {
+        "arm": "ttm",
+        "k50": 0.2645808830412789,
+        "k90": 0.8543653017296183,
+        "floor": 0.005,
+        "n_wells": 12,
+        "n_samples": 29040,
+        "source": "D"
+      },
+      "meta": {
+        "arm": "ttm",
+        "scope": "head",
+        "lr": 0.001,
+        "best_update": 800,
+        "B_metric": 0.0774114439827178,
+        "step0_metric": 0.07985559767449009,
+        "ft_config": {
+          "gaps_per_well_A": 256,
+          "batch": 32,
+          "max_updates": 4000,
+          "max_minutes": 12.0,
+          "eval_every": 100,
+          "patience": 10,
+          "warmup": 100,
+          "min_lr_frac": 0.1,
+          "clip": 1.0,
+          "weight_decay": 0.01,
+          "seed": 2026
+        },
+        "config_hash": "00bafc81acb0bec0",
+        "weights": "ibm-granite/granite-timeseries-ttm-r3@226cdc78f96e1304760ca141bd82d7d91be08bd8"
+      }
+    },
+    "black_tspulse_ft": {
+      "checkpoint": "checkpoints\\tspulse_ft_best.pt",
+      "checkpoint_sha256": "097b4dabaa08e67f190dbaaec64b0dec2f23fb48ed487bf5733b0f0d5a2af366",
+      "calibrator": {
+        "arm": "tspulse",
+        "k50": 0.04224701326550078,
+        "k90": 0.17219548956700745,
+        "floor": 0.005,
+        "n_wells": 12,
+        "n_samples": 29040,
+        "source": "D"
+      },
+      "meta": {
+        "arm": "tspulse",
+        "scope": "full",
+        "lr": 0.0001,
+        "best_update": 1900,
+        "B_metric": 0.074774389051122,
+        "step0_metric": 0.07891496948161929,
+        "ft_config": {
+          "gaps_per_well_A": 256,
+          "batch": 32,
+          "max_updates": 4000,
+          "max_minutes": 12.0,
+          "eval_every": 100,
+          "patience": 10,
+          "warmup": 100,
+          "min_lr_frac": 0.1,
+          "clip": 1.0,
+          "weight_decay": 0.01,
+          "seed": 2026
+        },
+        "config_hash": "00bafc81acb0bec0",
+        "weights": "ibm-granite/granite-timeseries-tspulse-r1@b12164578f7b893ada0028c00d292ba10383d25a"
+      }
+    }
+  }
+}

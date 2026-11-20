@@ -1,0 +1,58 @@
+{
+  "frozen_at": "2026-11-20T11:51:01",
+  "identity": {
+    "config_hash": "00bafc81acb0bec0",
+    "code_hash": "a00483f7fc540fff",
+    "input_policy": "target_only: RHOB flanks from task.target_observed; no covariates, calendar or frequency token",
+    "ttm": "ibm-granite/granite-timeseries-ttm-r3@226cdc78f96e1304760ca141bd82d7d91be08bd8",
+    "tspulse": "ibm-granite/granite-timeseries-tspulse-r1@b12164578f7b893ada0028c00d292ba10383d25a",
+    "split_hash": "e418285e7420ef26",
+    "data_hash": "d80d06e1233764cb",
+    "gaps_hash": {
+      "A": "6d99df50fc55c6e0",
+      "B": "b39a709f3d4b40de",
+      "C": "df63cee0cccd81f1",
+      "D": "d7ffb345c97c8ad4"
+    }
+  },
+  "checkpoint": "checkpoints\\ttm_twosided_best.pt",
+  "checkpoint_sha256": "5f2671f86e772104dba148167d6ac1d9ad1505b1e6832381164aede03599dc0d",
+  "calibrator": {
+    "arm": "ttm",
+    "k50": 0.25213465760425763,
+    "k90": 0.8378767300068402,
+    "floor": 0.005,
+    "n_wells": 12,
+    "n_samples": 29040,
+    "source": "D"
+  },
+  "meta": {
+    "setting": "heads+bridge",
+    "lr_bridge": 0.001,
+    "lr_heads": 0.001,
+    "best_update": 1200,
+    "B_metric": 0.07610777313993676,
+    "pretrained_B": 0.07985559875214832,
+    "ft_config": {
+      "gaps_per_well_A": 256,
+      "batch": 32,
+      "max_updates": 4000,
+      "max_minutes": 12.0,
+      "eval_every": 100,
+      "patience": 10,
+      "warmup": 100,
+      "min_lr_frac": 0.1,
+      "clip": 1.0,
+      "weight_decay": 0.01,
+      "seed": 2026
+    },
+    "config_hash": "00bafc81acb0bec0",
+    "weights": "ibm-granite/granite-timeseries-ttm-r3@226cdc78f96e1304760ca141bd82d7d91be08bd8",
+    "n_feat": 11,
+    "scale": 0.1
+  },
+  "git": {
+    "commit": "2188cdd6efab62f6fa90f501609e113909571f4c",
+    "black_physics_dirty": true
+  }
+}

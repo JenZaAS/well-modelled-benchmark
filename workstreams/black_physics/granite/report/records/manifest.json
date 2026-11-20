@@ -1,0 +1,141 @@
+{
+  "frozen_at": "2026-11-20T02:07:18",
+  "identity": {
+    "config_hash": "00bafc81acb0bec0",
+    "code_hash": "a00483f7fc540fff",
+    "input_policy": "target_only: RHOB flanks from task.target_observed; no covariates, calendar or frequency token",
+    "ttm": "ibm-granite/granite-timeseries-ttm-r3@226cdc78f96e1304760ca141bd82d7d91be08bd8",
+    "tspulse": "ibm-granite/granite-timeseries-tspulse-r1@b12164578f7b893ada0028c00d292ba10383d25a",
+    "split_hash": "e418285e7420ef26",
+    "data_hash": "d80d06e1233764cb",
+    "gaps_hash": {
+      "A": "6d99df50fc55c6e0",
+      "B": "b39a709f3d4b40de",
+      "C": "df63cee0cccd81f1",
+      "D": "d7ffb345c97c8ad4"
+    }
+  },
+  "config": {
+    "seed": 2026,
+    "gap_length_m": 50.0,
+    "tolerance_g_cm3": 0.05,
+    "accept_threshold": 0.8,
+    "split_sizes": {
+      "A": 54,
+      "B": 12,
+      "C": 20,
+      "D": 12
+    },
+    "gaps_per_well": {
+      "A": 32,
+      "B": 8,
+      "C": 8,
+      "D": 8
+    },
+    "ttm_context": 512,
+    "ttm_horizon": 336,
+    "tspulse_window": 512,
+    "min_flank_samples": 16,
+    "ttm_min_context": 256,
+    "lr": 0.0003,
+    "weight_decay": 0.01,
+    "effective_batch": 8,
+    "max_updates": 300,
+    "max_minutes": 45.0,
+    "eval_every": 25,
+    "patience": 3,
+    "measure_steps": 10,
+    "ttm_scale_floor": 0.005,
+    "l2": 1.0,
+    "recal_l2": 1.0,
+    "prevalence_smoothing": 1.0,
+    "bootstrap": 2000,
+    "target": "RHOB",
+    "test": "rhob_gap50",
+    "dataset": "force2020",
+    "ttm": "ibm-granite/granite-timeseries-ttm-r3@226cdc78f96e1304760ca141bd82d7d91be08bd8",
+    "tspulse": "ibm-granite/granite-timeseries-tspulse-r1@b12164578f7b893ada0028c00d292ba10383d25a",
+    "tsfm": "31fa2f01573341f17e9997280f61481de18ce28c",
+    "decima": "amyrmahdy/decima-small@480c4ea9e54f2946b947fb3ceb3c7cc7ece77522"
+  },
+  "variants": {
+    "black_ttm_r3_frozen": {
+      "arm": "ttm",
+      "tuned": false,
+      "weights": "ibm-granite/granite-timeseries-ttm-r3@226cdc78f96e1304760ca141bd82d7d91be08bd8",
+      "head": null,
+      "head_sha256": null,
+      "calibrator": {
+        "arm": "ttm",
+        "k50": 0.23133015164618995,
+        "k90": 0.796319086641778,
+        "floor": 0.005,
+        "n_wells": 12,
+        "n_samples": 29040,
+        "source": "D"
+      }
+    },
+    "black_ttm_r3_tuned": {
+      "arm": "ttm",
+      "tuned": true,
+      "weights": "ibm-granite/granite-timeseries-ttm-r3@226cdc78f96e1304760ca141bd82d7d91be08bd8",
+      "head": "checkpoints\\ttm_tuned_best.pt",
+      "head_sha256": "dc6a6c2b50cc554346df3bfd86fa68da866dacfeb7c01577bb97fa686dfddb14",
+      "calibrator": {
+        "arm": "ttm",
+        "k50": 0.21623437397267448,
+        "k90": 0.7361533033784626,
+        "floor": 0.005,
+        "n_wells": 12,
+        "n_samples": 29040,
+        "source": "D"
+      }
+    },
+    "black_tspulse_frozen": {
+      "arm": "tspulse",
+      "tuned": false,
+      "weights": "ibm-granite/granite-timeseries-tspulse-r1@b12164578f7b893ada0028c00d292ba10383d25a",
+      "head": null,
+      "head_sha256": null,
+      "calibrator": {
+        "arm": "tspulse",
+        "k50": 0.046953121805417754,
+        "k90": 0.17950938911281075,
+        "floor": 0.005,
+        "n_wells": 12,
+        "n_samples": 29040,
+        "source": "D"
+      }
+    },
+    "black_tspulse_tuned": {
+      "arm": "tspulse",
+      "tuned": true,
+      "weights": "ibm-granite/granite-timeseries-tspulse-r1@b12164578f7b893ada0028c00d292ba10383d25a",
+      "head": "checkpoints\\tspulse_tuned_best.pt",
+      "head_sha256": "2dea53d81f97cb8c09a16ffb10989f61e81ccc1f9b0573363d6fddc896e0cb2e",
+      "calibrator": {
+        "arm": "tspulse",
+        "k50": 0.047018726652336446,
+        "k90": 0.17814528945411504,
+        "floor": 0.005,
+        "n_wells": 12,
+        "n_samples": 29040,
+        "source": "D"
+      }
+    }
+  },
+  "selected": "black_tspulse_tuned",
+  "decision_file": "decision.json",
+  "versions": {
+    "torch": "2.10.0+cu126",
+    "cuda": "12.6",
+    "device": "Quadro T1000 with Max-Q Design",
+    "transformers": "4.57.6",
+    "granite-tsfm": "0.3.13.dev6+g31fa2f015",
+    "numpy": "2.5.5"
+  },
+  "git": {
+    "commit": "370af9d36cd7c1c5287f8503cfd4132e28d6c50b",
+    "black_physics_dirty": true
+  }
+}

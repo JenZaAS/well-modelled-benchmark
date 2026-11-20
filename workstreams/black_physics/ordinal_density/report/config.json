@@ -1,0 +1,358 @@
+{
+ "run_id": "rhob_gap50-5a53a2cd66",
+ "core": {
+  "test": "rhob_gap50",
+  "models": [
+   "red_tspulse_finetune",
+   "red_timestral"
+  ],
+  "groups": [
+   "C",
+   "D",
+   "test"
+  ],
+  "seed": 2026,
+  "bins": {
+   "edges": [
+    1.6,
+    1.7,
+    1.8,
+    1.9,
+    2.0,
+    2.1,
+    2.2,
+    2.3,
+    2.4,
+    2.5,
+    2.6,
+    2.7,
+    2.8,
+    2.9
+   ],
+   "n_bins": 15,
+   "edge_rule": "edge value goes to the higher bin",
+   "tails": "C labels inside each open tail; one-bin extension if empty",
+   "event_edge": 2.4
+  },
+  "heads": {
+   "empirical_pooled": {
+    "kind": "empirical",
+    "by_flank": false
+   },
+   "empirical_flank": {
+    "kind": "empirical",
+    "by_flank": true
+   },
+   "numeric": {
+    "kind": "softmax",
+    "sonic": false,
+    "products": false
+   },
+   "numeric_sonic": {
+    "kind": "softmax",
+    "sonic": true,
+    "products": false
+   }
+  },
+  "hyper": {
+   "smooth": 0.0001,
+   "l2_grid": [
+    0.001,
+    0.0001,
+    1e-05
+   ],
+   "l2_selection": "grouped 4-fold CV over C wells (sorted, round-robin), held-out RPS",
+   "maxiter": 3000,
+   "temperature_bounds": [
+    0.2,
+    10.0
+   ],
+   "flank_context": 512,
+   "weights": "equal per well, per gap within well, per depth within gap"
+  },
+  "calibration": "one temperature per head fitted on D (well-weighted log loss); D scores use leave-one-well-out temperatures",
+  "decima": {
+   "repo": "amyrmahdy/decima-small",
+   "revision": "480c4ea9e54f2946b947fb3ceb3c7cc7ece77522",
+   "precision": "int8",
+   "kind": "score",
+   "question": "At the marked depth, which range contains the measured bulk density?",
+   "choices": [
+    "below 1.60 g/cm3",
+    "1.60 to below 1.70 g/cm3",
+    "1.70 to below 1.80 g/cm3",
+    "1.80 to below 1.90 g/cm3",
+    "1.90 to below 2.00 g/cm3",
+    "2.00 to below 2.10 g/cm3",
+    "2.10 to below 2.20 g/cm3",
+    "2.20 to below 2.30 g/cm3",
+    "2.30 to below 2.40 g/cm3",
+    "2.40 to below 2.50 g/cm3",
+    "2.50 to below 2.60 g/cm3",
+    "2.60 to below 2.70 g/cm3",
+    "2.70 to below 2.80 g/cm3",
+    "2.80 to below 2.90 g/cm3",
+    "2.90 g/cm3 or higher"
+   ],
+   "per_gap": 8,
+   "groups": [
+    "D",
+    "test"
+   ]
+  },
+  "cache_sha256": {
+   "red_tspulse_finetune": "ccd722beff8083905bbd4c083cef445b81d727e4d0389744dc7ac8d3e46077b9",
+   "red_timestral": "23da2042fb40f1982d349e77156c727a97ade8c4d79dc26ac15bde64b3f60612"
+  }
+ },
+ "stages": {
+  "prepare": {
+   "at": "2026-11-20T11:51:11",
+   "gap_hash": "416bf459a7924cd0a6f6be015c93cfd625bff902f434136e9c9e05d1f135d6a7",
+   "models": {
+    "red_tspulse_finetune": {
+     "cache": "<cache_dir>\\work\\black_granite\\decision_any\\preds_black_tspulse_ft.npz",
+     "cache_sha256": "ccd722beff8083905bbd4c083cef445b81d727e4d0389744dc7ac8d3e46077b9",
+     "band": "P05-P95",
+     "band_level": 0.9,
+     "use_native_width": false,
+     "provenance": {
+      "checkpoint": "checkpoints\\tspulse_ft_best.pt",
+      "checkpoint_sha256": "097b4dabaa08e67f190dbaaec64b0dec2f23fb48ed487bf5733b0f0d5a2af366",
+      "cache_provenance": {
+       "source": "frozen fine-tune",
+       "manifest_frozen_at": "2026-11-20T09:03:25",
+       "checkpoint": "checkpoints\\tspulse_ft_best.pt",
+       "checkpoint_sha256": "097b4dabaa08e67f190dbaaec64b0dec2f23fb48ed487bf5733b0f0d5a2af366",
+       "scope": "full",
+       "lr": 0.0001,
+       "calibrator": {
+        "arm": "tspulse",
+        "k50": 0.04224701326550078,
+        "k90": 0.17219548956700745,
+        "floor": 0.005,
+        "n_wells": 12,
+        "n_samples": 29040,
+        "source": "D"
+       },
+       "config_hash": "00bafc81acb0bec0",
+       "code_hash": "a00483f7fc540fff",
+       "input_policy": "target_only: RHOB flanks from task.target_observed; no covariates, calendar or frequency token",
+       "ttm": "ibm-granite/granite-timeseries-ttm-r3@226cdc78f96e1304760ca141bd82d7d91be08bd8",
+       "tspulse": "ibm-granite/granite-timeseries-tspulse-r1@b12164578f7b893ada0028c00d292ba10383d25a",
+       "split_hash": "e418285e7420ef26",
+       "data_hash": "d80d06e1233764cb",
+       "gaps_hash": {
+        "A": "6d99df50fc55c6e0",
+        "B": "b39a709f3d4b40de",
+        "C": "df63cee0cccd81f1",
+        "D": "d7ffb345c97c8ad4"
+       }
+      },
+      "verified_against": "<cache_dir>\\work\\black_granite\\manifest_ft.json"
+     },
+     "inputs": "density only (RHOB flanks)",
+     "abstentions": {
+      "C": 0,
+      "D": 0,
+      "test": 0
+     },
+     "dtc_support": {
+      "C": 0.9459459459459459,
+      "D": 0.9567148760330578,
+      "test": 1.0
+     },
+     "one_sided_depths": {
+      "C": 0,
+      "D": 0,
+      "test": 0
+     }
+    },
+    "red_timestral": {
+     "cache": "<cache_dir>\\work\\black_granite\\decision_any\\preds_red_timestral.npz",
+     "cache_sha256": "23da2042fb40f1982d349e77156c727a97ade8c4d79dc26ac15bde64b3f60612",
+     "band": "P10-P90",
+     "band_level": 0.8,
+     "use_native_width": true,
+     "provenance": {
+      "checkpoint": null,
+      "checkpoint_sha256": null,
+      "cache_provenance": {}
+     },
+     "inputs": "RHOB flanks + other logs, also inside the gap",
+     "abstentions": {
+      "C": 0,
+      "D": 0,
+      "test": 0
+     },
+     "dtc_support": {
+      "C": 0.9459459459459459,
+      "D": 0.9567148760330578,
+      "test": 1.0
+     },
+     "one_sided_depths": {
+      "C": 0,
+      "D": 0,
+      "test": 0
+     }
+    }
+   },
+   "C": {
+    "wells": 20,
+    "gaps": 148,
+    "depths": 48840,
+    "wells_list_sha": "2c89016b49c2f726"
+   },
+   "D": {
+    "wells": 12,
+    "gaps": 88,
+    "depths": 29040,
+    "wells_list_sha": "257d3583b37b49b1"
+   },
+   "test": {
+    "wells": 20,
+    "gaps": 20,
+    "depths": 6600,
+    "wells_list_sha": "ee6470163c4484f9"
+   }
+  },
+  "fit": {
+   "at": "2026-11-20T11:50:49",
+   "models": {
+    "red_tspulse_finetune": {
+     "tails": {
+      "low_extended": false,
+      "high_extended": false,
+      "low_n": 50,
+      "high_n": 22
+     },
+     "timing": {
+      "empirical_pooled": {
+       "fit_s": 0.003,
+       "predict_ms_per_depth": 0.0009760886640967352
+      },
+      "empirical_flank": {
+       "fit_s": 0.01,
+       "predict_ms_per_depth": 0.0021685578009243284
+      },
+      "numeric": {
+       "fit_s": 204.349,
+       "predict_ms_per_depth": 0.0007133389446585451
+      },
+      "numeric_sonic": {
+       "fit_s": 254.895,
+       "predict_ms_per_depth": 0.0008312794623565133
+      }
+     },
+     "temperatures": {
+      "empirical_pooled": 1.1953967004261714,
+      "empirical_flank": 1.1419319755156803,
+      "numeric": 1.554770417221388,
+      "numeric_sonic": 1.5453159503991096
+     },
+     "C_rows": 48840,
+     "l2_cv": {
+      "numeric": {
+       "chosen_l2": 1e-05,
+       "cv_rps": {
+        "0.001": 0.035594716938156246,
+        "0.0001": 0.03376245917086733,
+        "1e-05": 0.03366471677632247
+       }
+      },
+      "numeric_sonic": {
+       "chosen_l2": 1e-05,
+       "cv_rps": {
+        "0.001": 0.035905453826625126,
+        "0.0001": 0.03391235787171008,
+        "1e-05": 0.03340493754833673
+       }
+      }
+     }
+    },
+    "red_timestral": {
+     "tails": {
+      "low_extended": false,
+      "high_extended": false,
+      "low_n": 50,
+      "high_n": 22
+     },
+     "timing": {
+      "empirical_pooled": {
+       "fit_s": 0.003,
+       "predict_ms_per_depth": 0.00109219696991016
+      },
+      "empirical_flank": {
+       "fit_s": 0.005,
+       "predict_ms_per_depth": 0.002071958473715283
+      },
+      "numeric": {
+       "fit_s": 187.798,
+       "predict_ms_per_depth": 0.0005651430974089395
+      },
+      "numeric_sonic": {
+       "fit_s": 222.387,
+       "predict_ms_per_depth": 0.0006258782267457609
+      }
+     },
+     "temperatures": {
+      "empirical_pooled": 1.09028754507412,
+      "empirical_flank": 1.0465744225259683,
+      "numeric": 1.3619629628345775,
+      "numeric_sonic": 1.4283834630245205
+     },
+     "C_rows": 48840,
+     "l2_cv": {
+      "numeric": {
+       "chosen_l2": 1e-05,
+       "cv_rps": {
+        "0.001": 0.0326672223633168,
+        "0.0001": 0.03013671573177627,
+        "1e-05": 0.02937188912946324
+       }
+      },
+      "numeric_sonic": {
+       "chosen_l2": 1e-05,
+       "cv_rps": {
+        "0.001": 0.03289666346959678,
+        "0.0001": 0.030667451387238538,
+        "1e-05": 0.030060674813468614
+       }
+      }
+     }
+    }
+   }
+  },
+  "score": {
+   "at": "2026-11-20T12:00:48",
+   "include_decima": true,
+   "selected": {
+    "red_tspulse_finetune": "numeric_sonic|raw",
+    "red_timestral": "empirical_flank|raw"
+   }
+  },
+  "plot": {
+   "at": "2026-11-20T12:01:00",
+   "figures": [
+    "fig_scoreboard.png",
+    "fig_reliability_below_2.40.png",
+    "fig_pitch_frame1.png",
+    "fig_pitch_frame2.png"
+   ]
+  },
+  "scales": {
+   "at": "2026-11-20T11:53:55",
+   "broad_from": "red_timestral",
+   "fine_from": "red_timestral",
+   "advance_to_test": false
+  },
+  "freeze": {
+   "at": "2026-11-20T12:51:35",
+   "frozen": {
+    "red_tspulse_finetune": "<cache_dir>\\work\\black_ordinal_density\\frozen\\red_tspulse_finetune.json",
+    "red_timestral": "<cache_dir>\\work\\black_ordinal_density\\frozen\\red_timestral.json"
+   },
+   "lock": "C:\\Hackathons\\FORCE\\wmb-granite\\workstreams\\black_physics\\models\\ordinal_density\\frozen_heads.yaml"
+  }
+ }
+}

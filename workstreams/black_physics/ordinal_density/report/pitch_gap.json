@@ -1,0 +1,17 @@
+{
+ "rule": "median flank variability among two-sided, fully predicted test gaps (lower median; ties by well)",
+ "eligible": 20,
+ "flank_var": 0.042954123578808595,
+ "well": "25/5-3",
+ "gap_id": "25/5-3|5126:5456",
+ "marked_depth_m": 1957.9071897,
+ "heads": {
+  "red_tspulse_finetune": "numeric_sonic|raw",
+  "red_timestral": "empirical_flank|raw"
+ },
+ "p_below_2.40_marked": {
+  "red_tspulse_finetune": 0.9911923438101203,
+  "red_timestral": 0.9940479152379016
+ },
+ "measured_marked": 2.1622874737
+}
