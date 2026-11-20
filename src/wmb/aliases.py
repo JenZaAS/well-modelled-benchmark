@@ -11,12 +11,17 @@ MODEL_ALIASES = {
     "white_moment": "red_moment",
     # Granite density-gap foundation-model rows, moved from black_physics to red_foundation_models
     "black_ttm_r3_frozen": "red_ttm_r3_frozen",
-    "black_ttm_r3_tuned": "red_ttm_r3_tuned",
-    "black_ttm_r3_ft": "red_ttm_r3_ft",
+    "black_ttm_r3_tuned": "red_ttm_r3_quicktune",
+    "black_ttm_r3_ft": "red_ttm_r3_finetune",
     "black_tspulse_frozen": "red_tspulse_frozen",
-    "black_tspulse_tuned": "red_tspulse_tuned",
-    "black_tspulse_ft": "red_tspulse_ft",
+    "black_tspulse_tuned": "red_tspulse_quicktune",
+    "black_tspulse_ft": "red_tspulse_finetune",
     "black_timestral_target_only": "red_timestral_target_only",
+    # ... then renamed in red: _tuned (the small fine-tune) -> _quicktune, _ft (the stronger one) -> _finetune
+    "red_ttm_r3_tuned": "red_ttm_r3_quicktune",
+    "red_ttm_r3_ft": "red_ttm_r3_finetune",
+    "red_tspulse_tuned": "red_tspulse_quicktune",
+    "red_tspulse_ft": "red_tspulse_finetune",
 }
 WORKSTREAM_ALIASES = {
     "white_finetuned_tsfm": "red_foundation_models",

@@ -19,16 +19,16 @@ On the station test `rhob_gap50` (one hidden 50 m gap in each of the 20 FORCE 20
 
 - **Best row: Timestral-5M + other logs** (frozen, red's adapter): mean per-well MAE 0.033 g/cm³, against 0.061
   for the straight line. It beats the line in 18 of 20 wells, and 16 of 20 gaps are within 0.05.
-  - It also beats TTM-R3 tuned in 16 of 20 wells: Δ +0.014 [+0.006, +0.023] in Timestral's favour.
+  - It also beats TTM-R3 quick-tune in 16 of 20 wells: Δ +0.014 [+0.006, +0.023] in Timestral's favour.
 - **The other logs are what make the difference.** Timestral target-only gets 0.047, a tie with the density-only
-  Granite rows: TTM tuned − Timestral target-only is Δ +0.0007 [−0.0023, +0.0045]. Adding the other logs is worth
+  Granite rows: TTM quick-tune − Timestral target-only is Δ +0.0007 [−0.0023, +0.0045]. Adding the other logs is worth
   Δ −0.0135 [−0.0221, −0.0062].
 - **Timestral's intervals are overconfident.** Its nominal 90 % band covers 46 % of hidden samples. The
   D-calibrated Granite bands cover 96 %, but are 5–7× wider (0.30–0.36 against 0.055 g/cm³).
-- **Selected Granite row.** TSPulse tuned was chosen in advance on the B wells. Its mean per-well MAE is 0.049 g/cm³.
+- **Selected Granite row.** TSPulse quick-tune was chosen in advance on the B wells. Its mean per-well MAE is 0.049 g/cm³.
   - The straight line gets 0.061 and fixed Gardner from sonic gets 0.100.
   - It beats the line in 15 of 20 wells. The paired bootstrap Δ is −0.012 [−0.027, −0.000].
-- **Other Granite rows.** TTM-R3 tuned did best on test at 0.0475. Its difference from TSPulse tuned is within
+- **Other Granite rows.** TTM-R3 quick-tune did best on test at 0.0475. Its difference from TSPulse quick-tune is within
   noise: Δ −0.002 [−0.007, +0.003].
 - **Fine-tuning: the brief's run barely trained. A proper run helps a little.**
   - The brief's head-only fine-tune stopped after 75–125 updates, in under 5 seconds. The stopping rule (3 checks
@@ -47,6 +47,20 @@ On the station test `rhob_gap50` (one hidden 50 m gap in each of the 20 FORCE 20
     level with Timestral target-only (Δ −0.0009 [−0.0040, +0.0022]).
   - **TTM, prediction heads** (1.08 M weights, 1,800 updates, 3.5 min) is credibly better on B (Δ −0.0024) but
     not on test: 0.0471, Δ −0.0010 [−0.0046, +0.0028]. Training the whole TTM did not beat training its heads on B.
+  - **Why TTM gains so little.** The way TTM fills a gap limits it, not how much of it is trained.
+    - TTM is a forecaster. It fills a gap with two separate one-sided forecasts, down from above and up from
+      below, and blends them by distance. Neither forecast sees the other side, and the blend is fixed.
+    - Training can make each forecast a better extrapolator. It cannot teach TTM to connect the two flanks.
+      TSPulse sees both flanks in one window and fills the hole jointly, so training teaches it the task itself.
+    - Evidence from the 108 D and test gaps, which were not used to pick the checkpoint:
+      - Where TTM had both flanks (92 gaps), the fine-tune changed the error by +0.5 %, i.e. nothing.
+      - Where it had to extrapolate from one side (16 gaps), it cut the error by 7 %.
+      - TSPulse improved by 7 % on its two-sided gaps.
+    - The three TTM settings all levelled off at the same B gain, about 3 %, whether 1.1 M or all 3.2 M weights
+      were trained. The B error levelled off by update 800–1000, and with the highest learning rate it then
+      rose. Part of that 3 % is luck from picking the checkpoint on B: D shows 1.2 % and test 2.0 %.
+    - A fix would let TTM see both flanks: a learned blend of the two forecasts, or the other flank as an
+      exogenous input. That was not tried.
   - Neither comes close to Timestral with the other logs (0.033). Fine-tuning buys about 0.003; the other logs buy
     about 0.014.
 - **Two-line physics baseline.** Gardner + flank residual gets 0.056.
@@ -86,7 +100,7 @@ it goes to review. The rule never sees the hidden values. It reads only these fe
 - Two recalibration numbers (intercept and slope) are then fitted on the D wells (12 wells, 88 gaps).
 - The 20 test gaps are used once.
 
-On the selected row (TSPulse tuned) the numeric rule leans on two features (standardised coefficients):
+On the selected row (TSPulse quick-tune) the numeric rule leans on two features (standardised coefficients):
 - flank variability −1.8;
 - flank-median difference −1.4.
 
@@ -107,14 +121,14 @@ fitted on C was already calibrated on wells it had not seen.
   - **Timestral + logs is the easiest model to trust as well as the most accurate.** 80 % of its test gaps are
     within tolerance. Its rule accepts 31 of 88 D gaps (4 false) and 10 of 20 test gaps (1 false). On D that is
     about twice what any density-only model's rule accepts (at most 15).
-  - Among density-only rows, the TTM head fine-tune has the most useful rule: 8 of 20 test gaps accepted with
+  - Among density-only rows, the TTM fine-tune (heads) has the most useful rule: 8 of 20 test gaps accepted with
     0 false, Brier 0.120 against a base rate of 0.269.
 - **The other logs help the trust rule too.** Adding the two GR features lowers the test Brier for all ten models,
   by 0.014–0.041.
   - It raises test AUC for all ten, and D AUC for seven (at two decimals).
   - Timestral + logs, which already reads GR for its fill, still gains: Brier 0.159 → 0.118, 10 of 20 test gaps
     accepted with 0 false, and 25 of 88 D gaps with 2 false.
-  - TTM head fine-tune with GR: test AUC 0.96, Brier 0.090.
+  - TTM fine-tune (heads) with GR: test AUC 0.96, Brier 0.090.
   - Only two features from one other log were tried, defined before any results were seen. They were put on a log
     scale after one D gap with an extreme GR spread broke the fit; that change was made before any scores were
     compared.
@@ -161,8 +175,8 @@ From the repository root, with the Granite environment's Python (see *Environmen
 python -m workstreams.black_physics.granite fetch        # pinned TTM-R3 and TSPulse snapshots into the HF cache
 python -m workstreams.black_physics.granite all          # prepare, train, select, calibrate, decide (+ freeze)
 python -m benchmark.check_test rhob_gap50
-WMB_RED_MODELS=granite python -m benchmark.check_model red_ttm_r3_tuned        # likewise for the other five red IDs
-WMB_RED_MODELS=granite WMB_BLACK_GRANITE=1 python -m benchmark.run --model red_ttm_r3_frozen,red_ttm_r3_tuned,red_ttm_r3_ft,red_tspulse_frozen,red_tspulse_tuned,red_tspulse_ft,black_linear_gap,black_gardner_flank_resid,black_gardner_fixed --test rhob_gap50 --rerun
+WMB_RED_MODELS=granite python -m benchmark.check_model red_ttm_r3_quicktune        # likewise for the other five red IDs
+WMB_RED_MODELS=granite WMB_BLACK_GRANITE=1 python -m benchmark.run --model red_ttm_r3_frozen,red_ttm_r3_quicktune,red_ttm_r3_finetune,red_tspulse_frozen,red_tspulse_quicktune,red_tspulse_finetune,black_linear_gap,black_gardner_flank_resid,black_gardner_fixed --test rhob_gap50 --rerun
 python -m workstreams.black_physics.granite final        # sealed test gaps once: keyed predictions + decision sidecar
 # Timestral environment (see Environments), HF_HOME=<cache_dir>/hf, HF_HUB_OFFLINE=1:
 WMB_RED_MODELS=timestral,timestral_target_only <timestral-python> -m benchmark.run --model red_timestral,red_timestral_target_only --test rhob_gap50 --rerun
@@ -182,17 +196,21 @@ baselines are registered here in black.
 
 | Station ID | ID inside this experiment's artifacts | Opt-in |
 |---|---|---|
-| `red_ttm_r3_frozen`, `red_ttm_r3_tuned`, `red_ttm_r3_ft` | `black_ttm_r3_frozen`, `black_ttm_r3_tuned`, `black_ttm_r3_ft` | `WMB_RED_MODELS=granite` |
-| `red_tspulse_frozen`, `red_tspulse_tuned`, `red_tspulse_ft` | `black_tspulse_frozen`, `black_tspulse_tuned`, `black_tspulse_ft` | `WMB_RED_MODELS=granite` |
+| `red_ttm_r3_frozen`, `red_ttm_r3_quicktune`, `red_ttm_r3_finetune` | `black_ttm_r3_frozen`, `black_ttm_r3_tuned`, `black_ttm_r3_ft` | `WMB_RED_MODELS=granite` |
+| `red_tspulse_frozen`, `red_tspulse_quicktune`, `red_tspulse_finetune` | `black_tspulse_frozen`, `black_tspulse_tuned`, `black_tspulse_ft` | `WMB_RED_MODELS=granite` |
 | `red_timestral_target_only` | `black_timestral_target_only` | `WMB_RED_MODELS=timestral_target_only` |
 | `black_linear_gap`, `black_gardner_flank_resid` | same | `WMB_BLACK_GRANITE=1` |
 
-The old station IDs are aliases (`src/wmb/aliases.py`), so results written before the move display under the
-new ones. The old flags `WMB_BLACK_GRANITE` and `WMB_BLACK_TIMESTRAL` also still enable the red rows. Tables in
-[RESULTS.md](RESULTS.md) use the experiment's IDs.
+`_quicktune` is the brief's small fine-tune (a few seconds). `_finetune` is the stronger one
+([finetune.py](finetune.py)).
+- The old station IDs, including `red_*_tuned` and `red_*_ft`, are aliases (`src/wmb/aliases.py`), so results
+  written before the renames display under the new ones.
+- The old flags `WMB_BLACK_GRANITE` and `WMB_BLACK_TIMESTRAL` also still enable the red rows.
+- [RESULTS.md](RESULTS.md) labels the rows in words, e.g. "TSPulse quick-tune" or "TSPulse fine-tune (whole
+  model)".
 
 **In the viewer.** All eleven rows of this experiment are station contenders. The two fine-tuned rows
-(`red_ttm_r3_ft`, `red_tspulse_ft`) load their checkpoint and D bands through `manifest_ft.json`, which also
+(`red_ttm_r3_finetune`, `red_tspulse_finetune`) load their checkpoint and D bands through `manifest_ft.json`, which also
 checks each checkpoint's SHA-256. After the `benchmark.run` lines above, `python -m wmb.viewer --launch` shows
 them under the `rhob_gap50` test, with filled curves and bands, from any environment.
 - Live prediction inside the viewer runs the model in the viewer's own process. For that, launch it from the
@@ -217,7 +235,7 @@ run takes about 3.5 minutes on CPU, and `timestral` about 2 minutes.
 | Timestral-5M | Frozen `mistralai/Timestral-5M@bdd20cf`, red's `DepthForecaster` unchanged: ≤ 256-sample flanks, rollout in blocks of 32, deeper flank reversed, inverse-distance blend. `red_timestral` gets every log the test offers as covariates (GR, RDEP, RMED, CALI, DTC on all 20 gaps; PEF 19, NPHI 17, DTS 13). `black_timestral_target_only` passes empty covariate dictionaries. Bands are nominal (Gaussian from its P10/P90), not D-calibrated. |
 | Fine-tuning | Head only. AdamW, lr 3e-4, weight decay 0.01, effective batch 8 (microbatch picked by 10 measured steps), ≤ 300 updates or 45 min, evaluated on B every 25 updates, patience 3. Each run starts with an overfit-and-reload check: 2 examples, loss down, and the reload is exact. TTM uses pinball loss over 9 quantiles, with two directed examples per A gap. TSPulse uses MAE on the hidden samples. |
 | Stronger fine-tune (extension) | [finetune.py](finetune.py). Up to 256 gaps per A well (13,824). TTM: pinball on the blended two-sided output; scope head (lr 1e-3) or full (1e-4, 3e-5). TSPulse: MAE on hidden samples; scope decoder (1e-4) or full (1e-4, 3e-5). AdamW, wd 0.01, batch 32, 100-update warm-up then cosine to 10 %, clip 1.0, eval on B every 100 updates, patience 10, ≤ 4,000 updates or 12 min. Best B evaluation wins; bands refitted on D. Picked: TTM head, lr 1e-3 (B 0.0774); TSPulse full, lr 1e-4 (B 0.0748). |
-| Selection | One row among the four: lowest B mean well-level MAE with full support. Result: TSPulse tuned (0.07885). The ft rows came later and do not change it. |
+| Selection | One row among the four: lowest B mean well-level MAE with full support. Result: TSPulse quick-tune (0.07885). The fine-tune rows came later and do not change it. |
 | Bands | Fitted on D. Width = k·s, where s is the local TTM P90 − P10 (floor 0.005) or 1 for TSPulse; k is an equal-well-weighted quantile of \|error\|/s, giving P05/P95 and P25/P75. Raw TTM 80 % coverage on D is recorded: 0.78 frozen, 0.80 tuned. |
 | Decision label | Gap MAE ≤ 0.05 g/cm³ on a complete gap. |
 | Decision features | Width proxy, flank-median difference, predicted range, context lengths, plus Gardner disagreement and DTC fraction. The features are written as a deterministic text state with no well name or outcome ([features.py](features.py)). |
@@ -235,22 +253,23 @@ run takes about 3.5 minutes on CPU, and `timestral` about 2 minutes.
      Otherwise that side is dropped (one-sided forecast) or the straight line is used.
    - On A, the worst gap MAE fell from 14.8 to 0.30 g/cm³.
    - The broken B number was seen before the rule was set. B was not used to choose the 256 value.
-2. **Tuned checkpoint.** The tuned row uses the best evaluation after at least one update, even when step 0 scored
-   better on B. That happened for TTM: step 0 got 0.07986 and the best tuned head 0.08042, at update 50.
-   - So TTM tuned is a genuinely tuned head, and the four-row selection on B still decides which row is used.
+2. **Quick-tune checkpoint.** The quick-tune row uses the best evaluation after at least one update, even when step 0 scored
+   better on B. That happened for TTM: step 0 got 0.07986 and the best quick-tuned head 0.08042, at update 50.
+   - So TTM quick-tune is a genuinely tuned head, and the four-row selection on B still decides which row is used.
    - `train_ttm.json` records `step0_won`.
-3. **The brief's fine-tune barely ran (read this before quoting "tuned" rows).** Patience stopped TTM at 75 updates
+3. **The brief's fine-tune barely ran (read this before quoting the quick-tune rows).** Patience stopped TTM at 75 updates
    and TSPulse at 125, in under 5 s each. That is about 20 % of one pass over the TTM training examples. The
    45-minute budget was never used.
    - Updates cost 0.02–0.06 s, so compute was never the limit. The patience of 3 checks, 25 updates apart,
      stopped on B noise of about ±0.0005.
    - TTM-R3's prediction heads hold 1.08 M of 3.16 M parameters. The TSPulse time head holds only 200.
-   - The "tuned" rows are kept as the brief's matched pair. The stronger fine-tune (*ft* rows,
+   - The quick-tune rows (`_quicktune`; `*_tuned` inside the experiment's artifacts) are kept as the brief's
+     matched pair. The stronger fine-tune (`_finetune` rows; `*_ft` inside the artifacts,
      [finetune.py](finetune.py)) is the real answer to "does FORCE training help?".
-   - The ft rows were designed after the head-only test results were known. All their choices (scope, learning
+   - The fine-tune rows were designed after the head-only test results were known. All their choices (scope, learning
      rate, checkpoint, bands) use A, B and D only. They were scored on test once.
-   - They are not registered station contenders yet: the pipeline scores them with the same reconstructor code
-     as the station rows, which matches the station to 2e-8 elsewhere.
+   - They are registered station contenders (`red_ttm_r3_finetune`, `red_tspulse_finetune`) and score the same
+     on the station as in the pipeline (0.0471 and 0.0460).
 4. **Headline decision method.** The headline rule is the one with the lowest D Brier ([report.py](report.py)
    `headline_method`); it is the numeric logistic.
    - This rule uses development data only, but it was written after `final` had run. All eight methods are
@@ -279,7 +298,7 @@ share them deliberately.
 | `figures/leaderboard.png` | Mean per-well MAE for all nine rows, with bootstrap CIs | One-glance result |
 | `figures/paired_timestral.png` | Per well: Timestral with − without the other logs; density-only TTM − Timestral; TTM − Timestral with logs | "Is it the model or the inputs?" |
 | `figures/gallery_test_gaps.png` | All 20 gaps sorted by error, with accept/review marks, plus the TTM and Timestral + logs fills | Backup slide; credibility |
-| `figures/paired_deltas.png` | Per-well tuned − frozen (both arms) for the brief's head-only run, and selected − line | "Did the brief's fine-tune matter?" (no) |
+| `figures/paired_deltas.png` | Per-well quick-tune − frozen (both arms) for the brief's head-only run, and selected − line | "Did the brief's fine-tune matter?" (no) |
 | `figures/finetune_sweep.png` | B error over training for every setting of the stronger fine-tune, against pretrained and the brief's run | "What does real fine-tuning do?" |
 | `figures/paired_finetune.png` | Per well: stronger fine-tune − pretrained, both models | "Did it help on unseen wells?" |
 | `figures/decisions_risk_reliability.png` | Risk–coverage curves and 3-bin reliability for the rules and Decima | The decision story |
@@ -293,7 +312,7 @@ share them deliberately.
 | `../final/decision_sidecar.json` | Small keyed sidecar: one row per test gap, with gap ID, checkpoint, features, text state, p_pass for every method, MAE and label | Joining with the viewer |
 | `../final/predictions.npz` | Full-precision keyed predictions: `<row>\|<gap_id>\|p50/p05/p25/p75/p95/raw_lo/raw_hi`, plus `truth\|` and `depth\|` | Re-scoring |
 | `../final/timestral.json`, `timestral_predictions.npz` | The same, for the two Timestral rows (timing, covariates offered, package versions) | Re-scoring |
-| `../final/finetune.json`, `finetune_predictions.npz`; `../finetune_<arm>.json` | The same for the two ft rows, plus every sweep run's history, D calibrators and the checkpoint hashes | Re-scoring, audit |
+| `../final/finetune.json`, `finetune_predictions.npz`; `../finetune_<arm>.json` | The same for the two fine-tune rows, plus every sweep run's history, D calibrators and the checkpoint hashes | Re-scoring, audit |
 
 The 30-second text is at the top of [RESULTS.md](RESULTS.md); `report` regenerates it from the numbers.
 

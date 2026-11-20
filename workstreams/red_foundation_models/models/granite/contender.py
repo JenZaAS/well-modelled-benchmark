@@ -1,8 +1,9 @@
 """IBM Granite rows of the 50 m density-gap experiment (opt-in: WMB_RED_MODELS=granite; Granite environment).
 
-    red_ttm_r3_frozen / red_ttm_r3_tuned       IBM TTM-R3 lite, two directional forecasts blended by distance
-    red_tspulse_frozen / red_tspulse_tuned     IBM TSPulse R1, masked reconstruction of a centred window
-    red_ttm_r3_ft / red_tspulse_ft             the same models after the stronger fine-tune
+    red_ttm_r3_frozen, red_tspulse_frozen          pretrained weights (TTM-R3 lite: two directional forecasts
+                                                   blended by distance; TSPulse R1: masked reconstruction)
+    red_ttm_r3_quicktune, red_tspulse_quicktune    the brief's small fine-tune (output heads, a few seconds)
+    red_ttm_r3_finetune, red_tspulse_finetune      the stronger fine-tune (granite/finetune.py)
 
 Target-only: the rows read only `Task.target_observed` (RHOB with the hidden interval removed) and return
 full-depth arrays that are NaN outside `Task.predict_mask`. Whole-curve tasks have no RHOB context: they abstain.
@@ -87,10 +88,10 @@ class TTMR3Frozen(_GraniteGap):
     name, arm, tuned = "red_ttm_r3_frozen", "ttm", False
 
 
-class TTMR3Tuned(_GraniteGap):
+class TTMR3QuickTune(_GraniteGap):
     """TTM-R3 lite with its trend and residual prediction heads fine-tuned on FORCE fitting wells (A)."""
     row_id = "black_ttm_r3_tuned"
-    name, arm, tuned = "red_ttm_r3_tuned", "ttm", True
+    name, arm, tuned = "red_ttm_r3_quicktune", "ttm", True
 
 
 class TSPulseFrozen(_GraniteGap):
@@ -99,10 +100,10 @@ class TSPulseFrozen(_GraniteGap):
     name, arm, tuned = "red_tspulse_frozen", "tspulse", False
 
 
-class TSPulseTuned(_GraniteGap):
+class TSPulseQuickTune(_GraniteGap):
     """TSPulse R1 with its time-domain reconstruction head fine-tuned on FORCE fitting wells (A)."""
     row_id = "black_tspulse_tuned"
-    name, arm, tuned = "red_tspulse_tuned", "tspulse", True
+    name, arm, tuned = "red_tspulse_quicktune", "tspulse", True
 
 
 class _GraniteFT(_GraniteGap):
@@ -120,17 +121,17 @@ class _GraniteFT(_GraniteGap):
         self.reconstructor = make_reconstructor(self.backend)
 
 
-class TTMR3FT(_GraniteFT):
+class TTMR3FineTune(_GraniteFT):
     """TTM-R3 lite after the stronger fine-tune (blended two-sided loss, 13,824 A gaps; scope picked on B)."""
     row_id = "black_ttm_r3_ft"
-    name, arm = "red_ttm_r3_ft", "ttm"
+    name, arm = "red_ttm_r3_finetune", "ttm"
 
 
-class TSPulseFT(_GraniteFT):
+class TSPulseFineTune(_GraniteFT):
     """TSPulse R1 after the stronger fine-tune (up to whole-model training on 13,824 A gaps; scope picked on B)."""
     row_id = "black_tspulse_ft"
-    name, arm = "red_tspulse_ft", "tspulse"
+    name, arm = "red_tspulse_finetune", "tspulse"
 
 
-GRANITE = [TTMR3Frozen, TTMR3Tuned, TSPulseFrozen, TSPulseTuned]
-FT = [TTMR3FT, TSPulseFT]          # separate list: the experiment's `final` stage iterates GRANITE only
+GRANITE = [TTMR3Frozen, TTMR3QuickTune, TSPulseFrozen, TSPulseQuickTune]
+FT = [TTMR3FineTune, TSPulseFineTune]          # separate list: the experiment's `final` stage iterates GRANITE only

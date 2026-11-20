@@ -34,8 +34,8 @@ FT_BASE = {"black_ttm_r3_ft": ("black_ttm_r3_frozen", "black_ttm_r3_tuned"),
            "black_tspulse_ft": ("black_tspulse_frozen", "black_tspulse_tuned")}
 MISSING_WHY = {"red_timestral": "not scored yet: run the `timestral` stage in the Timestral environment",
                "black_timestral_target_only": "not scored yet: run the `timestral` stage in the Timestral environment"}
-LABEL = {"black_ttm_r3_frozen": "TTM-R3 frozen", "black_ttm_r3_tuned": "TTM-R3 tuned",
-         "black_tspulse_frozen": "TSPulse frozen", "black_tspulse_tuned": "TSPulse tuned",
+LABEL = {"black_ttm_r3_frozen": "TTM-R3 frozen", "black_ttm_r3_tuned": "TTM-R3 quick-tune",
+         "black_tspulse_frozen": "TSPulse frozen", "black_tspulse_tuned": "TSPulse quick-tune",
          "black_linear_gap": "Linear interpolation", "black_gardner_fixed": "Gardner (fixed)",
          "black_gardner_flank_resid": "Gardner + flank residual",
          "red_timestral": "Timestral-5M + other logs", "black_timestral_target_only": "Timestral-5M target-only"}
@@ -123,7 +123,8 @@ class Inputs:
             self.npz.update(dict(np.load(W / "final" / "finetune_predictions.npz")))
             for name, v in self.ft["variants"].items():
                 arm, scope = v["meta"]["arm"], v["meta"]["scope"]
-                LABEL[name] = f"{'TTM-R3' if arm == 'ttm' else 'TSPulse'} {scope} fine-tune"
+                part = {"head": "heads", "decoder": "decoder", "full": "whole model"}.get(scope, scope)
+                LABEL[name] = f"{'TTM-R3' if arm == 'ttm' else 'TSPulse'} fine-tune ({part})"
                 self.calibration[name] = {"calibrator": v["calibrator"], "summary": v["D"]}
                 self.selection["rows"][name] = {"summary": v["B"]}
                 self.final["timing"][name] = {"inference_s": v["inference_s"]}
@@ -382,7 +383,7 @@ def explainer(I: Inputs) -> str:
                      for k, v in LOG_NAMES.items())
     ft = ""
     if I.ft:
-        ft = ("| TTM-R3 / TSPulse *head*, *decoder* or *full fine-tune* | density only | The stronger fine-tune added "
+        ft = ("| TTM-R3 / TSPulse *fine-tune* (heads, decoder or whole model) | density only | The stronger fine-tune added "
               "after the brief's run: up to the whole network is trained, on 8× more practice gaps (13,824), for "
               "minutes rather than seconds. The part trained and the learning rate are picked on the B wells; see "
               "the sweep table. |\n")
@@ -411,8 +412,8 @@ visible, including inside the hidden stretch. Some methods use them and some del
 | Straight line | density flanks | Draws a straight line from the last measured density above to the first below. The baseline to beat. |
 | Gardner (fixed) | sonic (DTC) inside the gap | A textbook rock-physics formula, density = 0.31 × velocity^0.25, using sonic speed. Uses no density at all. |
 | Gardner + flank residual | sonic + density flanks | Gardner, shifted by how far it is off on the flanks (that offset is interpolated across the gap). |
-| TTM-R3 frozen / tuned | density only | IBM's small (3 M weights) time-series forecaster, pretrained on non-geological series; one depth step is treated as one time step. It forecasts down from the upper flank and up from the lower flank and blends the two. *Tuned*: the brief's run, which retrained its output layers on our training wells but stopped after 75 updates (under 5 s). |
-| TSPulse frozen / tuned | density only | IBM's small (1 M weights) gap-filling model: it sees a 512-sample window with the gap blanked out and reconstructs it. *Tuned*: the brief's run, which retrained only its final 200-weight output layer for 125 updates. |
+| TTM-R3 frozen / quick-tune | density only | IBM's small (3 M weights) time-series forecaster, pretrained on non-geological series; one depth step is treated as one time step. It forecasts down from the upper flank and up from the lower flank and blends the two. *Quick-tune*: the brief's small fine-tune, which retrained its output layers on our training wells but stopped after 75 updates (under 5 s). |
+| TSPulse frozen / quick-tune | density only | IBM's small (1 M weights) gap-filling model: it sees a 512-sample window with the gap blanked out and reconstructs it. *Quick-tune*: the brief's small fine-tune, which retrained only its final 200-weight output layer for 125 updates. |
 {ft}| Timestral-5M + other logs | density flanks + all other logs + depth | Mistral's forecaster with the red team's adapter, frozen. The other logs across the flanks *and* the gap are side information. |
 | Timestral-5M target-only | density only | The same model and adapter, with the other logs removed: the control that shows what the other logs are worth. |
 
@@ -583,7 +584,7 @@ def _gap_panel(ax, I: Inputs, key: str, name: str, *, compact=False, show=("gard
     if "flank_resid" in show:
         ax.plot(I.arr("black_gardner_flank_resid", key, "p50"), gd, color=YELLOW, lw=1.4, label="Gardner + flank residual")
     if "ttm" in show and name != "black_ttm_r3_tuned":
-        ax.plot(I.arr("black_ttm_r3_tuned", key, "p50"), gd, color=VIOLET, lw=1.2, label="TTM-R3 tuned")
+        ax.plot(I.arr("black_ttm_r3_tuned", key, "p50"), gd, color=VIOLET, lw=1.2, label="TTM-R3 quick-tune")
     if "timestral" in show and I.arr("red_timestral", key, "p50") is not None:
         ax.plot(I.arr("red_timestral", key, "p50"), gd, color=RED, lw=1.2, label=LABEL["red_timestral"])
     ax.plot(p50, gd, color=BLUE, lw=2.0, label=LABEL[name])
@@ -690,8 +691,8 @@ def fig_paired(I: Inputs, boot: list[dict], out: Path, pairs=None, fname: str = 
     from matplotlib.ticker import MaxNLocator
 
     plt = _mpl()
-    pairs = pairs or [("black_ttm_r3_tuned", "black_ttm_r3_frozen", "TTM-R3: tuned − frozen"),
-                      ("black_tspulse_tuned", "black_tspulse_frozen", "TSPulse: tuned − frozen"),
+    pairs = pairs or [("black_ttm_r3_tuned", "black_ttm_r3_frozen", "TTM-R3: quick-tune − frozen"),
+                      ("black_tspulse_tuned", "black_tspulse_frozen", "TSPulse: quick-tune − frozen"),
                       (I.selected, "black_linear_gap", f"{LABEL[I.selected]} − straight line")]
     fig, axes = plt.subplots(1, len(pairs), figsize=(4 * len(pairs), 4.4), sharey=True)
     lin = per_well(I.rows["black_linear_gap"])
@@ -1053,7 +1054,7 @@ def md_tables(I, table, boot, dec, res, method, aggregate_only: bool) -> str:
     L.append("**Training and resources** (head-only fine-tune on A wells, laptop GPU)")
     L.append("")
     L.append("| Arm | Trainable / total | Examples (wells) | Microbatch × accum | s/update | Updates | Minutes | Stop | "
-             "Peak VRAM MB | RSS MB | B step 0 → tuned (update) | Overfit/reload exact |")
+             "Peak VRAM MB | RSS MB | B step 0 → quick-tune (update) | Overfit/reload exact |")
     L.append("|---|---|---|---|---|---|---|---|---|---|---|---|")
     for r in res:
         L.append(f"| {r['arm']} | {r['trainable']:,} / {r['parameters']:,} | {r['examples']} ({r['wells']}) | "
@@ -1109,8 +1110,8 @@ def build() -> dict:
     if all(n in I.rows for n in TIMESTRAL):
         figures.append(fig_paired(I, boot, figs, [
             ("red_timestral", "black_timestral_target_only", "Timestral: + other logs − target-only"),
-            ("black_ttm_r3_tuned", "black_timestral_target_only", "Density only: TTM-R3 tuned − Timestral"),
-            ("black_ttm_r3_tuned", "red_timestral", "TTM-R3 tuned − Timestral + other logs")], "paired_timestral.png"))
+            ("black_ttm_r3_tuned", "black_timestral_target_only", "Density only: TTM-R3 quick-tune − Timestral"),
+            ("black_ttm_r3_tuned", "red_timestral", "TTM-R3 quick-tune − Timestral + other logs")], "paired_timestral.png"))
     if any_table(I):
         figures.append(fig_decision_by_model(I, figs))
     if I.ft:
@@ -1122,7 +1123,7 @@ def build() -> dict:
               "unavailable": I.unavailable, "hashes": H, "thirty_seconds": text,
               "replay": ["python -m workstreams.black_physics.granite all",
                          "WMB_RED_MODELS=granite WMB_BLACK_GRANITE=1 python -m benchmark.run --model red_ttm_r3_frozen,"
-                         "red_ttm_r3_tuned,red_ttm_r3_ft,red_tspulse_frozen,red_tspulse_tuned,red_tspulse_ft,"
+                         "red_ttm_r3_quicktune,red_ttm_r3_finetune,red_tspulse_frozen,red_tspulse_quicktune,red_tspulse_finetune,"
                          "black_linear_gap,black_gardner_flank_resid,black_gardner_fixed --test rhob_gap50 --rerun",
                          "python -m workstreams.black_physics.granite final",
                          "<timestral-python>: WMB_RED_MODELS=timestral,timestral_target_only python -m benchmark.run "
